@@ -38,8 +38,8 @@ export function ProviderPublicPage() {
             <h1 className="font-display text-3xl font-bold">
               {establishment?.name || "Estabelecimento"}
             </h1>
-            {establishment?.city && (
-              <p className="mt-1 text-teal-100">{establishment.city}</p>
+            {establishment?.address?.city && (
+              <p className="mt-1 text-teal-100">{establishment.address?.city}</p>
             )}
           </div>
 

@@ -30,6 +30,8 @@ export interface Establishment {
   members: Member[];
   active: boolean;
   cashAutoEntry?: boolean;
+  // serviços do estabelecimento (preenchido por /establishments/:id via getById)
+  services?: EstablishmentService[];
   // preenchidos por /establishments/mine — indicam o papel do user logado
   myRole?: "owner" | "professional";
   myProfessionalId?: string | null;

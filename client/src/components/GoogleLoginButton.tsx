@@ -27,7 +27,6 @@ export function GoogleLoginButton({
         }}
         onError={() => onError?.("Falha ao conectar com o Google.")}
         text="continue_with"
-        locale="pt-BR"
         width="320"
       />
     </div>
