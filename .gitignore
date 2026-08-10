@@ -1,0 +1,47 @@
+# ─── Dependências ───
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# ─── Segredos / variáveis de ambiente (NUNCA versionar) ───
+.env
+.env.local
+.env.*.local
+client/.env
+client/.env.local
+server/.env
+server/.env.local
+
+# ─── Builds / saídas ───
+dist/
+build/
+client/dist/
+client/build/
+server/dist/
+server/build/
+
+# ─── Logs ───
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ─── Cache de ferramentas ───
+.vite/
+client/.vite/
+client/node_modules/.vite/
+.cache/
+.eslintcache
+
+# ─── Editores / SO ───
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ─── Uploads locais / temporários (ajuste se necessário) ───
+uploads/
+tmp/
+temp/

@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: theme("fontFamily.body");
+  }
+
+  body {
+    @apply bg-sand text-ink antialiased;
+  }
+}
+
+html {
+  overflow-x: hidden;
+}
