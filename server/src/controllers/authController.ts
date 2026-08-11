@@ -85,16 +85,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
   const token = signToken(user._id.toString());
 
+  // recem-registrado ainda nao tem estabelecimento
   res.status(201).json({
     token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      state: user.state,
-      city: user.city,
-      emailVerified: user.emailVerified,
-    },
+    user: publicUser(user, false),
   });
 };
 
@@ -122,32 +116,27 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
   res.json({
     token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      state: user.state,
-      city: user.city,
-      emailVerified: user.emailVerified,
-      hasEstablishments,
-    },
+    user: publicUser(user, hasEstablishments),
   });
 };
 
 // monta o objeto de usuario publico no MESMO shape que login/register/google
 // retornam (id, nao _id). Evita divergencia: sem isso, recarregar a pagina
 // (que usa /me) traz _id e o front que espera `id` fica com id undefined.
-const publicUser = (u: {
-  _id: unknown;
-  name: string;
-  email: string;
-  phone?: string;
-  avatar?: string;
-  country?: string;
-  state?: string;
-  city?: string;
-  emailVerified: boolean;
-}) => ({
+const publicUser = (
+  u: {
+    _id: unknown;
+    name: string;
+    email: string;
+    phone?: string;
+    avatar?: string;
+    country?: string;
+    state?: string;
+    city?: string;
+    emailVerified: boolean;
+  },
+  hasEstablishments?: boolean
+) => ({
   id: u._id,
   name: u.name,
   email: u.email,
@@ -157,6 +146,7 @@ const publicUser = (u: {
   state: u.state,
   city: u.city,
   emailVerified: u.emailVerified,
+  ...(hasEstablishments !== undefined ? { hasEstablishments } : {}),
 });
 
 // GET /api/auth/me
@@ -396,16 +386,14 @@ export const googleAuth = async (
 
     const token = signToken(user._id.toString());
 
+    // mesmo criterio do login: manda dono/funcionario direto ao painel
+    const hasEstablishments = !!(await Establishment.findOne({
+      $or: [{ owner: user._id }, { "members.professional": user._id }],
+    }).select("_id"));
+
     res.json({
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        state: user.state,
-        city: user.city,
-        emailVerified: user.emailVerified,
-      },
+      user: publicUser(user, hasEstablishments),
     });
   } catch (err) {
     console.error("googleAuth:", err);

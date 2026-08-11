@@ -1,11 +1,12 @@
 import { GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../context/AuthContext";
+import { User } from "../api/auth";
 
 export function GoogleLoginButton({
   onSuccess,
   onError,
 }: {
-  onSuccess?: () => void;
+  onSuccess?: (user: User) => void;
   onError?: (msg: string) => void;
 }) {
   const { loginWithGoogle } = useAuth();
@@ -19,8 +20,8 @@ export function GoogleLoginButton({
             return;
           }
           try {
-            await loginWithGoogle(cred.credential);
-            onSuccess?.();
+            const user = await loginWithGoogle(cred.credential);
+            onSuccess?.(user);
           } catch {
             onError?.("Não foi possível entrar com o Google.");
           }

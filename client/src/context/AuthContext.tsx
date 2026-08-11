@@ -22,7 +22,7 @@ interface AuthContextType {
     city?: string;
   }) => Promise<void>;
   logout: () => void;
-  loginWithGoogle: (credential: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<User>;
   updateUser: (patch: Partial<User>) => void;
 }
 
@@ -78,11 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const loginWithGoogle = async (credential: string) => {
+  const loginWithGoogle = async (credential: string): Promise<User> => {
     const { token, user } = await authApi.google(credential);
     localStorage.setItem("token", token);
     setUser(user);
     connectSocket();
+    return user;
   };
 
   // atualiza o user no estado apos editar o perfil (sem recarregar a pagina)
