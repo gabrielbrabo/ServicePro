@@ -64,9 +64,14 @@ interface RecurringResult {
 export function BookingModal({
   establishment,
   onClose,
+  initialServiceId,
 }: {
   establishment: Establishment;
   onClose: () => void;
+  // servico pre-selecionado (ex.: clique no card do carrossel).
+  // quando presente, o modal pula a etapa de servico e vai direto
+  // para profissional -> horario daquele servico.
+  initialServiceId?: string;
 }) {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
@@ -78,7 +83,10 @@ export function BookingModal({
   const [maxFutureDays, setMaxFutureDays] = useState(30);
 
   const [step, setStep] = useState<Step>("service");
-  const [serviceId, setServiceId] = useState<string>("");
+  const [serviceId, setServiceId] = useState<string>(initialServiceId ?? "");
+
+  // servico veio travado pelo card: nao existe etapa de escolha de servico
+  const serviceLocked = Boolean(initialServiceId);
 
   const [date, setDate] = useState<string>(toLocalYMD(new Date()));
   const [slots, setSlots] = useState<string[]>([]);
@@ -125,17 +133,36 @@ export function BookingModal({
     });
   }, [services, professionalId]);
 
+  // profissionais visíveis: quando o servico ja veio travado (clique no card),
+  // mostra so quem presta aquele servico. Mesma convencao dos servicos:
+  // servico sem lista de profissionais = feito por todos.
+  const visibleProfessionals = useMemo(() => {
+    if (!serviceLocked || !selectedService) return professionals;
+    const allowed = selectedService.professionals ?? [];
+    if (allowed.length === 0) return professionals;
+    return professionals.filter((p) => allowed.includes(p._id));
+  }, [professionals, serviceLocked, selectedService]);
+
   useEffect(() => {
     setLoadingPros(true);
     professionalApi
       .list(establishment._id)
       .then((list) => {
         setProfessionals(list);
-        setStep(list.length > 0 ? "professional" : "service");
+        // com equipe: comeca escolhendo o profissional.
+        // sem equipe: se o servico ja veio travado, vai direto ao horario;
+        // senao, escolhe o servico.
+        setStep(
+          list.length > 0
+            ? "professional"
+            : serviceLocked
+              ? "slot"
+              : "service"
+        );
       })
       .catch(() => {
         setProfessionals([]);
-        setStep("service");
+        setStep(serviceLocked ? "slot" : "service");
       })
       .finally(() => setLoadingPros(false));
 
@@ -154,7 +181,7 @@ export function BookingModal({
       .catch(() => {
         /* mantém 30 */
       });
-  }, [establishment._id]);
+  }, [establishment._id, serviceLocked]);
 
   useEffect(() => {
     if (step !== "slot" || !serviceId || !date) return;
@@ -182,7 +209,8 @@ export function BookingModal({
 
   const pickProfessional = (id: string) => {
     setProfessionalId(id);
-    setStep("service");
+    // servico travado: nao ha etapa de servico, vai direto ao horario
+    setStep(serviceLocked ? "slot" : "service");
   };
 
   const pickService = (id: string) => {
@@ -192,17 +220,25 @@ export function BookingModal({
 
   const goBack = () => {
     if (step === "slot") {
-      setStep("service");
       setSelectedSlot(null);
       setSlots([]);
       setWaitlistJoined(false);
       setRecurring(false);
+      // servico travado pelo card: nao existe etapa de servico.
+      // volta ao profissional (quando ha equipe); senao nao ha para onde voltar.
+      if (serviceLocked) {
+        if (hasTeam) setStep("professional");
+      } else {
+        setStep("service");
+      }
     } else if (step === "service" && hasTeam) {
       setStep("professional");
     }
   };
 
-  const canGoBack = step === "slot" || (step === "service" && hasTeam);
+  const canGoBack =
+    (step === "slot" && (!serviceLocked || hasTeam)) ||
+    (step === "service" && hasTeam);
 
   // clique no botao do rodape: valida login e abre o modal de lembrete.
   // A criacao do agendamento acontece em confirm(), disparado pelo modal.
@@ -383,14 +419,18 @@ export function BookingModal({
             {/* ETAPA 0 — profissionais */}
             {step === "professional" && (
               <>
-                {loadingPros ? (
+                {loadingPros || (serviceLocked && loadingServices) ? (
                   <div className="flex items-center gap-2 py-6 text-ink/50">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-teal-500" />
                     Carregando profissionais...
                   </div>
+                ) : visibleProfessionals.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-ink/20 p-8 text-center text-sm text-ink/50">
+                    Nenhum profissional disponível para este serviço no momento.
+                  </p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {professionals.map((p) => (
+                    {visibleProfessionals.map((p) => (
                       <button
                         key={p._id}
                         onClick={() => pickProfessional(p._id)}

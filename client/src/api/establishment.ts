@@ -54,6 +54,10 @@ export interface SearchFilters {
   page?: number;
   userCity?: string; // cidade do usuário logado (prioriza resultados)
   userState?: string; // estado do usuário logado
+  // busca por raio (opcional): posicao atual do usuario + raio em km
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
 }
 
 export const establishmentApi = {
@@ -74,6 +78,11 @@ export const establishmentApi = {
           page: filters.page || 1,
           userCity: filters.userCity || undefined,
           userState: filters.userState || undefined,
+          // enviados so quando ha busca por raio ativa.
+          // usa ?? para nao descartar lat/lng = 0 (valores validos).
+          lat: filters.lat ?? undefined,
+          lng: filters.lng ?? undefined,
+          radiusKm: filters.radiusKm ?? undefined,
         },
       })
       .then((r) => r.data),

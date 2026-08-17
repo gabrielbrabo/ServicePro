@@ -149,12 +149,14 @@ export const listEstablishments = async (
 
 // GET /api/establishments/search  (publico) - paginada (10 por pagina)
 // Prioriza estabelecimentos da mesma cidade do usuario, depois do mesmo estado.
+// Opcional: filtro por RAIO (lat, lng, radiusKm) usando o indice 2dsphere.
 export const searchEstablishments = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { category, q, city, service, userCity, userState } = req.query;
+    const { category, q, city, service, userCity, userState, lat, lng } =
+      req.query;
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
     const limit = 10;
     const skip = (page - 1) * limit;
@@ -178,6 +180,39 @@ export const searchEstablishments = async (
       const ids = services.map((s) => new Types.ObjectId(s.establishment));
       filter._id = { $in: ids };
     }
+
+    // ---- Filtro por raio (opcional) --------------------------------------
+    // So aplica quando lat, lng e radiusKm sao numeros validos.
+    // $centerSphere usa raio em RADIANOS = km / raio_da_Terra (6378.1 km).
+    // Funciona dentro do $match do aggregate e no countDocuments, e usa o
+    // indice 2dsphere ja existente. Estabelecimentos sem coordenadas reais
+    // (default [0,0]) simplesmente ficam fora do raio do usuario.
+    const latNum = lat !== undefined ? parseFloat(String(lat)) : NaN;
+    const lngNum = lng !== undefined ? parseFloat(String(lng)) : NaN;
+    const radiusNum =
+      req.query.radiusKm !== undefined
+        ? parseFloat(String(req.query.radiusKm))
+        : NaN;
+
+    const hasGeo =
+      Number.isFinite(latNum) &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      Number.isFinite(lngNum) &&
+      lngNum >= -180 &&
+      lngNum <= 180 &&
+      Number.isFinite(radiusNum) &&
+      radiusNum > 0;
+
+    if (hasGeo) {
+      const EARTH_RADIUS_KM = 6378.1;
+      filter.location = {
+        $geoWithin: {
+          $centerSphere: [[lngNum, latNum], radiusNum / EARTH_RADIUS_KM],
+        },
+      };
+    }
+    // ----------------------------------------------------------------------
 
     const uCity = userCity ? String(userCity) : "";
     const uState = userState ? String(userState) : "";

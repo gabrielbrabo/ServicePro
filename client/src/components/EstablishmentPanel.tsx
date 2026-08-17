@@ -34,7 +34,7 @@ export function EstablishmentPanel({
 
   const [copied, setCopied] = useState(false);
 
-  const link = `${window.location.origin}/e/${establishment._id}`;
+  const link = `${window.location.origin}/estabelecimento/${establishment._id}`;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(link);

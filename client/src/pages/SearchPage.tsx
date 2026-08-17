@@ -7,6 +7,10 @@ import {
   SearchFilters,
 } from "../api/establishment";
 import { EstablishmentCard } from "../components/EstablishmentCard";
+import {
+  LocationRadiusModal,
+  GeoCoords,
+} from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
 
 export function SearchPage() {
@@ -18,6 +22,11 @@ export function SearchPage() {
   const [name, setName] = useState(""); // nome do estabelecimento
   const [service, setService] = useState(""); // nome do serviço
   const [city, setCity] = useState(""); // localização
+
+  // busca por raio (geolocalizacao)
+  const [geoCoords, setGeoCoords] = useState<GeoCoords | null>(null);
+  const [radiusKm, setRadiusKm] = useState<number | null>(null);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
 
   // resultados + paginação
   const [items, setItems] = useState<Establishment[]>([]);
@@ -41,8 +50,12 @@ export function SearchPage() {
       page: pageNum,
       userCity: user?.city || undefined,
       userState: user?.state || undefined,
+      // so envia geo quando ha coordenadas E raio definidos
+      lat: geoCoords?.lat,
+      lng: geoCoords?.lng,
+      radiusKm: geoCoords && radiusKm ? radiusKm : undefined,
     }),
-    [activeCat, name, service, city, user]
+    [activeCat, name, service, city, user, geoCoords, radiusKm]
   );
 
   // busca a primeira página sempre que um filtro muda (com debounce nos textos)
@@ -81,9 +94,24 @@ export function SearchPage() {
     setName("");
     setService("");
     setCity("");
+    setGeoCoords(null);
+    setRadiusKm(null);
   };
 
-  const hasAnyFilter = activeCat || name || service || city;
+  // aplica a busca por raio vinda do modal
+  const applyRadius = (coords: GeoCoords, km: number) => {
+    setGeoCoords(coords);
+    setRadiusKm(km);
+    setLocationModalOpen(false);
+  };
+
+  const clearRadius = () => {
+    setGeoCoords(null);
+    setRadiusKm(null);
+  };
+
+  const geoActive = Boolean(geoCoords && radiusKm);
+  const hasAnyFilter = activeCat || name || service || city || geoActive;
 
   return (
     <PageContainer>
@@ -105,16 +133,64 @@ export function SearchPage() {
         <input
           value={service}
           onChange={(e) => setService(e.target.value)}
-          placeholder="Serviço (ex: corte, escova)"
+          placeholder="Serviço"
           className="h-12 w-full rounded-xl border border-ink/15 bg-white px-4 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
         />
-        <input
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          placeholder="Cidade / localização"
-          className="h-12 w-full rounded-xl border border-ink/15 bg-white px-4 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
-        />
+
+        {/* Cidade + botao de localizacao (busca por raio) */}
+        <div className="relative">
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Cidade / localização"
+            className="h-12 w-full rounded-xl border border-ink/15 bg-white pl-4 pr-12 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+          />
+          <button
+            type="button"
+            onClick={() => setLocationModalOpen(true)}
+            aria-label="Buscar por perto usando minha localização"
+            title="Buscar por perto"
+            className={`absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg transition ${
+              geoActive
+                ? "bg-teal-500 text-white"
+                : "text-ink/45 hover:bg-sand hover:text-teal-600"
+            }`}
+          >
+            {/* icone de pin de localizacao */}
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Chip do raio ativo */}
+      {geoActive && (
+        <div className="mt-3">
+          <span className="inline-flex items-center gap-2 rounded-full bg-teal-500/10 py-1.5 pl-3 pr-1.5 text-sm font-medium text-teal-700">
+            📍 A até {radiusKm} km de você
+            <button
+              type="button"
+              onClick={clearRadius}
+              aria-label="Remover busca por raio"
+              className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-500/20 text-teal-700 transition hover:bg-teal-500 hover:text-white"
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Filtro por categoria */}
       <div className="mt-4 flex flex-wrap gap-2">
@@ -168,7 +244,9 @@ export function SearchPage() {
           <p className="text-ink/50">Carregando...</p>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-ink/20 p-12 text-center text-ink/50">
-            Nenhum estabelecimento encontrado. Tente outros filtros.
+            {geoActive
+              ? "Nenhum estabelecimento neste raio. Aumente a distância ou remova o filtro de localização."
+              : "Nenhum estabelecimento encontrado. Tente outros filtros."}
           </div>
         ) : (
           <>
@@ -192,6 +270,15 @@ export function SearchPage() {
           </>
         )}
       </div>
+
+      {locationModalOpen && (
+        <LocationRadiusModal
+          initialRadiusKm={radiusKm}
+          initialCoords={geoCoords}
+          onClose={() => setLocationModalOpen(false)}
+          onApply={applyRadius}
+        />
+      )}
     </PageContainer>
   );
 }
