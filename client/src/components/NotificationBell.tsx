@@ -85,7 +85,9 @@ export function NotificationBell() {
             : undefined;
 
         if (mine) {
-            // troca o estabelecimento E força a aba de recebidos
+            // troca o estabelecimento E força a aba de recebidos.
+            // A rolagem ate a foto de perfil e feita pelo EstablishmentPanel
+            // (efeito que dispara ao trocar de aba/estabelecimento).
             select(mine, "recebidos");
             navigate("/painel");
         } else {

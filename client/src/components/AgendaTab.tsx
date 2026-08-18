@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react";
 import { professionalApi, Professional } from "../api/professional";
 import { AvailabilityEditor } from "./AvailabilityEditor";
+import { useProsWithoutSchedule } from "../lib/coverage";
+
+// aviso reutilizavel de "sem expediente"
+function NoScheduleWarning({ self = false }: { self?: boolean }) {
+  return (
+    <div className="mb-4 flex items-start gap-1.5 rounded-lg bg-amber-400/10 px-3 py-2 text-sm font-medium text-amber-700">
+      <span aria-hidden="true">⚠️</span>
+      <span>
+        {self
+          ? "Você está sem expediente e não receberá agendamentos. Defina seus horários abaixo."
+          : "Este profissional está sem expediente e não receberá agendamentos. Defina os horários abaixo."}
+      </span>
+    </div>
+  );
+}
 
 export function AgendaTab({
   establishmentId,
@@ -14,6 +29,9 @@ export function AgendaTab({
   const [selected, setSelected] = useState<string | null>(null);
 
   const isEmployee = !!myProfessionalId;
+
+  // profissionais ativos sem expediente (para marcar ⚠️ e o aviso)
+  const { prosWithoutSchedule } = useProsWithoutSchedule(establishmentId);
 
   useEffect(() => {
     // funcionario so edita a propria agenda: nao precisa carregar a equipe
@@ -55,6 +73,7 @@ export function AgendaTab({
           Configure aqui o seu expediente. Os clientes só poderão agendar com
           você nos horários definidos.
         </p>
+        {prosWithoutSchedule.has(selected) && <NoScheduleWarning self />}
         <AvailabilityEditor
           key={selected}
           establishmentId={establishmentId}
@@ -99,10 +118,20 @@ export function AgendaTab({
                 </span>
               )}
               {p.name}
+              {/* ⚠️ profissional sem expediente */}
+              {prosWithoutSchedule.has(p._id) && (
+                <span title="Sem expediente" aria-hidden="true">
+                  ⚠️
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
+
+      {selected && prosWithoutSchedule.has(selected) && (
+        <NoScheduleWarning />
+      )}
 
       {selected && (
         <AvailabilityEditor

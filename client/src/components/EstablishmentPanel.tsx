@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgendaTab } from "./AgendaTab";
 import { ServiceManager } from "./ServiceManager";
@@ -13,6 +13,7 @@ import { ReviewsManager } from "./ReviewsManager";
 import { EstablishmentProfileHeader } from "./EstablishmentProfileHeader";
 import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
+import { useCoverageAlerts, useProsWithoutSchedule } from "../lib/coverage";
 
 export function EstablishmentPanel({
   establishment,
@@ -33,7 +34,41 @@ export function EstablishmentPanel({
   const { badges } = useNotifications();
   const pendingCount = badges.byEstablishment[establishment._id] || 0;
 
+  // alertas de cobertura (profissional sem servico / servico sem profissional).
+  // depende de `tab` para recarregar apos edicoes em outra aba.
+  const { servicesWithoutPro, prosWithoutService } = useCoverageAlerts(
+    establishment._id,
+    tab
+  );
+  // profissionais sem expediente (aba Expediente)
+  const { prosWithoutSchedule } = useProsWithoutSchedule(
+    establishment._id,
+    tab
+  );
+
   const [copied, setCopied] = useState(false);
+
+  // Rola a tela ate a FOTO DE PERFIL ficar ~20px abaixo da navbar. Ancorar na
+  // foto (que existe desde o inicio) evita depender do carregamento do conteudo.
+  // Reposiciona algumas vezes: enquanto a aba carrega e a pagina cresce, da
+  // para descer mais — no maximo ate a foto encostar no alvo.
+  useEffect(() => {
+    const scrollToPhoto = () => {
+      const avatar = document.getElementById("est-avatar");
+      if (!avatar) return;
+      const nav = document.querySelector("nav");
+      const navH = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
+      // >>> AJUSTE AQUI <<< folga (px) entre a foto e a navbar
+      const FOLGA = 20;
+      const top =
+        avatar.getBoundingClientRect().top + window.scrollY - navH - FOLGA;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    };
+    const timers = [0, 250, 600, 1000].map((t) =>
+      window.setTimeout(scrollToPhoto, t)
+    );
+    return () => timers.forEach((id) => clearTimeout(id));
+  }, [tab, establishment._id]);
 
   const link = `${window.location.origin}/estabelecimento/${establishment._id}`;
 
@@ -75,6 +110,11 @@ export function EstablishmentPanel({
         initialCovers={establishment.coverPhotos}
         ratingAvg={establishment.ratingAvg}
         ratingCount={establishment.ratingCount}
+        onEdit={
+          !isEmployee
+            ? () => navigate(`/estabelecimento/${establishment._id}/editar`)
+            : undefined
+        }
         editable={!isEmployee}
         coverOverlay={coverOverlay}
       />
@@ -127,11 +167,48 @@ export function EstablishmentPanel({
                 {pendingCount > 99 ? "99+" : pendingCount}
               </span>
             )}
+            {/* alerta: profissionais sem servico (so o dono age nisso) */}
+            {!isEmployee &&
+              key === "equipe" &&
+              prosWithoutService.size > 0 && (
+                <span
+                  title="Há profissional sem serviço"
+                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                >
+                  !
+                </span>
+              )}
+            {/* alerta: servicos sem profissional */}
+            {!isEmployee &&
+              key === "servicos" &&
+              servicesWithoutPro.size > 0 && (
+                <span
+                  title="Há serviço sem profissional"
+                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                >
+                  !
+                </span>
+              )}
+            {/* alerta: profissionais sem expediente */}
+            {!isEmployee &&
+              key === "agenda" &&
+              prosWithoutSchedule.size > 0 && (
+                <span
+                  title="Há profissional sem expediente"
+                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                >
+                  !
+                </span>
+              )}
           </button>
         ))}
       </div>
 
-      <div className="mt-6">
+      {/* min-h-screen garante altura suficiente para a rolagem alcancar a foto
+          mesmo quando a aba esta vazia (sem dados, o conteudo seria curto).
+          >>> AJUSTE AQUI <<< pode trocar por min-h-[70vh] se preferir menos
+          espaco em branco nas abas vazias. */}
+      <div className="mt-6 min-h-screen">
         {tab === "servicos" && (
           <ServiceManager
             establishmentId={establishment._id}
@@ -148,7 +225,9 @@ export function EstablishmentPanel({
           />
         )}
         {tab === "recebidos" && (
-          <BookingList role="provider" establishmentId={establishment._id} />
+          <div id="painel-recebidos" className="scroll-mt-24">
+            <BookingList role="provider" establishmentId={establishment._id} />
+          </div>
         )}
         {tab === "clientes" && (
           <ClientsManager establishmentId={establishment._id} />

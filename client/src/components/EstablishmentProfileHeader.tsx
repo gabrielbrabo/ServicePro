@@ -19,6 +19,7 @@ export function EstablishmentProfileHeader({
   initialCovers,
   ratingAvg,
   ratingCount,
+  onEdit,
   editable = false,
   children,
   coverOverlay,
@@ -35,6 +36,7 @@ export function EstablishmentProfileHeader({
   initialCovers?: string[];
   ratingAvg?: number; // nota agregada (sistema de avaliacao)
   ratingCount?: number;
+  onEdit?: () => void; // se definido, mostra a engrenagem ao lado do nome
   editable?: boolean;
   children?: React.ReactNode;
   coverOverlay?: React.ReactNode; // conteudo sobreposto no topo da capa (ex: titulo + botao do dashboard)
@@ -262,7 +264,8 @@ export function EstablishmentProfileHeader({
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-end">
           {/* Avatar na frente do nome — grande e sobreposto */}
-          <div className="relative flex-shrink-0">
+          {/* id ancora a rolagem do painel (foto ~20px abaixo da navbar) */}
+          <div id="est-avatar" className="relative flex-shrink-0">
             {photo ? (
               <img
                 src={photo}
@@ -314,9 +317,29 @@ export function EstablishmentProfileHeader({
 
           {/* Nome, categoria, localização */}
           <div className="min-w-0 pt-1 sm:pb-1">
-            <h1 className="font-display text-2xl font-bold leading-tight text-ink sm:text-3xl">
-              {name}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-2xl font-bold leading-tight text-ink sm:text-3xl">
+                {name}
+              </h1>
+              {/* engrenagem: edita o estabelecimento (mesmo destino do botao Editar) */}
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  aria-label="Editar estabelecimento"
+                  title="Editar estabelecimento"
+                  className="shrink-0 rounded-lg p-1.5 text-ink/40 transition hover:bg-sand hover:text-teal-600"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                      fillRule="evenodd"
+                      d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.37-.84-2.95.74-2.11 2.11.6.98.02 2.25-1.1 2.4-1.6.2-1.6 2.6 0 2.98a1.53 1.53 0 01.95 2.29c-.84 1.37.74 2.95 2.11 2.11a1.53 1.53 0 012.29.95c.38 1.56 2.6 1.56 2.98 0a1.53 1.53 0 012.29-.95c1.37.84 2.95-.74 2.11-2.11a1.53 1.53 0 01.95-2.29c1.56-.38 1.56-2.6 0-2.98a1.53 1.53 0 01-.95-2.29c.84-1.37-.74-2.95-2.11-2.11a1.53 1.53 0 01-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {categoryName && (

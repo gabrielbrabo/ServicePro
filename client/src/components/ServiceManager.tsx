@@ -1,7 +1,8 @@
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useMemo, useState, FormEvent } from "react";
 import { catalogApi, Category, Service } from "../api/catalog";
 import { professionalApi, Professional } from "../api/professional";
 import { formatPrice } from "../lib/time";
+import { computeServicesWithoutPro } from "../lib/coverage";
 
 // Gerencia os servicos de UM estabelecimento.
 // myProfessionalId != null => modo funcionario: ve apenas os servicos que ele
@@ -37,6 +38,12 @@ export function ServiceManager({
   const [savingEdit, setSavingEdit] = useState(false);
 
   const hasTeam = professionals.length > 0;
+
+  // servicos que ninguem ativo realiza (aviso). so faz sentido para o dono.
+  const uncovered = useMemo(
+    () => computeServicesWithoutPro(services, professionals),
+    [services, professionals]
+  );
 
   const load = () => {
     catalogApi.byEstablishment(establishmentId).then((all) => {
@@ -303,6 +310,18 @@ export function ServiceManager({
                 {s.description}
               </p>
             )}
+
+            {/* aviso: nenhum profissional realiza este servico */}
+            {!isEmployee && uncovered.has(s._id) && (
+              <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-1.5 text-xs font-medium text-amber-700">
+                <span aria-hidden="true">⚠️</span>
+                <span>
+                  Nenhum profissional realiza este serviço — ninguém receberá
+                  agendamentos dele. Defina em "Quem faz".
+                </span>
+              </div>
+            )}
+
             <div className="mt-2 flex items-center justify-between">
               <p className="font-semibold text-teal-600">
                 {formatPrice(s.price)}

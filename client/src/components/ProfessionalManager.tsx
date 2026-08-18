@@ -1,7 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { professionalApi, Professional } from "../api/professional";
+import { catalogApi, Service } from "../api/catalog";
 import { inviteApi } from "../api/invite";
 import { ImageUpload } from "./ImageUpload";
+import { computeProsWithoutService } from "../lib/coverage";
 
 export function ProfessionalManager({
   establishmentId,
@@ -11,6 +13,15 @@ export function ProfessionalManager({
   const [pros, setPros] = useState<Professional[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // servicos do estabelecimento — usados so para saber quem esta sem servico
+  const [services, setServices] = useState<Service[]>([]);
+
+  // profissionais ativos que nao estao em nenhum servico (aviso)
+  const prosNoService = useMemo(
+    () => computeProsWithoutService(services, pros),
+    [services, pros]
+  );
 
   // formulario de novo profissional
   const [name, setName] = useState("");
@@ -33,6 +44,14 @@ export function ProfessionalManager({
   }, [establishmentId]);
 
   useEffect(load, [load]);
+
+  // carrega os servicos (para detectar profissional sem servico)
+  useEffect(() => {
+    catalogApi
+      .byEstablishment(establishmentId)
+      .then(setServices)
+      .catch(() => setServices([]));
+  }, [establishmentId]);
 
   const addSpecialty = () => {
     const v = specialtyInput.trim();
@@ -260,6 +279,18 @@ export function ProfessionalManager({
                     {p.active ? "Desativar" : "Reativar"}
                   </button>
                 </div>
+
+                {/* aviso: profissional ativo sem nenhum servico */}
+                {p.active && prosNoService.has(p._id) && (
+                  <div className="flex w-full items-start gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-1.5 text-xs font-medium text-amber-700">
+                    <span aria-hidden="true">⚠️</span>
+                    <span>
+                      Este profissional não está registrado em nenhum serviço e
+                      não receberá agendamentos. Inclua-o em algum serviço (aba
+                      Serviços).
+                    </span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
