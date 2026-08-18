@@ -5,6 +5,7 @@ import { establishmentApi, Establishment } from "../api/establishment";
 import { serviceApi, ServiceItem } from "../api/service";
 import { BookingModal } from "../components/BookingModal";
 import { GallerySection } from "../components/GallerySection";
+import { ReviewsCarousel } from "../components/ReviewsCarousel";
 import { EstablishmentProfileHeader } from "../components/EstablishmentProfileHeader";
 
 export function EstablishmentPage() {
@@ -88,12 +89,12 @@ export function EstablishmentPage() {
   // endereco completo (linha separada abaixo da cidade/estado)
   const addressLine = est.address
     ? [
-        est.address.street,
-        est.address.number,
-        est.address.neighborhood,
-      ]
-        .filter(Boolean)
-        .join(", ")
+      est.address.street,
+      est.address.number,
+      est.address.neighborhood,
+    ]
+      .filter(Boolean)
+      .join(", ")
     : "";
 
   // mostra as setas so quando ha mais de uma coluna (2 servicos por coluna)
@@ -119,6 +120,8 @@ export function EstablishmentPage() {
         description={est.description}
         initialPhoto={est.photo}
         initialCovers={est.coverPhotos ?? []}
+        ratingAvg={est.ratingAvg}
+        ratingCount={est.ratingCount}
       >
         <button
           onClick={() => openBooking()}
@@ -219,6 +222,9 @@ export function EstablishmentPage() {
 
       {/* Galeria antes/depois — some sozinha se não houver itens */}
       {id && <GallerySection establishmentId={id} />}
+
+      {/* Avaliações — carrossel de 2 linhas; some sozinho se não houver */}
+      {id && <ReviewsCarousel establishmentId={id} />}
 
       {bookingOpen && (
         <BookingModal

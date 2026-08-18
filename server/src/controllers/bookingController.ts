@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Booking } from "../models/Booking";
 import { Service } from "../models/Service";
 import { Establishment } from "../models/Establishment";
+import { Review } from "../models/Review";
 import { CashSession } from "../models/CashSession";
 import { AuthRequest } from "../middleware/auth";
 import { getIO } from "../socket";
@@ -448,23 +449,43 @@ export const updateBookingStatus = async (
 
     if (actedByEstablishment) {
       // estabelecimento agiu -> avisa o CLIENTE
-      const titles: Record<string, string> = {
-        confirmado: "Agendamento confirmado",
-        cancelado: "Agendamento cancelado",
-        concluido: "Atendimento concluido",
-      };
-      notifyManyAsync([booking.client], {
-        type:
-          status === "confirmado"
-            ? "booking_confirmed"
-            : status === "cancelado"
-              ? "booking_cancelled"
-              : "booking_completed",
-        title: titles[status] || "Agendamento atualizado",
-        body: `${serviceTitle} em ${when}`,
-        booking: booking._id,
-        establishment: booking.establishment,
-      });
+      if (status === "concluido") {
+        // conclusao vira convite para avaliar. Regra: uma avaliacao por
+        // SERVICO por cliente -> so pede se ainda nao avaliou esse servico.
+        const alreadyReviewed = await Review.findOne({
+          client: booking.client,
+          service: booking.service,
+        }).select("_id");
+        if (!booking.reviewed && !alreadyReviewed) {
+          // nome do estabelecimento para a mensagem ("Avalie o Salao X")
+          const estForReview = await Establishment.findById(
+            booking.establishment
+          ).select("name");
+          const estName = estForReview?.name || "o estabelecimento";
+          notifyManyAsync([booking.client], {
+            type: "review_request",
+            title: `Avalie ${estName}`,
+            body: `Como foi seu ${serviceTitle} em ${estName}? Toque para dar sua nota em estrelas.`,
+            booking: booking._id,
+            establishment: booking.establishment,
+          });
+        }
+      } else {
+        const titles: Record<string, string> = {
+          confirmado: "Agendamento confirmado",
+          cancelado: "Agendamento cancelado",
+        };
+        notifyManyAsync([booking.client], {
+          type:
+            status === "confirmado"
+              ? "booking_confirmed"
+              : "booking_cancelled",
+          title: titles[status] || "Agendamento atualizado",
+          body: `${serviceTitle} em ${when}`,
+          booking: booking._id,
+          establishment: booking.establishment,
+        });
+      }
     } else if (isClient && status === "cancelado") {
       // cliente cancelou -> avisa o estabelecimento (dono + funcionario)
       const recipients = await establishmentRecipients(

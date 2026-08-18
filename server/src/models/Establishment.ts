@@ -47,6 +47,11 @@ export interface IEstablishment extends Document {
   professionals: Types.DocumentArray<IProfessionalDoc>;
   active: boolean;
   cashAutoEntry: boolean; // lanca entrada no caixa ao concluir servico
+  // nota agregada (sistema de avaliacao). Recalculados a cada avaliacao no
+  // reviewController; ficam no proprio doc para os cards/busca/perfil
+  // exibirem a nota sem consultar a colecao de reviews.
+  ratingAvg: number; // media das estrelas (0 quando nao ha avaliacoes)
+  ratingCount: number; // total de avaliacoes
   createdAt: Date;
   updatedAt: Date;
 }
@@ -120,6 +125,9 @@ const establishmentSchema = new Schema<IEstablishment>(
     professionals: { type: [professionalSchema], default: [] },
     active: { type: Boolean, default: true },
     cashAutoEntry: { type: Boolean, default: true },
+    // nota agregada do sistema de avaliacao
+    ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
+    ratingCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

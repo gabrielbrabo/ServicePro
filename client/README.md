@@ -77,7 +77,7 @@ server/
 │   ├── routes/        definição das rotas
 │   ├── middleware/    autenticação e erros
 │   ├── socket/        Socket.IO (tempo real)
-│   ├── utils/         token JWT e seed
+│   ├── utils/         token JWT, seed, notify, searchText, etc.
 │   ├── app.ts         montagem do Express
 │   └── server.ts      ponto de entrada
 ├── .env
@@ -114,6 +114,23 @@ server/
 - `POST /api/bookings` (protegido) — `{ serviceId, scheduledAt, notes, address }`
 - `GET /api/bookings?role=client|provider` (protegido)
 - `PATCH /api/bookings/:id/status` (protegido) — `{ status: "confirmado"|"concluido"|"cancelado" }`
+
+### Estabelecimentos (busca)
+- `GET /api/establishments/search?category=&q=&city=&service=&page=&userCity=&userState=&lat=&lng=&radiusKm=`
+  — busca pública paginada. **Ordenada por nota ponderada** (ver seção 15);
+  proximidade e data são desempate. `lat/lng/radiusKm` filtram por raio
+  (geolocalização). `q/city/service` passam pelo `buildSearchRegex` (ver seção 16).
+- `GET /api/establishments/:id` — perfil público (inclui `ratingAvg`/`ratingCount`).
+
+### Avaliações (estrelas)
+- `GET /api/reviews/public/:establishmentId` — **público**: avaliações para o
+  carrossel na página do estabelecimento.
+- `POST /api/reviews` (protegido) — `{ bookingId, rating (1..5), comment? }`
+  cria/atualiza. **Uma avaliação por (cliente + serviço)**.
+- `GET /api/reviews/booking/:bookingId` (protegido) — avaliação do cliente para
+  o serviço daquele agendamento (para preencher/editar o modal).
+- `GET /api/reviews/establishment/:establishmentId` (protegido, dono/equipe) —
+  todas as avaliações (aba "Avaliações" do painel).
 
 ---
 
@@ -238,6 +255,12 @@ adiciona o user em `members[]` com `role: "professional"`.
 
 Também tem: `photo` (foto de perfil/logo) e `coverPhotos[]` (até 6, carrossel).
 
+Campos adicionais:
+- **`location`** — GeoJSON Point `[lng, lat]`, com índice `2dsphere` (busca por raio).
+- **`ratingAvg` / `ratingCount`** — nota agregada (sistema de avaliação),
+  recalculados no `reviewController` a cada avaliação. Ficam no doc para
+  cards/busca/perfil lerem a nota sem consultar a coleção de reviews.
+
 ### User
 - `password` é **opcional** (contas Google não têm senha)
 - `authProvider: "local" | "google"`, `googleId`
@@ -255,6 +278,16 @@ Também tem: `photo` (foto de perfil/logo) e `coverPhotos[]` (até 6, carrossel)
   `clientNotifiedAt`; o cliente abrindo a lista grava `clientSeenAt`. O badge
   conta onde `clientNotifiedAt > clientSeenAt`. **Concluir NÃO gera badge** (o
   cliente esteve presente, já sabe).
+- **`reviewed`** — marca que o cliente já foi convidado/avaliou aquele
+  atendimento (parte do sistema de avaliação; não pede avaliação de novo).
+
+### Review (sistema de avaliação)
+- Campos: `client`, `establishment`, `service`, `booking`, `professional?`,
+  `rating` (1..5), `comment?`.
+- **Índice único `(client, service)`** — uma avaliação por cliente por serviço.
+  Reavaliar sobrescreve a nota daquele serviço.
+- Ao criar/atualizar, o `reviewController` recalcula `ratingAvg`/`ratingCount`
+  do estabelecimento e notifica o dono/funcionário (`review_received`).
 
 ---
 
@@ -404,7 +437,9 @@ por estar offline.
 ### Model `Notification`
 `user, type, title, body, booking, establishment, read, createdAt`.
 Tipos: `booking_created`, `booking_confirmed`, `booking_cancelled`,
-`booking_rescheduled`, `booking_completed`.
+`booking_rescheduled`, `booking_completed`, **`review_request`** (cliente é
+convidado a avaliar, ao concluir), **`review_received`** (estabelecimento
+recebeu uma avaliação).
 
 ### Helper `utils/notify.ts` (pensado para escala)
 - `notifyMany(users[], payload)` — usa **`insertMany`** (uma ida ao banco para
@@ -451,7 +486,10 @@ tempo real). **AINDA CONFERIR:** `createRecurringBookings`, `cancelSeries`,
 ### Componentes
 - `NotificationBell` (sininho na NavBar): dropdown, clicar marca como lido;
   clicar numa notificação de estabelecimento que é seu → vai ao painel
-  selecionando aquele estabelecimento na aba "recebidos"; senão → `/agendamentos`
+  selecionando aquele estabelecimento na aba "recebidos"; senão → `/agendamentos`.
+  **Avaliação:** clicar em `review_request` abre o `ReviewModal` (cliente avalia);
+  clicar em `review_received` abre o `EstablishmentReviewsModal` (dono/funcionário
+  vê a lista de avaliações).
 - Badge em "Agendamentos recebidos" = conta status `pendente` (some ao
   confirmar/cancelar/concluir sem campo de "visto")
 - Badge do cliente no link "Agendamentos" = `getBadges.clientPending`
@@ -469,6 +507,7 @@ tempo real). **AINDA CONFERIR:** `createRecurringBookings`, `cancelSeries`,
 `select(e, tab?)`, `refresh`, `addLocal`, `startCreating`, `stopCreating`.
 - A **aba do painel** vive aqui (`tab`/`setTab`) para que o clique numa
   notificação consiga forçar a troca de aba de fora do `EstablishmentPanel`.
+  O tipo `PanelTab` inclui `"avaliacoes"` (aba de avaliações do painel).
 - Persiste o último estabelecimento em `localStorage`
   (`servicepro:lastEstablishmentId`) — sobrevive ao reload.
 - ⚠️ **Regra crítica:** observa `user?.id` e **recarrega ao trocar de usuário /
@@ -502,6 +541,10 @@ lista expandida DENTRO do menu hambúrguer. O switcher só aparece no `/painel`.
   foi para a NavBar, não para cima da capa.)
 - `w-screen` pode causar scroll horizontal por causa da scrollbar —
   `html { overflow-x: hidden }` resolve.
+- **Modais em portal:** `ReviewModal`, `EstablishmentReviewsModal` e
+  `LocationRadiusModal` usam `createPortal(..., document.body)`. Sem isso, o
+  `backdrop-blur`/`transform` da NavBar "prende" o `position: fixed` e o modal
+  aparece cortado no topo da página (aconteceu de verdade).
 
 ---
 
@@ -525,16 +568,20 @@ lista expandida DENTRO do menu hambúrguer. O switcher só aparece no `/painel`.
   (recebidos e agendamentos do cliente), tempo real via socket, clique navega
   ao lugar certo, redirect pós-login por papel, persistência do estabelecimento
   selecionado
-
-**PRÓXIMO PASSO — Etapa B (e-mails de agendamento):** NÃO implementada.
-- Cliente agenda → dono E funcionário recebem e-mail (2 e-mails)
-- Cliente cancela → só notificação in-app, SEM e-mail
-- Estabelecimento cancela/reagenda → cliente recebe e-mail + notificação
-- Decisões em aberto: e-mail com botão para o app? cliente recebe confirmação
-  ao agendar?
-- Plano: helper `sendBookingEmails` (irmão do `notify`, mas busca ENDEREÇOS de
-  e-mail — `establishmentRecipients` devolve ids); novos templates em
-  `email.ts`; plugar nos mesmos pontos do bookingController; fire-and-forget.
+- **Etapa B — E-mails de agendamento:** dono/funcionário recebem e-mail ao
+  criar; cliente recebe ao confirmar/cancelar/reagendar (helpers em
+  `utils/bookingEmails.ts`, fire-and-forget).
+- **Carrossel de serviços** na página do estabelecimento (2 linhas, colunas de
+  2). Clicar num serviço abre o `BookingModal` já naquele serviço
+  (`initialServiceId`) e mostra só os profissionais que o prestam.
+- **Busca por raio (geolocalização):** ícone 📍 no campo de cidade →
+  `LocationRadiusModal` → `navigator.geolocation` → `lat/lng/radiusKm`.
+  Backend filtra com `$geoWithin/$centerSphere` (índice 2dsphere). Exige HTTPS.
+- **Busca textual tolerante:** `utils/searchText.ts` (`buildSearchRegex`) —
+  trim, colapsa espaços, ignora acentos e escapa/remove metacaracteres de regex
+  (^ ~ * ( ) etc). Aplicado em `q`, `city` e `service`.
+- **Sistema de avaliações (estrelas):** ver seção 17.
+- **Ordenação da busca por nota ponderada:** ver seção 15.
 
 **Etapa C (depois) — Lembretes agendados:** cliente escolhe antecedência,
 recebe e-mail + notificação antes do horário. Requer campo de preferência no
@@ -551,3 +598,67 @@ recebe e-mail + notificação antes do horário. Requer campo de preferência no
   `cashSessionSchema.index({ establishment: 1, status: 1 })`, deixando só a
   versão `unique` com `partialFilterExpression` (cosmético, gera warning)
 - Node 20 → 22 (AWS SDK exigirá a partir de 2027)
+- **Avaliação:** botão "Avaliar" na lista de agendamentos do cliente (hoje só
+  pela notificação `review_request`).
+- **Avaliação/índice:** a unicidade mudou de `booking` para `(client, service)`.
+  Se um índice antigo `booking_1` sobrar no Mongo e atrapalhar, apagar a coleção
+  `reviews` (estava vazia) e reiniciar recria os índices certos.
+
+---
+
+## 15. Ordenação da busca (nota ponderada)
+
+A busca (`searchEstablishments`) ordena por uma **nota ponderada pela
+quantidade de avaliações** (shrinkage), calculada no `$addFields` do aggregate:
+
+```
+score = (ratingCount / (ratingCount + 5)) * ratingAvg
+```
+
+Mais avaliações + média alta ⇒ topo. Poucas avaliações pesam menos; sem
+avaliação o score é 0 (vai pro fim). O `5` é a "confiança mínima" (quanto maior,
+mais avaliações são precisas para o score se aproximar da média real). O `$sort`
+é `{ ratingScore: -1, priority: 1, createdAt: -1 }` — ou seja, a avaliação manda
+na posição; proximidade (cidade/estado) e data são só desempate.
+
+---
+
+## 16. Busca textual tolerante (`utils/searchText.ts`)
+
+`buildSearchRegex(raw)` recebe o texto cru do cliente e devolve um padrão de
+regex seguro (ou `null` se não sobrar termo útil):
+1. tira acentos (NFD), 2. remove símbolos indesejados (^ ~ * ( ) [ ] etc)
+trocando por espaço, 3. trim + colapsa espaços internos, 4. escapa
+metacaracteres, 5. cada letra base casa suas variantes acentuadas e cada espaço
+vira `\s+`. Usado em `q`, `city` e `service` (search e list) com `$options:"i"`.
+Evita quebra de busca e ReDoS.
+
+---
+
+## 17. Sistema de avaliações (estrelas)
+
+**Fluxo.** Ao concluir o atendimento, o cliente recebe a notificação
+`review_request` ("Avalie o <Nome do estabelecimento>"). **Uma avaliação por
+serviço por cliente** — se já avaliou aquele serviço, o `bookingController` não
+pede de novo (checa `Review` por `client+service`).
+
+**Avaliar.** O `ReviewModal` (portal no body) tem estrelas 1–5 + comentário
+opcional e faz prefill da avaliação existente (permite editar). Ao enviar,
+`POST /api/reviews`: upsert por `(client, service)`, recalcula
+`ratingAvg`/`ratingCount`, marca `booking.reviewed` e notifica o estabelecimento
+(`review_received`).
+
+**Estabelecimento vê.** `review_received` no sino → `EstablishmentReviewsModal`;
+ou a **aba "Avaliações"** do painel (`ReviewsManager`) — ambos via
+`GET /api/reviews/establishment/:id` (dono/equipe), com foto do cliente, serviço,
+estrelas, comentário e data.
+
+**Exibição da nota.** Componente `Stars` (preenchimento proporcional da média)
+em `EstablishmentCard`, busca, perfil (`EstablishmentProfileHeader`) e no
+**carrossel público** `ReviewsCarousel` (2 linhas), alimentado por
+`GET /api/reviews/public/:id`.
+
+**Arquivos.** Backend: `models/Review.ts`, `controllers/reviewController.ts`,
+`routes/reviewRoutes.ts` (registrado no `app.ts`). Frontend: `api/review.ts`,
+`components/Stars.tsx`, `ReviewModal.tsx`, `EstablishmentReviewsModal.tsx`,
+`ReviewsManager.tsx`, `ReviewsCarousel.tsx`.

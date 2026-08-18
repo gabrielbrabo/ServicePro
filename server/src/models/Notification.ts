@@ -5,7 +5,9 @@ export type NotificationType =
   | "booking_confirmed"
   | "booking_cancelled"
   | "booking_rescheduled"
-  | "booking_completed";
+  | "booking_completed"
+  | "review_request" // convite para o cliente avaliar o atendimento
+  | "review_received"; // avisa o estabelecimento que recebeu uma avaliacao
 
 // Notificacao in-app. Uma linha por destinatario: se um agendamento precisa
 // avisar dono E funcionario, sao dois documentos.
@@ -32,6 +34,8 @@ const notificationSchema = new Schema<INotification>(
         "booking_cancelled",
         "booking_rescheduled",
         "booking_completed",
+        "review_request",
+        "review_received",
       ],
       required: true,
     },

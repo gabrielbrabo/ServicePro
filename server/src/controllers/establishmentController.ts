@@ -5,6 +5,7 @@ import { Service } from "../models/Service";
 import { AuthRequest } from "../middleware/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
+import { buildSearchRegex } from "../utils/searchText";
 
 // POST /api/establishments  (protegido)
 export const createEstablishment = async (
@@ -136,8 +137,12 @@ export const listEstablishments = async (
   const { category, city, q } = req.query;
   const filter: Record<string, unknown> = { active: true };
   if (category) filter.category = category;
-  if (city) filter["address.city"] = { $regex: String(city), $options: "i" };
-  if (q) filter.name = { $regex: String(q), $options: "i" };
+
+  // buscas textuais tolerantes (ignora acentos/espacos, escapa regex)
+  const cityRx = buildSearchRegex(city);
+  if (cityRx) filter["address.city"] = { $regex: cityRx, $options: "i" };
+  const qRx = buildSearchRegex(q);
+  if (qRx) filter.name = { $regex: qRx, $options: "i" };
 
   const list = await Establishment.find(filter)
     .populate("category", "name slug icon")
@@ -168,12 +173,18 @@ export const searchEstablishments = async (
       filter.category = new Types.ObjectId(String(category));
     }
 
-    if (city) filter["address.city"] = { $regex: String(city), $options: "i" };
-    if (q) filter.name = { $regex: String(q), $options: "i" };
+    // buscas textuais tolerantes: trim, colapsa espacos, ignora acentos e
+    // escapa/remove metacaracteres de regex (^ ~ * ( ) etc) da digitacao.
+    const cityRx = buildSearchRegex(city);
+    if (cityRx) filter["address.city"] = { $regex: cityRx, $options: "i" };
 
-    if (service) {
+    const qRx = buildSearchRegex(q);
+    if (qRx) filter.name = { $regex: qRx, $options: "i" };
+
+    const serviceRx = buildSearchRegex(service);
+    if (serviceRx) {
       const services = await Service.find({
-        title: { $regex: String(service), $options: "i" },
+        title: { $regex: serviceRx, $options: "i" },
         active: true,
       }).select("establishment");
       // converte para ObjectId para casar no $match do aggregate
@@ -239,9 +250,37 @@ export const searchEstablishments = async (
               },
             ],
           },
+          // nota ponderada pela quantidade de avaliacoes (shrinkage):
+          //   score = (qtd / (qtd + M)) * media
+          // Mais avaliacoes + media alta => topo. Poucas avaliacoes pesam
+          // menos; sem avaliacao (qtd 0) fica com score 0 (vai pro fim).
+          // M=5 e a "confianca minima" (quanto maior, mais avaliacoes
+          // precisam para o score se aproximar da media real).
+          ratingScore: {
+            $let: {
+              vars: {
+                v: { $ifNull: ["$ratingCount", 0] },
+                r: { $ifNull: ["$ratingAvg", 0] },
+              },
+              in: {
+                $cond: [
+                  { $gt: ["$$v", 0] },
+                  {
+                    $multiply: [
+                      { $divide: ["$$v", { $add: ["$$v", 5] }] },
+                      "$$r",
+                    ],
+                  },
+                  0,
+                ],
+              },
+            },
+          },
         },
       },
-      { $sort: { priority: 1, createdAt: -1 } },
+      // avaliacao manda na posicao: melhor/mais avaliado no topo.
+      // priority (proximidade) e createdAt sao apenas criterios de desempate.
+      { $sort: { ratingScore: -1, priority: 1, createdAt: -1 } },
       { $skip: skip },
       { $limit: limit },
     ];

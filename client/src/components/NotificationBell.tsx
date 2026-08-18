@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useNotifications } from "../context/NotificationContext";
 import { useEstablishments } from "../context/EstablishmentContext";
 import { AppNotification } from "../api/notification";
+import { ReviewModal } from "./ReviewModal";
+import { EstablishmentReviewsModal } from "./EstablishmentReviewsModal";
 
 const ICON: Record<AppNotification["type"], string> = {
     booking_created: "📅",
@@ -10,6 +12,8 @@ const ICON: Record<AppNotification["type"], string> = {
     booking_cancelled: "✕",
     booking_rescheduled: "🔄",
     booking_completed: "★",
+    review_request: "⭐",
+    review_received: "🌟",
 };
 
 const timeAgo = (iso: string): string => {
@@ -28,11 +32,16 @@ const timeAgo = (iso: string): string => {
 };
 
 export function NotificationBell() {
-    const { items, unread, markAllRead } = useNotifications();
+    const { items, unread, markAllRead, refresh } = useNotifications();
     const { establishments, select } = useEstablishments();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
+
+    // agendamento a avaliar (abre o ReviewModal quando definido)
+    const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
+    // estabelecimento cujas avaliacoes o dono/funcionario quer ver
+    const [reviewsEstId, setReviewsEstId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!open) return;
@@ -52,11 +61,24 @@ export function NotificationBell() {
     };
 
     // Clique na notificacao: leva ao lugar certo conforme o papel.
-    // Se o usuario e dono/funcionario do estabelecimento citado, vai ao painel
-    // (ja selecionando aquele estabelecimento). Senao, e cliente: vai a lista
-    // de agendamentos dele.
+    // - review_request: abre o modal de avaliacao (cliente avalia o atendimento).
+    // - Se o usuario e dono/funcionario do estabelecimento citado, vai ao painel
+    //   (ja selecionando aquele estabelecimento). Senao, e cliente: vai a lista
+    //   de agendamentos dele.
     const handleClick = (n: AppNotification) => {
         setOpen(false);
+
+        // convite para avaliar (cliente) -> abre o modal de estrelas
+        if (n.type === "review_request" && n.booking) {
+            setReviewBookingId(n.booking);
+            return;
+        }
+
+        // avaliacao recebida (dono/funcionario) -> abre a lista de avaliacoes
+        if (n.type === "review_received" && n.establishment) {
+            setReviewsEstId(n.establishment);
+            return;
+        }
 
         const mine = n.establishment
             ? establishments.find((e) => e._id === n.establishment)
@@ -137,6 +159,26 @@ export function NotificationBell() {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* modal de avaliacao, aberto ao clicar numa notificacao review_request */}
+            {reviewBookingId && (
+                <ReviewModal
+                    bookingId={reviewBookingId}
+                    onClose={() => setReviewBookingId(null)}
+                    onSubmitted={() => {
+                        // recarrega notificacoes/contadores apos avaliar
+                        refresh();
+                    }}
+                />
+            )}
+
+            {/* lista de avaliacoes do estabelecimento (dono/funcionario) */}
+            {reviewsEstId && (
+                <EstablishmentReviewsModal
+                    establishmentId={reviewsEstId}
+                    onClose={() => setReviewsEstId(null)}
+                />
             )}
         </div>
     );

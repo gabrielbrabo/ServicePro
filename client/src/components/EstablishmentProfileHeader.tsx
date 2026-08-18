@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { establishmentPhotoApi } from "../api/establishmentPhoto";
 import { uploadImage, deleteUploadByUrl } from "../api/upload";
 import { PhotoCarousel } from "./PhotoCarousel";
+import { Stars } from "./Stars";
 
 const MAX_COVERS = 6;
 
@@ -16,6 +17,8 @@ export function EstablishmentProfileHeader({
   description,
   initialPhoto,
   initialCovers,
+  ratingAvg,
+  ratingCount,
   editable = false,
   children,
   coverOverlay,
@@ -30,6 +33,8 @@ export function EstablishmentProfileHeader({
   description?: string;
   initialPhoto?: string;
   initialCovers?: string[];
+  ratingAvg?: number; // nota agregada (sistema de avaliacao)
+  ratingCount?: number;
   editable?: boolean;
   children?: React.ReactNode;
   coverOverlay?: React.ReactNode; // conteudo sobreposto no topo da capa (ex: titulo + botao do dashboard)
@@ -340,6 +345,17 @@ export function EstablishmentProfileHeader({
             {addressLine && (
               <p className="mt-1.5 text-sm text-ink/50">{addressLine}</p>
             )}
+
+            {/* nota em estrelas (sistema de avaliacao) */}
+            <div className="mt-2">
+              {ratingCount && ratingCount > 0 ? (
+                <Stars value={ratingAvg ?? 0} count={ratingCount} size="md" />
+              ) : (
+                <span className="text-sm text-ink/40">
+                  Ainda sem avaliações
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

@@ -30,6 +30,9 @@ export interface Establishment {
   members: Member[];
   active: boolean;
   cashAutoEntry?: boolean;
+  // nota agregada (sistema de avaliacao). Vem no proprio doc do estabelecimento.
+  ratingAvg?: number;
+  ratingCount?: number;
   // serviços do estabelecimento (preenchido por /establishments/:id via getById)
   services?: EstablishmentService[];
   // preenchidos por /establishments/mine — indicam o papel do user logado

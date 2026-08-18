@@ -9,6 +9,7 @@ import { ClientsManager } from "./ClientsManager";
 import { Establishment } from "../api/establishment";
 import { GalleryManager } from "./GalleryManager";
 import { ProductManager } from "./ProductManager";
+import { ReviewsManager } from "./ReviewsManager";
 import { EstablishmentProfileHeader } from "./EstablishmentProfileHeader";
 import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
@@ -49,6 +50,7 @@ export function EstablishmentPanel({
     ["agenda", "Expediente"],
     ["recebidos", "Agendamentos recebidos"],
     ["clientes", "Clientes"],
+    ["avaliacoes", "Avaliações"],
     ["galeria", "Galeria"],
     ["produtos", "Produtos"],
     ["caixa", "Caixa"],
@@ -71,6 +73,8 @@ export function EstablishmentPanel({
         description={establishment.description}
         initialPhoto={establishment.photo}
         initialCovers={establishment.coverPhotos}
+        ratingAvg={establishment.ratingAvg}
+        ratingCount={establishment.ratingCount}
         editable={!isEmployee}
         coverOverlay={coverOverlay}
       />
@@ -148,6 +152,9 @@ export function EstablishmentPanel({
         )}
         {tab === "clientes" && (
           <ClientsManager establishmentId={establishment._id} />
+        )}
+        {tab === "avaliacoes" && (
+          <ReviewsManager establishmentId={establishment._id} />
         )}
         {tab === "galeria" && (
           <GalleryManager establishmentId={establishment._id} />

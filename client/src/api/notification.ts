@@ -5,7 +5,9 @@ export type NotificationType =
   | "booking_confirmed"
   | "booking_cancelled"
   | "booking_rescheduled"
-  | "booking_completed";
+  | "booking_completed"
+  | "review_request"
+  | "review_received";
 
 export interface AppNotification {
   _id: string;
@@ -40,7 +42,6 @@ export const notificationApi = {
   badges: () =>
     api.get<Badges>("/notifications/badges").then((r) => r.data),
 
-  // cliente abriu a lista: zera o badge dele
   markBookingsSeen: () =>
     api
       .patch<{ message: string }>("/notifications/bookings-seen")

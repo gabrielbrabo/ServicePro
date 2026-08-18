@@ -19,6 +19,7 @@ import productRoutes from "./routes/productRoutes";
 import stockRoutes from "./routes/stockRoutes";
 import inviteRoutes from "./routes/inviteRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
+import reviewRoutes from "./routes/reviewRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -45,6 +46,7 @@ export const createApp = (): Application => {
   app.use("/api/stock", stockRoutes);
   app.use("/api/invites", inviteRoutes);
   app.use("/api/notifications", notificationRoutes);
+  app.use("/api/reviews", reviewRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

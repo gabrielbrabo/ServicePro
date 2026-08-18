@@ -33,6 +33,9 @@ export interface IBooking extends Document {
   notes?: string;
   address?: string;
   completedAt?: Date;
+  // avaliacao (sistema de estrelas): marca que o cliente ja foi convidado/
+  // avaliou este atendimento, para nao pedir avaliacao mais de uma vez.
+  reviewed?: boolean;
   // lembretes agendados (Etapa C)
   // antecedencia escolhida pelo cliente ao agendar, em minutos; null = sem lembrete
   clientReminderMinutes?: number | null;
@@ -107,6 +110,8 @@ const bookingSchema = new Schema<IBooking>(
     notes: { type: String },
     address: { type: String },
     completedAt: { type: Date },
+    // avaliacao: cliente ja convidado/avaliou este atendimento
+    reviewed: { type: Boolean, default: false },
     // lembretes agendados (Etapa C)
     clientReminderMinutes: { type: Number, default: null },
     clientReminderSentAt: { type: Date },

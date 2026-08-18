@@ -1,11 +1,14 @@
 import { Link } from "react-router-dom";
 import { Establishment } from "../api/establishment";
+import { Stars } from "./Stars";
 
 export function EstablishmentCard({
   establishment,
 }: {
   establishment: Establishment;
 }) {
+  const ratingCount = establishment.ratingCount ?? 0;
+
   return (
     <Link
       to={`/estabelecimento/${establishment._id}`}
@@ -34,8 +37,22 @@ export function EstablishmentCard({
             {establishment.name}
           </h3>
 
+          {/* nota em estrelas (ou "Novo" quando ainda nao tem avaliacoes) */}
+          <div className="mt-1.5">
+            {ratingCount > 0 ? (
+              <Stars
+                value={establishment.ratingAvg ?? 0}
+                count={ratingCount}
+              />
+            ) : (
+              <span className="text-xs font-medium text-ink/40">
+                Novo · sem avaliações
+              </span>
+            )}
+          </div>
+
           {establishment.description && (
-            <p className="mt-1 line-clamp-2 text-sm text-ink/50">
+            <p className="mt-2 line-clamp-2 text-sm text-ink/50">
               {establishment.description}
             </p>
           )}

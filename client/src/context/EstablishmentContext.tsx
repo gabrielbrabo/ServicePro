@@ -21,7 +21,8 @@ export type PanelTab =
   | "clientes"
   | "galeria"
   | "produtos"
-  | "caixa";
+  | "caixa"
+  | "avaliacoes";
 
 const LAST_KEY = "servicepro:lastEstablishmentId";
 
