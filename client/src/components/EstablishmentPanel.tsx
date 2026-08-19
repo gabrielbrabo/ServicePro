@@ -59,7 +59,7 @@ export function EstablishmentPanel({
       const nav = document.querySelector("nav");
       const navH = nav ? Math.round(nav.getBoundingClientRect().height) : 64;
       // >>> AJUSTE AQUI <<< folga (px) entre a foto e a navbar
-      const FOLGA = 20;
+      const FOLGA = 130;
       const top =
         avatar.getBoundingClientRect().top + window.scrollY - navH - FOLGA;
       window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
