@@ -5,6 +5,8 @@ export interface Category {
   name: string;
   slug: string;
   icon?: string;
+  // area a que a categoria pertence (para filtrar no cadastro por area)
+  segment?: "geral" | "beleza" | "saude";
 }
 
 export interface ServiceEstablishment {

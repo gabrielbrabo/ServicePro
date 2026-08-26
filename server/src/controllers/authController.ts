@@ -133,6 +133,10 @@ const publicUser = (
     country?: string;
     state?: string;
     city?: string;
+    councilType?: string;
+    councilState?: string;
+    councilNumber?: string;
+    whatsappOptIn?: boolean;
     emailVerified: boolean;
   },
   hasEstablishments?: boolean
@@ -145,6 +149,10 @@ const publicUser = (
   country: u.country,
   state: u.state,
   city: u.city,
+  councilType: u.councilType,
+  councilState: u.councilState,
+  councilNumber: u.councilNumber,
+  whatsappOptIn: u.whatsappOptIn,
   emailVerified: u.emailVerified,
   ...(hasEstablishments !== undefined ? { hasEstablishments } : {}),
 });
@@ -173,7 +181,17 @@ export const updateMe = async (
       return;
     }
 
-    const { name, phone, avatar, country, state, city } = req.body;
+    const {
+      name,
+      phone,
+      avatar,
+      country,
+      state,
+      city,
+      councilType,
+      councilState,
+      councilNumber,
+    } = req.body;
 
     let nameChanged = false;
     if (typeof name === "string") {
@@ -188,6 +206,16 @@ export const updateMe = async (
     if (typeof country === "string") user.country = country.trim();
     if (typeof state === "string") user.state = state.trim();
     if (typeof city === "string") user.city = city.trim();
+
+    // registro profissional (para documentos). Normaliza conselho/UF em maiuscula.
+    if (typeof councilType === "string")
+      user.councilType = councilType.trim().toUpperCase();
+    if (typeof councilState === "string")
+      user.councilState = councilState.trim().toUpperCase();
+    if (typeof councilNumber === "string")
+      user.councilNumber = councilNumber.trim();
+    if (typeof req.body.whatsappOptIn === "boolean")
+      user.whatsappOptIn = req.body.whatsappOptIn;
 
     // foto: troca (ou remocao). Se trocou, apaga a antiga do S3 no fim.
     let oldAvatar = "";

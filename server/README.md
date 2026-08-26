@@ -662,3 +662,55 @@ em `EstablishmentCard`, busca, perfil (`EstablishmentProfileHeader`) e no
 `routes/reviewRoutes.ts` (registrado no `app.ts`). Frontend: `api/review.ts`,
 `components/Stars.tsx`, `ReviewModal.tsx`, `EstablishmentReviewsModal.tsx`,
 `ReviewsManager.tsx`, `ReviewsCarousel.tsx`.
+
+---
+
+## ⚠️ PENDÊNCIA — WhatsApp (Meta Cloud API)
+
+**Status:** o código está PRONTO e aplicado no projeto. Falta apenas a
+configuração da conta na Meta (fora do código) para começar a enviar.
+
+### O que já está feito (código)
+- Integração via **Meta Cloud API**, número único do ServicePro.
+- `utils/whatsapp.ts` (cliente Cloud API, envio de template, fire-and-forget),
+  `utils/bookingWhatsapp.ts` (disparos por evento).
+- Gatilhos ligados nos MESMOS pontos do e-mail: **confirmação** e
+  **cancelamento/remarcação** (`bookingController.ts`) e **lembrete** antes do
+  horário (`utils/bookingReminders.ts`).
+- Opt-out do cliente: `User.whatsappOptIn` (default true) + checkbox no perfil
+  (`ProfilePage`). Só envia se o cliente tem telefone e não deu opt-out.
+- Enquanto as variáveis do `.env` estiverem vazias, NADA é enviado (no-op) —
+  não quebra nada.
+
+### O que falta (conta Meta — do lado do dono)
+1. Conta Meta + app de desenvolvedor (developers.facebook.com) já criados.
+2. **Bloqueio encontrado:** a Meta NÃO ofereceu o "número de teste" grátis para
+   este app ("Nenhum número de telefone disponível para este app" / botão
+   "Reivindicar número de teste" não gera nada). Isso é limitação atual da Meta,
+   não é bug do sistema.
+3. **Caminho que resta (Etapa 2 — Configuração da produção):** registrar um
+   **número real dedicado** (um chip/número que NÃO esteja em uso no WhatsApp
+   comum — não usar o número pessoal, senão perde o WhatsApp dele). Funciona já
+   antes da verificação completa, com limite de destinatários para teste.
+4. Fazer a **verificação da empresa** (CNPJ) para produção sem limites + adicionar
+   forma de pagamento.
+5. Criar e aprovar **4 templates** (categoria Utility, pt_BR, 3 variáveis:
+   {{1}} estabelecimento, {{2}} serviço, {{3}} data/hora):
+   `agendamento_confirmado`, `agendamento_cancelado`, `agendamento_remarcado`,
+   `lembrete_agendamento`.
+6. Pegar o **token permanente** (Business Settings → System Users) e o
+   **Phone Number ID**, e preencher o `.env`:
+
+```
+WHATSAPP_TOKEN=...
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_API_VERSION=v21.0
+WHATSAPP_TEMPLATE_LANG=pt_BR
+WHATSAPP_TEMPLATE_CONFIRMED=agendamento_confirmado
+WHATSAPP_TEMPLATE_CANCELLED=agendamento_cancelado
+WHATSAPP_TEMPLATE_RESCHEDULED=agendamento_remarcado
+WHATSAPP_TEMPLATE_REMINDER=lembrete_agendamento
+```
+
+Depois de preencher, reiniciar o server. Guia visual do passo a passo foi gerado
+à parte (checklist "Ligar o WhatsApp").

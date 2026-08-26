@@ -22,6 +22,11 @@ import {
   notifyBookingRescheduledClientAsync,
   notifyBookingRescheduledEstablishmentAsync,
 } from "../utils/bookingEmails";
+import {
+  notifyBookingConfirmedWhatsappAsync,
+  notifyBookingCancelledWhatsappAsync,
+  notifyBookingRescheduledWhatsappAsync,
+} from "../utils/bookingWhatsapp";
 import { Types } from "mongoose";
 
 // busca o nome do profissional (subdoc) de um estabelecimento, se houver.
@@ -519,9 +524,17 @@ export const updateBookingStatus = async (
       };
       if (status === "confirmado") {
         notifyBookingConfirmedAsync({ clientEmail: clientMailU, ctx: ctxU });
+        notifyBookingConfirmedWhatsappAsync({
+          clientId: booking.client,
+          ctx: ctxU,
+        });
       } else {
         notifyBookingCancelledClientAsync({
           clientEmail: clientMailU,
+          ctx: ctxU,
+        });
+        notifyBookingCancelledWhatsappAsync({
+          clientId: booking.client,
           ctx: ctxU,
         });
       }
@@ -764,6 +777,10 @@ export const rescheduleBooking = async (
       const clientMailR = await userEmail(booking.client);
       notifyBookingRescheduledClientAsync({
         clientEmail: clientMailR,
+        ctx: ctxR,
+      });
+      notifyBookingRescheduledWhatsappAsync({
+        clientId: booking.client,
         ctx: ctxR,
       });
     } else {

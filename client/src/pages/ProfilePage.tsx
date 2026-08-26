@@ -5,6 +5,21 @@ import { PageContainer } from "../components/NavBar";
 import { Avatar } from "../components/Avatar";
 import { ImageUpload } from "../components/ImageUpload";
 
+// monta "CRO-SP 12345" a partir das partes do registro
+function formatCouncil(u?: {
+  councilType?: string;
+  councilState?: string;
+  councilNumber?: string;
+} | null): string {
+  if (!u) return "";
+  const t = (u.councilType || "").trim();
+  const s = (u.councilState || "").trim();
+  const n = (u.councilNumber || "").trim();
+  if (!t && !n) return "";
+  const head = s ? `${t}-${s}` : t;
+  return [head, n].filter(Boolean).join(" ");
+}
+
 export function ProfilePage() {
   const { user, updateUser } = useAuth();
   const [editing, setEditing] = useState(false);
@@ -16,6 +31,13 @@ export function ProfilePage() {
   const [country, setCountry] = useState(user?.country || "");
   const [state, setState] = useState(user?.state || "");
   const [city, setCity] = useState(user?.city || "");
+  // registro profissional (para documentos)
+  const [councilType, setCouncilType] = useState(user?.councilType || "");
+  const [councilState, setCouncilState] = useState(user?.councilState || "");
+  const [councilNumber, setCouncilNumber] = useState(user?.councilNumber || "");
+  const [whatsappOptIn, setWhatsappOptIn] = useState(
+    user?.whatsappOptIn !== false
+  );
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +46,7 @@ export function ProfilePage() {
   if (!user) return null;
 
   const isGoogle = !!user.avatar && user.avatar.includes("googleusercontent");
+  const councilLabel = formatCouncil(user);
 
   const startEdit = () => {
     setName(user.name || "");
@@ -32,6 +55,10 @@ export function ProfilePage() {
     setCountry(user.country || "");
     setState(user.state || "");
     setCity(user.city || "");
+    setCouncilType(user.councilType || "");
+    setCouncilState(user.councilState || "");
+    setCouncilNumber(user.councilNumber || "");
+    setWhatsappOptIn(user.whatsappOptIn !== false);
     setError(null);
     setSavedMsg(null);
     setEditing(true);
@@ -57,6 +84,10 @@ export function ProfilePage() {
         country: country.trim(),
         state: state.trim(),
         city: city.trim(),
+        councilType: councilType.trim(),
+        councilState: councilState.trim(),
+        councilNumber: councilNumber.trim(),
+        whatsappOptIn,
       });
       updateUser(updated);
       setEditing(false);
@@ -136,6 +167,14 @@ export function ProfilePage() {
                     {user.country || "—"}
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink/40">
+                    Registro profissional
+                  </dt>
+                  <dd className="mt-0.5 text-sm text-ink/80">
+                    {councilLabel || "—"}
+                  </dd>
+                </div>
               </dl>
 
               <button
@@ -192,6 +231,15 @@ export function ProfilePage() {
                     placeholder="(00) 00000-0000"
                     className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500"
                   />
+                  <label className="mt-2 flex items-center gap-2 text-sm text-ink/70">
+                    <input
+                      type="checkbox"
+                      checked={whatsappOptIn}
+                      onChange={(e) => setWhatsappOptIn(e.target.checked)}
+                      className="h-4 w-4 rounded border-ink/30 text-teal-500 focus:ring-teal-500"
+                    />
+                    Aceito receber avisos de agendamento por WhatsApp
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -225,6 +273,69 @@ export function ProfilePage() {
                       className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500"
                     />
                   </div>
+                </div>
+
+                {/* Registro profissional (para documentos clinicos) */}
+                <div className="rounded-xl border border-ink/10 bg-sand/40 p-4">
+                  <p className="text-sm font-semibold text-ink/80">
+                    Registro profissional
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink/50">
+                    Usado para preencher automaticamente atestados, declarações e
+                    receitas. Opcional.
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-ink/70">
+                        Conselho
+                      </label>
+                      <input
+                        value={councilType}
+                        onChange={(e) => setCouncilType(e.target.value)}
+                        placeholder="CRO, CRM..."
+                        className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-ink/70">
+                        UF
+                      </label>
+                      <input
+                        value={councilState}
+                        onChange={(e) => setCouncilState(e.target.value)}
+                        placeholder="SP"
+                        maxLength={2}
+                        className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-teal-500"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-1.5 block text-sm font-medium text-ink/70">
+                        Número
+                      </label>
+                      <input
+                        value={councilNumber}
+                        onChange={(e) => setCouncilNumber(e.target.value)}
+                        placeholder="12345"
+                        className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+                  </div>
+                  {formatCouncil({
+                    councilType,
+                    councilState,
+                    councilNumber,
+                  }) && (
+                    <p className="mt-3 text-xs text-ink/50">
+                      Aparecerá nos documentos como:{" "}
+                      <b className="text-ink/70">
+                        {formatCouncil({
+                          councilType,
+                          councilState,
+                          councilNumber,
+                        })}
+                      </b>
+                    </p>
+                  )}
                 </div>
               </div>
 

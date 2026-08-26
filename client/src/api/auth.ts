@@ -9,6 +9,11 @@ export interface User {
   country?: string;
   state?: string;
   city?: string;
+  // registro profissional (usado para preencher documentos clinicos)
+  councilType?: string;
+  councilState?: string;
+  councilNumber?: string;
+  whatsappOptIn?: boolean;
   emailVerified?: boolean;
   hasEstablishments?: boolean;
 }
@@ -41,6 +46,10 @@ export const authApi = {
     country?: string;
     state?: string;
     city?: string;
+    councilType?: string;
+    councilState?: string;
+    councilNumber?: string;
+    whatsappOptIn?: boolean;
   }) =>
     api.patch<{ user: User }>("/auth/me", data).then((r) => r.data.user),
 

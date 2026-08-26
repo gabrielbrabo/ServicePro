@@ -13,6 +13,11 @@ export interface IUser extends Document {
   country?: string;
   state?: string;
   city?: string;
+  // Registro profissional (para preencher documentos: atestado, receita...)
+  councilType?: string; // CRO, CRM, CREFITO, CRMV, CRP, CRN, COREN...
+  councilState?: string; // UF do registro (ex: SP)
+  councilNumber?: string; // numero do registro
+  whatsappOptIn?: boolean; // aceita receber avisos por WhatsApp (default true)
   rating: number;
   ratingCount: number;
   emailVerified: boolean;
@@ -58,6 +63,12 @@ const userSchema = new Schema<IUser>(
     country: { type: String, trim: true, default: "Brasil" },
     state: { type: String, trim: true },
     city: { type: String, trim: true },
+    // registro profissional (opcional; usado nos documentos clinicos)
+    councilType: { type: String, trim: true, uppercase: true },
+    councilState: { type: String, trim: true, uppercase: true },
+    councilNumber: { type: String, trim: true },
+    // avisos por WhatsApp (LGPD): default true; cliente pode dar opt-out
+    whatsappOptIn: { type: Boolean, default: true },
     // Nota media como prestador (calculada a partir das Reviews)
     rating: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },

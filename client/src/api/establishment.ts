@@ -24,6 +24,8 @@ export interface Establishment {
   description?: string;
   phone?: string;
   address: Address;
+  // area do estabelecimento (define os modulos/ferramentas liberados)
+  segment?: "geral" | "beleza" | "saude";
   location?: { type: string; coordinates: [number, number] };
   photo?: string;
   coverPhotos?: string[];
@@ -93,6 +95,7 @@ export const establishmentApi = {
   create: (data: {
     name: string;
     category: string;
+    segment?: "geral" | "beleza" | "saude";
     description?: string;
     phone?: string;
     address: Address;

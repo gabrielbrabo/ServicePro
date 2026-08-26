@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from "mongoose";
+import { SEGMENTS, DEFAULT_SEGMENT, SegmentKey } from "../config/segments";
 
 // Um membro da equipe do estabelecimento (acesso/permissao, com login).
 export interface IMember {
@@ -37,6 +38,8 @@ export interface IEstablishment extends Document {
   description?: string;
   phone?: string;
   address: IAddress;
+  // area/segmento do estabelecimento — define quais modulos ele libera
+  segment: SegmentKey;
   location: {
     type: "Point";
     coordinates: [number, number]; // [longitude, latitude]
@@ -99,6 +102,12 @@ const establishmentSchema = new Schema<IEstablishment>(
     description: { type: String },
     phone: { type: String, trim: true },
     address: { type: addressSchema, required: true },
+    // area do estabelecimento (beleza, saude, odontologia...)
+    segment: {
+      type: String,
+      enum: Object.keys(SEGMENTS),
+      default: DEFAULT_SEGMENT,
+    },
     // GeoJSON para permitir busca por proximidade no futuro
     location: {
       type: {

@@ -22,7 +22,11 @@ export type PanelTab =
   | "galeria"
   | "produtos"
   | "caixa"
-  | "avaliacoes";
+  | "comissoes"
+  | "avaliacoes"
+  | "prontuario"
+  | "convenio"
+  | "auditoria";
 
 const LAST_KEY = "servicepro:lastEstablishmentId";
 

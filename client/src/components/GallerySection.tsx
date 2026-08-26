@@ -52,7 +52,7 @@ export function GallerySection({
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-2xl font-bold text-ink">
-            Antes e depois
+            Galeria
           </h2>
           <p className="text-sm text-ink/60">
             Alguns trabalhos realizados aqui.
@@ -91,30 +91,41 @@ export function GallerySection({
             onClick={() => setOpenItem(item)}
             className="group w-72 shrink-0 snap-start overflow-hidden rounded-2xl border border-ink/10 bg-white text-left transition hover:border-teal-500 hover:shadow-sm"
           >
-            <div className="grid grid-cols-2">
+            {item.kind === "single" ? (
               <div className="relative">
                 <img
-                  src={item.beforeUrl}
-                  alt="Antes"
+                  src={item.photoUrl}
+                  alt={item.title || "Foto"}
                   loading="lazy"
                   className="h-36 w-full object-cover"
                 />
-                <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-medium text-white">
-                  Antes
-                </span>
               </div>
-              <div className="relative">
-                <img
-                  src={item.afterUrl}
-                  alt="Depois"
-                  loading="lazy"
-                  className="h-36 w-full object-cover"
-                />
-                <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
-                  Depois
-                </span>
+            ) : (
+              <div className="grid grid-cols-2">
+                <div className="relative">
+                  <img
+                    src={item.beforeUrl}
+                    alt="Antes"
+                    loading="lazy"
+                    className="h-36 w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-medium text-white">
+                    Antes
+                  </span>
+                </div>
+                <div className="relative">
+                  <img
+                    src={item.afterUrl}
+                    alt="Depois"
+                    loading="lazy"
+                    className="h-36 w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
+                    Depois
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="p-3">
               {item.title && (
@@ -149,7 +160,8 @@ export function GallerySection({
             <div className="flex items-start justify-between gap-3 border-b border-ink/10 p-5">
               <div>
                 <h3 className="font-display text-xl font-bold text-ink">
-                  {openItem.title || "Antes e depois"}
+                  {openItem.title ||
+                    (openItem.kind === "single" ? "Foto" : "Antes e depois")}
                 </h3>
                 {(openItem.professionalName ||
                   serviceTitle(openItem.service)) && (
@@ -171,28 +183,38 @@ export function GallerySection({
               </button>
             </div>
 
-            <div className="grid gap-3 p-5 sm:grid-cols-2">
-              <figure>
+            {openItem.kind === "single" ? (
+              <div className="p-5">
                 <img
-                  src={openItem.beforeUrl}
-                  alt="Antes"
-                  className="w-full rounded-xl object-contain"
+                  src={openItem.photoUrl}
+                  alt={openItem.title || "Foto"}
+                  className="mx-auto w-full rounded-xl object-contain"
                 />
-                <figcaption className="mt-2 text-center text-sm font-medium text-ink/60">
-                  Antes
-                </figcaption>
-              </figure>
-              <figure>
-                <img
-                  src={openItem.afterUrl}
-                  alt="Depois"
-                  className="w-full rounded-xl object-contain"
-                />
-                <figcaption className="mt-2 text-center text-sm font-medium text-teal-600">
-                  Depois
-                </figcaption>
-              </figure>
-            </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 p-5 sm:grid-cols-2">
+                <figure>
+                  <img
+                    src={openItem.beforeUrl}
+                    alt="Antes"
+                    className="w-full rounded-xl object-contain"
+                  />
+                  <figcaption className="mt-2 text-center text-sm font-medium text-ink/60">
+                    Antes
+                  </figcaption>
+                </figure>
+                <figure>
+                  <img
+                    src={openItem.afterUrl}
+                    alt="Depois"
+                    className="w-full rounded-xl object-contain"
+                  />
+                  <figcaption className="mt-2 text-center text-sm font-medium text-teal-600">
+                    Depois
+                  </figcaption>
+                </figure>
+              </div>
+            )}
 
             {openItem.description && (
               <div className="px-5 pb-5">

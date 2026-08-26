@@ -10,10 +10,15 @@ import { Establishment } from "../api/establishment";
 import { GalleryManager } from "./GalleryManager";
 import { ProductManager } from "./ProductManager";
 import { ReviewsManager } from "./ReviewsManager";
+import { ProntuarioManager } from "./ProntuarioManager";
+import { CommissionsManager } from "./CommissionsManager";
+import { ConvenioManager } from "./ConvenioManager";
+import { AuditManager } from "./AuditManager";
 import { EstablishmentProfileHeader } from "./EstablishmentProfileHeader";
 import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
 import { useCoverageAlerts, useProsWithoutSchedule } from "../lib/coverage";
+import { hasModule } from "../lib/segments";
 
 export function EstablishmentPanel({
   establishment,
@@ -36,10 +41,8 @@ export function EstablishmentPanel({
 
   // alertas de cobertura (profissional sem servico / servico sem profissional).
   // depende de `tab` para recarregar apos edicoes em outra aba.
-  const { servicesWithoutPro, prosWithoutService } = useCoverageAlerts(
-    establishment._id,
-    tab
-  );
+  const { servicesWithoutPro, prosWithoutService, noServices } =
+    useCoverageAlerts(establishment._id, tab);
   // profissionais sem expediente (aba Expediente)
   const { prosWithoutSchedule } = useProsWithoutSchedule(
     establishment._id,
@@ -85,15 +88,27 @@ export function EstablishmentPanel({
     ["agenda", "Expediente"],
     ["recebidos", "Agendamentos recebidos"],
     ["clientes", "Clientes"],
+    ["prontuario", "Prontuário"],
     ["avaliacoes", "Avaliações"],
     ["galeria", "Galeria"],
     ["produtos", "Produtos"],
     ["caixa", "Caixa"],
+    ["comissoes", "Comissões"],
+    ["convenio", "Convênios"],
+    ["auditoria", "Auditoria"],
   ];
 
-  const tabs = isEmployee
-    ? allTabs.filter(([key]) => key !== "equipe")
-    : allTabs;
+  // mostra apenas as abas cujo modulo pertence a AREA do estabelecimento
+  // (estabelecimentos antigos sem segment caem no padrao = beleza).
+  const tabs = allTabs
+    .filter(([key]) =>
+      hasModule(establishment.segment, key, establishment.category?.slug)
+    )
+    // funcionario nao ve "equipe" nem "auditoria" (dados do dono/controlador).
+    // "comissoes" ele ve, mas so a propria (limitado no componente).
+    .filter(
+      ([key]) => !(isEmployee && (key === "equipe" || key === "auditoria"))
+    );
 
   return (
     <div>
@@ -178,9 +193,19 @@ export function EstablishmentPanel({
                   !
                 </span>
               )}
+            {/* alerta: nenhum servico cadastrado ainda (estabelecimento novo) */}
+            {!isEmployee && key === "servicos" && noServices && (
+              <span
+                title="Cadastre um serviço para começar a receber agendamentos"
+                className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+              >
+                !
+              </span>
+            )}
             {/* alerta: servicos sem profissional */}
             {!isEmployee &&
               key === "servicos" &&
+              !noServices &&
               servicesWithoutPro.size > 0 && (
                 <span
                   title="Há serviço sem profissional"
@@ -235,6 +260,9 @@ export function EstablishmentPanel({
         {tab === "avaliacoes" && (
           <ReviewsManager establishmentId={establishment._id} />
         )}
+        {tab === "prontuario" && (
+          <ProntuarioManager establishment={establishment} />
+        )}
         {tab === "galeria" && (
           <GalleryManager establishmentId={establishment._id} />
         )}
@@ -243,6 +271,21 @@ export function EstablishmentPanel({
         )}
         {tab === "caixa" && (
           <CashRegister establishmentId={establishment._id} />
+        )}
+        {tab === "comissoes" && (
+          <CommissionsManager
+            establishmentId={establishment._id}
+            isOwner={!isEmployee}
+          />
+        )}
+        {tab === "convenio" && (
+          <ConvenioManager
+            establishmentId={establishment._id}
+            isOwner={!isEmployee}
+          />
+        )}
+        {tab === "auditoria" && !isEmployee && (
+          <AuditManager establishmentId={establishment._id} />
         )}
       </div>
     </div>

@@ -67,6 +67,8 @@ export function computeProsWithoutService(
 export function useCoverageAlerts(establishmentId: string, dep?: unknown) {
   const [servicesWithoutPro, setSWP] = useState<Set<string>>(new Set());
   const [prosWithoutService, setPWS] = useState<Set<string>>(new Set());
+  // estabelecimento novo ainda sem nenhum servico cadastrado
+  const [noServices, setNoServices] = useState(false);
 
   const refresh = useCallback(() => {
     if (!establishmentId) return;
@@ -77,10 +79,12 @@ export function useCoverageAlerts(establishmentId: string, dep?: unknown) {
       .then(([services, pros]) => {
         setSWP(computeServicesWithoutPro(services, pros));
         setPWS(computeProsWithoutService(services, pros));
+        setNoServices(services.length === 0);
       })
       .catch(() => {
         setSWP(new Set());
         setPWS(new Set());
+        setNoServices(false);
       });
   }, [establishmentId]);
 
@@ -89,7 +93,7 @@ export function useCoverageAlerts(establishmentId: string, dep?: unknown) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, dep]);
 
-  return { servicesWithoutPro, prosWithoutService, refresh };
+  return { servicesWithoutPro, prosWithoutService, noServices, refresh };
 }
 
 // Hook: ids dos profissionais ATIVOS sem expediente (workingHours vazio).

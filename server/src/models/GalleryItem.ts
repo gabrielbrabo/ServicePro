@@ -1,13 +1,18 @@
 import { Schema, model, Document, Types } from "mongoose";
 
-// Item da galeria (portfolio) de um estabelecimento: um par antes/depois.
+// Item da galeria (portfolio) de um estabelecimento.
+// Dois tipos (kind): "ba" = par antes/depois; "single" = foto normal (uma so).
 // Publico: qualquer um ve na pagina do estabelecimento.
 // professional e service sao opcionais (credito de quem fez / qual servico).
 
+export type GalleryKind = "ba" | "single";
+
 export interface IGalleryItem extends Document {
   establishment: Types.ObjectId;
-  beforeUrl: string;
-  afterUrl: string;
+  kind: GalleryKind;
+  beforeUrl?: string; // usado no "ba"
+  afterUrl?: string; // usado no "ba"
+  photoUrl?: string; // usado no "single"
   title: string;
   description: string;
   professional: Types.ObjectId | null; // subdoc em Establishment.professionals
@@ -25,8 +30,10 @@ const galleryItemSchema = new Schema<IGalleryItem>(
       ref: "Establishment",
       required: true,
     },
-    beforeUrl: { type: String, required: true },
-    afterUrl: { type: String, required: true },
+    kind: { type: String, enum: ["ba", "single"], default: "ba" },
+    beforeUrl: { type: String },
+    afterUrl: { type: String },
+    photoUrl: { type: String },
     title: { type: String, default: "", trim: true },
     description: { type: String, default: "", trim: true },
     // id do profissional (subdoc); null = sem credito

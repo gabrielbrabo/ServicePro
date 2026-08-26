@@ -85,8 +85,10 @@ export const createGalleryItem = async (
   try {
     const { establishmentId } = req.params;
     const {
+      kind,
       beforeUrl,
       afterUrl,
+      photoUrl,
       title,
       description,
       professionalId,
@@ -98,7 +100,13 @@ export const createGalleryItem = async (
       return;
     }
 
-    if (!beforeUrl || !afterUrl) {
+    const isSingle = kind === "single";
+    if (isSingle) {
+      if (!photoUrl) {
+        res.status(400).json({ message: "Envie a foto" });
+        return;
+      }
+    } else if (!beforeUrl || !afterUrl) {
       res
         .status(400)
         .json({ message: "Envie as duas fotos (antes e depois)" });
@@ -123,8 +131,10 @@ export const createGalleryItem = async (
 
     const item = await GalleryItem.create({
       establishment: establishmentId,
-      beforeUrl,
-      afterUrl,
+      kind: isSingle ? "single" : "ba",
+      beforeUrl: isSingle ? undefined : beforeUrl,
+      afterUrl: isSingle ? undefined : afterUrl,
+      photoUrl: isSingle ? photoUrl : undefined,
       title: title || "",
       description: description || "",
       professional: prof,
@@ -208,8 +218,12 @@ export const deleteGalleryItem = async (
       return;
     }
 
-    // guarda as URLs antes de remover o documento
-    const urls = [item.beforeUrl, item.afterUrl];
+    // guarda as URLs antes de remover o documento (conforme o tipo)
+    const urls = (
+      item.kind === "single"
+        ? [item.photoUrl]
+        : [item.beforeUrl, item.afterUrl]
+    ).filter((u): u is string => !!u);
 
     await item.deleteOne();
 

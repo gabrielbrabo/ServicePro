@@ -1,10 +1,14 @@
 import { api } from "../lib/api";
 
+export type GalleryKind = "ba" | "single";
+
 export interface GalleryItem {
   _id: string;
   establishment: string;
-  beforeUrl: string;
-  afterUrl: string;
+  kind: GalleryKind;
+  beforeUrl?: string;
+  afterUrl?: string;
+  photoUrl?: string;
   title: string;
   description: string;
   professional: string | null;
@@ -26,8 +30,10 @@ export const galleryApi = {
   create: (
     establishmentId: string,
     data: {
-      beforeUrl: string;
-      afterUrl: string;
+      kind?: GalleryKind;
+      beforeUrl?: string;
+      afterUrl?: string;
+      photoUrl?: string;
       title?: string;
       description?: string;
       professionalId?: string | null;

@@ -30,8 +30,10 @@ export function GalleryManager({
 
   // formulário
   const [showForm, setShowForm] = useState(false);
+  const [kind, setKind] = useState<"ba" | "single">("ba");
   const [beforeUrl, setBeforeUrl] = useState("");
   const [afterUrl, setAfterUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [professionalId, setProfessionalId] = useState("");
@@ -62,6 +64,7 @@ export function GalleryManager({
   const resetForm = () => {
     setBeforeUrl("");
     setAfterUrl("");
+    setPhotoUrl("");
     setTitle("");
     setDescription("");
     setProfessionalId("");
@@ -69,16 +72,22 @@ export function GalleryManager({
   };
 
   const submit = async () => {
-    if (!beforeUrl || !afterUrl) {
-      setError("Envie as duas fotos: antes e depois.");
+    if (kind === "single" ? !photoUrl : !beforeUrl || !afterUrl) {
+      setError(
+        kind === "single"
+          ? "Envie a foto."
+          : "Envie as duas fotos: antes e depois."
+      );
       return;
     }
     setSaving(true);
     setError(null);
     try {
       const created = await galleryApi.create(establishmentId, {
-        beforeUrl,
-        afterUrl,
+        kind,
+        beforeUrl: kind === "ba" ? beforeUrl : undefined,
+        afterUrl: kind === "ba" ? afterUrl : undefined,
+        photoUrl: kind === "single" ? photoUrl : undefined,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         professionalId: professionalId || undefined,
@@ -149,25 +158,60 @@ export function GalleryManager({
       {showForm && (
         <div className="mb-6 rounded-2xl border border-ink/10 bg-white p-5">
           <h3 className="font-display text-lg font-bold text-ink">
-            Novo antes e depois
+            Novo registro
           </h3>
 
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            <ImageUpload
-              value={beforeUrl}
-              onChange={setBeforeUrl}
-              folder="galeria"
-              label="Foto ANTES"
-              hint="JPG, PNG ou WEBP, até 5 MB."
-            />
-            <ImageUpload
-              value={afterUrl}
-              onChange={setAfterUrl}
-              folder="galeria"
-              label="Foto DEPOIS"
-              hint="JPG, PNG ou WEBP, até 5 MB."
-            />
+          {/* tipo: antes/depois ou foto normal */}
+          <div className="mt-3 flex gap-2">
+            {(
+              [
+                ["ba", "Antes e depois"],
+                ["single", "Foto normal"],
+              ] as ["ba" | "single", string][]
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                  kind === k
+                    ? "border-teal-500 bg-teal-500 text-white"
+                    : "border-ink/15 bg-white text-ink/70 hover:border-teal-500"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+
+          {kind === "ba" ? (
+            <div className="mt-4 grid gap-5 sm:grid-cols-2">
+              <ImageUpload
+                value={beforeUrl}
+                onChange={setBeforeUrl}
+                folder="galeria"
+                label="Foto ANTES"
+                hint="JPG, PNG ou WEBP, até 5 MB."
+              />
+              <ImageUpload
+                value={afterUrl}
+                onChange={setAfterUrl}
+                folder="galeria"
+                label="Foto DEPOIS"
+                hint="JPG, PNG ou WEBP, até 5 MB."
+              />
+            </div>
+          ) : (
+            <div className="mt-4">
+              <ImageUpload
+                value={photoUrl}
+                onChange={setPhotoUrl}
+                folder="galeria"
+                label="Foto"
+                hint="JPG, PNG ou WEBP, até 5 MB."
+              />
+            </div>
+          )}
 
           <label className="mt-4 block">
             <span className="mb-1 block text-sm font-medium text-ink/70">
@@ -239,7 +283,10 @@ export function GalleryManager({
 
           <button
             onClick={submit}
-            disabled={saving || !beforeUrl || !afterUrl}
+            disabled={
+              saving ||
+              (kind === "single" ? !photoUrl : !beforeUrl || !afterUrl)
+            }
             className="mt-5 h-11 rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
           >
             {saving ? "Salvando..." : "Publicar na galeria"}
@@ -264,29 +311,40 @@ export function GalleryManager({
                 item.active ? "border-ink/10" : "border-ink/10 opacity-60"
               }`}
             >
-              {/* antes / depois lado a lado */}
-              <div className="grid grid-cols-2">
+              {item.kind === "single" ? (
+                /* foto normal */
                 <div className="relative">
                   <img
-                    src={item.beforeUrl}
-                    alt="Antes"
+                    src={item.photoUrl}
+                    alt={item.title || "Foto"}
                     className="h-44 w-full object-cover"
                   />
-                  <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-xs font-medium text-white">
-                    Antes
-                  </span>
                 </div>
-                <div className="relative">
-                  <img
-                    src={item.afterUrl}
-                    alt="Depois"
-                    className="h-44 w-full object-cover"
-                  />
-                  <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-xs font-medium text-white">
-                    Depois
-                  </span>
+              ) : (
+                /* antes / depois lado a lado */
+                <div className="grid grid-cols-2">
+                  <div className="relative">
+                    <img
+                      src={item.beforeUrl}
+                      alt="Antes"
+                      className="h-44 w-full object-cover"
+                    />
+                    <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-xs font-medium text-white">
+                      Antes
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <img
+                      src={item.afterUrl}
+                      alt="Depois"
+                      className="h-44 w-full object-cover"
+                    />
+                    <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-xs font-medium text-white">
+                      Depois
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="p-4">
                 {item.title && (

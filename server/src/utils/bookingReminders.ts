@@ -10,6 +10,7 @@ import {
   notifyBookingReminderEstablishmentAsync,
 } from "./bookingEmails";
 import { establishmentRecipients } from "./notify";
+import { notifyBookingReminderClientWhatsappAsync } from "./bookingWhatsapp";
 
 // ---------------------------------------------------------------------------
 // Lembretes agendados (Etapa C).
@@ -101,6 +102,9 @@ export const sendDueReminders = async (): Promise<number> => {
         // e-mail
         const clientMail = await userEmail(b.client);
         notifyBookingReminderClientAsync({ clientEmail: clientMail, ctx });
+
+        // WhatsApp (numero unico) — so se o cliente tem telefone e nao optou por sair
+        notifyBookingReminderClientWhatsappAsync({ clientId: b.client, ctx });
 
         b.clientReminderSentAt = now;
         sent++;

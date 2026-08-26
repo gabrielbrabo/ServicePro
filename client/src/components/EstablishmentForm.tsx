@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent } from "react";
 import { catalogApi, Category } from "../api/catalog";
 import { establishmentApi, Establishment } from "../api/establishment";
 import { AddressAutocomplete, ResolvedAddress } from "./AddressAutocomplete";
+import { SEGMENT_LIST, SegmentKey, categorySegment } from "../lib/segments";
 
 export function EstablishmentForm({
   onCreated,
@@ -14,6 +15,8 @@ export function EstablishmentForm({
 
   const [form, setForm] = useState({
     name: "",
+    // area do negocio: define as ferramentas e o preco
+    segment: "beleza" as SegmentKey,
     category: "",
     description: "",
     phone: "",
@@ -36,12 +39,29 @@ export function EstablishmentForm({
   const inputClass =
     "h-12 w-full rounded-xl border border-ink/15 bg-white px-4 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20";
 
+  // categoria pertence a area? (categoria sem area definida serve a qualquer uma)
+  const catInArea = (c: Category, seg: string) => {
+    const s = categorySegment(c);
+    return !s || s === seg;
+  };
+
+  // 1a categoria valida para uma area
+  const pickCategory = (list: Category[], seg: string) => {
+    const match = list.find((c) => catInArea(c, seg));
+    return (match || list[0])?._id || "";
+  };
+
   useEffect(() => {
     catalogApi.categories().then((c) => {
       setCategories(c);
-      setForm((f) => ({ ...f, category: c[0]?._id || "" }));
+      setForm((f) => ({ ...f, category: pickCategory(c, f.segment) }));
     });
   }, []);
+
+  // categorias visiveis para a area escolhida
+  const visibleCategories = categories.filter((c) =>
+    catInArea(c, form.segment)
+  );
 
   const update =
     (field: keyof typeof form) =>
@@ -94,6 +114,7 @@ export function EstablishmentForm({
     try {
       const created = await establishmentApi.create({
         name: form.name,
+        segment: form.segment,
         category: form.category,
         description: form.description || undefined,
         phone: form.phone || undefined,
@@ -121,6 +142,42 @@ export function EstablishmentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {/* Área do negócio — define as ferramentas disponíveis e o preço */}
+      <div>
+        <span className="mb-1.5 block text-sm font-medium text-ink/70">
+          Área do negócio
+        </span>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {SEGMENT_LIST.map((s) => {
+            const active = form.segment === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    segment: s.key,
+                    // reseta a categoria para uma valida da nova area
+                    category: pickCategory(categories, s.key),
+                  }))
+                }
+                className={`rounded-xl border p-4 text-left transition ${active
+                  ? "border-teal-500 ring-2 ring-teal-500/20"
+                  : "border-ink/15 hover:border-teal-500"
+                  }`}
+              >
+                <p className="font-semibold text-ink">{s.label}</p>
+                <p className="mt-0.5 text-xs text-ink/50">{s.description}</p>
+                <p className="mt-2 text-sm font-semibold text-teal-600">
+                  R$ {s.priceMonthly}/mês
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Nome */}
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink/70">
@@ -145,7 +202,7 @@ export function EstablishmentForm({
             onChange={update("category")}
             className={inputClass}
           >
-            {categories.map((c) => (
+            {visibleCategories.map((c) => (
               <option key={c._id} value={c._id}>
                 {c.icon ? `${c.icon} ` : ""}
                 {c.name}

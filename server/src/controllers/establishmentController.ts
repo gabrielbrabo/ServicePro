@@ -6,6 +6,7 @@ import { AuthRequest } from "../middleware/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
 import { buildSearchRegex } from "../utils/searchText";
+import { isSegment, DEFAULT_SEGMENT } from "../config/segments";
 
 // POST /api/establishments  (protegido)
 export const createEstablishment = async (
@@ -20,6 +21,11 @@ export const createEstablishment = async (
       res.status(400).json({ message: "Nome e categoria sao obrigatorios" });
       return;
     }
+
+    // area (segmento) escolhida no cadastro; padrao se ausente/invalida
+    const segment = isSegment(req.body.segment)
+      ? req.body.segment
+      : DEFAULT_SEGMENT;
 
     if (
       !address ||
@@ -42,6 +48,7 @@ export const createEstablishment = async (
       phone,
       photo,
       address,
+      segment,
       members: [{ professional: req.userId, role: "owner", active: true }],
     };
 
