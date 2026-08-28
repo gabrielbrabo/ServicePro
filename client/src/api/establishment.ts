@@ -16,6 +16,15 @@ export interface Address {
   number: string;
 }
 
+// atendimento a domicilio (padrao do estabelecimento)
+export interface HomeService {
+  enabled: boolean;
+  avgSpeedKmh: number; // velocidade media p/ estimar o deslocamento
+  baseFee: number; // taxa fixa de deslocamento (R$)
+  feePerKm: number; // taxa por km rodado, ida e volta (R$)
+  maxRadiusKm: number; // distancia maxima atendida (0 = sem limite)
+}
+
 export interface Establishment {
   _id: string;
   owner: string | { _id: string; name: string; avatar?: string };
@@ -32,6 +41,7 @@ export interface Establishment {
   members: Member[];
   active: boolean;
   cashAutoEntry?: boolean;
+  homeService?: HomeService; // atendimento a domicilio (padrao do estab.)
   // nota agregada (sistema de avaliacao). Vem no proprio doc do estabelecimento.
   ratingAvg?: number;
   ratingCount?: number;

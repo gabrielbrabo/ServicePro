@@ -11,6 +11,9 @@ import { GalleryManager } from "./GalleryManager";
 import { ProductManager } from "./ProductManager";
 import { ReviewsManager } from "./ReviewsManager";
 import { ProntuarioManager } from "./ProntuarioManager";
+import { FichaBelezaManager } from "./FichaBelezaManager";
+import { SterilizationManager } from "./SterilizationManager";
+import { OrdemServicoManager } from "./OrdemServicoManager";
 import { CommissionsManager } from "./CommissionsManager";
 import { ConvenioManager } from "./ConvenioManager";
 import { AuditManager } from "./AuditManager";
@@ -86,15 +89,18 @@ export function EstablishmentPanel({
     ["servicos", "Serviços"],
     ["equipe", "Equipe"],
     ["agenda", "Expediente"],
-    ["recebidos", "Agendamentos recebidos"],
+    ["recebidos", "Agendamentos"],
+    ["ordem_servico", "Ordens de serviço"],
     ["clientes", "Clientes"],
     ["prontuario", "Prontuário"],
+    ["ficha", "Ficha do cliente"],
     ["avaliacoes", "Avaliações"],
     ["galeria", "Galeria"],
     ["produtos", "Produtos"],
     ["caixa", "Caixa"],
     ["comissoes", "Comissões"],
     ["convenio", "Convênios"],
+    ["esterilizacao", "Esterilização"],
     ["auditoria", "Auditoria"],
   ];
 
@@ -165,15 +171,15 @@ export function EstablishmentPanel({
         </button>
       </div>
 
-      <div className="mt-8 flex gap-1 border-b border-ink/10 overflow-x-auto">
+      <div className="mt-8 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
         {tabs.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`relative -mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+            className={`relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
               tab === key
-                ? "border-teal-500 text-teal-600"
-                : "border-transparent text-ink/50 hover:text-ink/80"
+                ? "bg-teal-500 text-white shadow-sm"
+                : "bg-ink/5 text-ink/60 hover:bg-ink/10 hover:text-ink/80"
             }`}
           >
             {label}
@@ -263,6 +269,9 @@ export function EstablishmentPanel({
         {tab === "prontuario" && (
           <ProntuarioManager establishment={establishment} />
         )}
+        {tab === "ficha" && (
+          <FichaBelezaManager establishment={establishment} />
+        )}
         {tab === "galeria" && (
           <GalleryManager establishmentId={establishment._id} />
         )}
@@ -282,6 +291,29 @@ export function EstablishmentPanel({
           <ConvenioManager
             establishmentId={establishment._id}
             isOwner={!isEmployee}
+          />
+        )}
+        {tab === "esterilizacao" && (
+          <SterilizationManager establishmentId={establishment._id} />
+        )}
+        {tab === "ordem_servico" && (
+          <OrdemServicoManager
+            establishmentId={establishment._id}
+            showVehicle={hasModule(
+              establishment.segment,
+              "veiculo",
+              establishment.category?.slug
+            )}
+            showEquipment={hasModule(
+              establishment.segment,
+              "equipamento",
+              establishment.category?.slug
+            )}
+            showPest={hasModule(
+              establishment.segment,
+              "dedetizacao",
+              establishment.category?.slug
+            )}
           />
         )}
         {tab === "auditoria" && !isEmployee && (

@@ -714,3 +714,59 @@ WHATSAPP_TEMPLATE_REMINDER=lembrete_agendamento
 
 Depois de preencher, reiniciar o server. Guia visual do passo a passo foi gerado
 à parte (checklist "Ligar o WhatsApp").
+
+---
+
+## 28. Recursos clínicos (frontend — área Saúde)
+
+O painel esconde/mostra abas por **módulo da área** via `hasModule(segment, mod,
+categorySlug)` (`lib/segments.ts`, espelho do backend). **Veterinária removida.**
+
+### Prontuário (`components/ProntuarioManager.tsx`)
+Lista pacientes → ficha do paciente com sub-abas (só as liberadas):
+**Prontuário** (anamnese), **Evolução**, **Linha do tempo**, **Plano de
+tratamento**, **Documentos**, **Odontograma**, **Periograma**, **Fisioterapia**.
+
+- **Evolução SOAP + CID-10** (`components/Evolutions.tsx`, `api/evolution.ts`):
+  formulário S/O/A/P + data + vínculo opcional a atendimento; seção **CID-10**
+  com autocomplete de `lib/cid10.ts` (base reduzida + entrada livre); notas
+  antigas (formato livre) exibidas só leitura.
+- **Documentos** (`components/PatientDocuments.tsx`, `api/emittedDocument.ts`):
+  atestado, declaração, **receita estruturada** (tipo comum/controle especial/
+  B/A + medicamentos com posologia) e **pedido de exame**. Botões **"Baixar PDF"**
+  (gera no servidor), **"Imprimir"** e **"Assinar digitalmente"** (ver seção 29).
+- **Fisioterapia** (`components/PhysioPanel.tsx`, `api/physio.ts`): abas
+  **Pacotes de sessões** (barra de saldo, registrar/estornar sessão) e
+  **Avaliações** (EVA 0-10 colorido, ADM, força, objetivos). Gated pela categoria
+  fisioterapia.
+- **Periograma** (`components/Periograma.tsx`, `api/periogram.ts`): mapa FDI
+  colorido pela maior PS + editor por dente (6 sítios: PS/REC/NIC/sangramento,
+  mobilidade, furca) + resumo (sítios PS≥4, BOP%). Categoria odontologia.
+- **Odontograma → plano** (`components/Odontograma.tsx`): botão "Adicionar ao
+  plano de tratamento" (usa `api/treatmentPlan.ts`, cria/usa plano aberto).
+
+### Galeria (todas as áreas)
+`GalleryManager`/`GallerySection`: além de **antes/depois**, agora aceita
+**foto normal**; os dois tipos aparecem misturados no mesmo carrossel público.
+
+### Aviso "sem serviço cadastrado"
+`lib/coverage.ts` (`useCoverageAlerts` expõe `noServices`) + `EstablishmentPanel`:
+selo "!" âmbar na aba **Serviços** quando o estabelecimento ainda não tem nenhum
+serviço (igual ao aviso do Expediente).
+
+---
+
+## 29. Assinatura digital ICP-Brasil (frontend)
+
+Em **Documentos**, o botão **"Assinar digitalmente"** envia o documento para
+assinatura (Clicksign) — há um campo **"E-mail de quem vai assinar"** (editável,
+validado). No histórico, o documento mostra o selo de status:
+- **Aguardando assinatura** — o app consulta o status sozinho (`refreshSignature`,
+  1 doc por vez a cada 6s, para não estourar o limite do Clicksign) até virar
+  assinado; há também o botão "Atualizar status".
+- **✓ Assinado** — botão **"ver PDF assinado"** que busca um **link fresco na
+  hora** (`documentApi.signedPdf`, o link do Clicksign expira em ~5 min) e abre o
+  PDF assinado (com a página de assinaturas/manifesto).
+
+`api/emittedDocument.ts` expõe `pdf`, `sign`, `refreshSignature`, `signedPdf`.
+Configuração e detalhes do provedor: ver o README do backend (seção 29).

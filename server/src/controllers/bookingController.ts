@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { Booking } from "../models/Booking";
-import { Service } from "../models/Service";
+import { Service, effectiveDuration, depositFor } from "../models/Service";
 import { Establishment } from "../models/Establishment";
 import { Review } from "../models/Review";
 import { CashSession } from "../models/CashSession";
@@ -9,6 +9,13 @@ import { getIO } from "../socket";
 import { assertSlotIsBookable } from "../utils/slotValidation";
 import { notifyWaitlistOpening } from "../utils/waitlistNotify";
 import { professionalDoesService } from "../utils/serviceProfessional";
+import {
+  computeBusySegments,
+  bookingSegments,
+  segmentsOverlap,
+} from "../utils/busySegments";
+import { geocodeAddress } from "../utils/geocode";
+import { estimateTravel, travelFee as calcTravelFee } from "../utils/travel";
 import { postBookingToCash } from "../utils/cashPosting";
 import { autoReserveSlot } from "../utils/autoReserve";
 import { notifyManyAsync, establishmentRecipients } from "../utils/notify";
@@ -58,13 +65,43 @@ const VALID_METHODS = ["dinheiro", "cartao", "pix", "outro"];
 // status que OCUPAM um horario (usado em todas as checagens de conflito)
 const BUSY_STATUSES = ["pendente", "confirmado", "reservado"];
 
+// Ha conflito de OCUPACAO com algum agendamento do dia? Compara segmento a
+// segmento (a pausa de processamento de um nao bloqueia o outro). Busca os
+// agendamentos do dia do profissional (ou do estabelecimento, se sem prof).
+async function hasSegmentConflict(
+  establishmentId: Types.ObjectId | string,
+  prof: Types.ObjectId | null,
+  around: Date,
+  segments: { start: Date; end: Date }[],
+  excludeId?: Types.ObjectId | string
+): Promise<boolean> {
+  const dayStart = new Date(
+    around.getFullYear(),
+    around.getMonth(),
+    around.getDate()
+  );
+  const dayEnd = new Date(dayStart.getTime() + 86400000);
+  const filter: Record<string, unknown> = {
+    establishment: establishmentId,
+    status: { $in: BUSY_STATUSES },
+    scheduledAt: { $gte: dayStart, $lt: dayEnd },
+  };
+  if (prof) filter.professional = prof;
+  if (excludeId) filter._id = { $ne: excludeId };
+  const candidates = await Booking.find(filter).select(
+    "scheduledAt endsAt bufferMinutes busySegments"
+  );
+  return candidates.some((b) => segmentsOverlap(segments, bookingSegments(b)));
+}
+
 // POST /api/bookings  (protegido)
 export const createBooking = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
   try {
-    const { serviceId, scheduledAt, notes, address, professionalId } = req.body;
+    const { serviceId, serviceIds, scheduledAt, notes, address, professionalId } =
+      req.body;
 
     // antecedencia do lembrete escolhida pelo cliente (min). Aceita apenas
     // valores previstos; qualquer outra coisa cai no padrao de 1 hora.
@@ -74,9 +111,46 @@ export const createBooking = async (
       ? rawReminder
       : 60;
 
-    const service = await Service.findById(serviceId);
-    if (!service) {
-      res.status(404).json({ message: "Servico nao encontrado" });
+    // servicos do agendamento (combo). Aceita serviceIds[] (varios) ou
+    // serviceId (unico). idList preserva a ordem escolhida.
+    const rawIds: unknown[] =
+      Array.isArray(serviceIds) && serviceIds.length
+        ? serviceIds
+        : serviceId
+          ? [serviceId]
+          : [];
+    const idList = rawIds.filter(
+      (x): x is string => typeof x === "string" && Types.ObjectId.isValid(x)
+    );
+    if (idList.length === 0) {
+      res.status(400).json({ message: "Escolha ao menos um servico" });
+      return;
+    }
+
+    const found = await Service.find({ _id: { $in: idList } });
+    const orderedServices: typeof found = [];
+    for (const id of idList) {
+      const s = found.find((x) => String(x._id) === String(id));
+      if (!s) {
+        res.status(404).json({ message: "Servico nao encontrado" });
+        return;
+      }
+      orderedServices.push(s);
+    }
+    // servico principal (1o do combo). Mantido em `service` para nao alterar o
+    // restante do fluxo (notificacoes, e-mails etc.).
+    const service = orderedServices[0];
+    const isCombo = orderedServices.length > 1;
+
+    // todos os servicos precisam ser do mesmo estabelecimento
+    if (
+      orderedServices.some(
+        (s) => String(s.establishment) !== String(service.establishment)
+      )
+    ) {
+      res
+        .status(400)
+        .json({ message: "Os servicos sao de estabelecimentos diferentes" });
       return;
     }
 
@@ -106,12 +180,31 @@ export const createBooking = async (
       }
     }
 
-    if (!professionalDoesService(service.professionals, prof)) {
-      res
-        .status(400)
-        .json({ message: "Este profissional nao realiza o servico escolhido" });
-      return;
+    // o profissional precisa realizar TODOS os servicos do combo
+    for (const s of orderedServices) {
+      if (!professionalDoesService(s.professionals, prof)) {
+        res.status(400).json({
+          message: `Este profissional nao realiza o servico: ${s.title}`,
+        });
+        return;
+      }
     }
+
+    const totalDuration = orderedServices.reduce(
+      (sum, s) => sum + effectiveDuration(s, prof),
+      0
+    );
+    const totalPrice = orderedServices.reduce((sum, s) => sum + s.price, 0);
+    // sinal exigido = soma do sinal de cada servico (2 casas)
+    const depositRequired =
+      Math.round(
+        orderedServices.reduce((sum, s) => sum + depositFor(s), 0) * 100
+      ) / 100;
+    // folga do atendimento = maior buffer entre os servicos do combo
+    const bufferMinutes = orderedServices.reduce(
+      (max, s) => Math.max(max, s.bufferMinutes || 0),
+      0
+    );
 
     const start = new Date(scheduledAt);
     if (isNaN(start.getTime())) {
@@ -119,7 +212,130 @@ export const createBooking = async (
       return;
     }
     const end = new Date(start);
-    end.setUTCMinutes(end.getUTCMinutes() + service.durationMinutes);
+    end.setUTCMinutes(end.getUTCMinutes() + totalDuration);
+
+    // ---- atendimento a domicilio ----
+    const wantsHome = req.body.atHome === true;
+    // o modo de cada servico precisa ser compativel com a escolha
+    for (const s of orderedServices) {
+      const mode = s.serviceMode || "local";
+      if (wantsHome && mode === "local") {
+        res.status(400).json({
+          message: `O servico "${s.title}" nao e atendido a domicilio`,
+        });
+        return;
+      }
+      if (!wantsHome && mode === "domicilio") {
+        res.status(400).json({
+          message: `O servico "${s.title}" e somente a domicilio`,
+        });
+        return;
+      }
+    }
+
+    let atHome = false;
+    let travelMinutes = 0;
+    let travelKm = 0;
+    let travelFeeValue = 0;
+    let homeLat: number | null = null;
+    let homeLng: number | null = null;
+    let homeAddressStr: string | undefined = address;
+
+    if (wantsHome) {
+      // config de deslocamento do estabelecimento (com padroes se nao definida).
+      // O que habilita o domicilio e o MODO do servico (ja validado acima).
+      const hs = establishment.homeService || {
+        enabled: true,
+        avgSpeedKmh: 25,
+        baseFee: 0,
+        feePerKm: 0,
+        maxRadiusKm: 0,
+      };
+      const addr = req.body.homeAddress;
+      const complete =
+        addr && addr.street && addr.number && addr.city && addr.state;
+      if (!complete) {
+        res.status(400).json({
+          message: "Informe o endereco para o atendimento a domicilio",
+        });
+        return;
+      }
+      const estCoords = establishment.location?.coordinates;
+      if (!estCoords || (estCoords[0] === 0 && estCoords[1] === 0)) {
+        res.status(400).json({
+          message:
+            "O estabelecimento nao tem localizacao definida; nao da para calcular o deslocamento",
+        });
+        return;
+      }
+      // prefere as coordenadas enviadas pelo cliente (autocomplete); o geocode
+      // do servidor (Nominatim) fica so como fallback.
+      const cc = req.body.homeCoords;
+      let geo: { lat: number; lon: number } | null =
+        cc &&
+        Number.isFinite(Number(cc.lat)) &&
+        Number.isFinite(Number(cc.lng)) &&
+        (Number(cc.lat) !== 0 || Number(cc.lng) !== 0)
+          ? { lat: Number(cc.lat), lon: Number(cc.lng) }
+          : null;
+      if (!geo) {
+        geo = await geocodeAddress({
+          country: addr.country || "Brasil",
+          state: addr.state,
+          city: addr.city,
+          neighborhood: addr.neighborhood || "",
+          street: addr.street,
+          number: addr.number,
+        });
+      }
+      if (!geo) {
+        res.status(400).json({
+          message: "Nao foi possivel localizar o endereco informado",
+        });
+        return;
+      }
+      const estPoint = { lat: estCoords[1], lon: estCoords[0] };
+      const t = estimateTravel(
+        estPoint,
+        { lat: geo.lat, lon: geo.lon },
+        hs.avgSpeedKmh
+      );
+      const maxR = hs.maxRadiusKm || 0;
+      if (maxR > 0 && t.km > maxR) {
+        res.status(400).json({
+          message: `Endereco fora da area de atendimento (${t.km.toFixed(
+            1
+          )} km; limite ${maxR} km)`,
+        });
+        return;
+      }
+      const baseFee = service.homeBaseFee ?? hs.baseFee;
+      const feePerKm = service.homeFeePerKm ?? hs.feePerKm;
+      travelFeeValue = calcTravelFee(t.km, baseFee, feePerKm);
+      travelMinutes = t.oneWayMinutes;
+      travelKm = t.km;
+      homeLat = geo.lat;
+      homeLng = geo.lon;
+      atHome = true;
+      homeAddressStr = [
+        `${addr.street}, ${addr.number}`,
+        addr.neighborhood,
+        `${addr.city}/${addr.state}`,
+      ]
+        .filter(Boolean)
+        .join(" - ");
+    }
+
+    // segmentos de ocupacao (pausa fica de fora; a domicilio inclui o
+    // deslocamento de ida antes e de volta depois)
+    const newSegments = computeBusySegments(
+      orderedServices,
+      start,
+      prof,
+      bufferMinutes,
+      atHome ? travelMinutes : 0,
+      atHome ? travelMinutes : 0
+    );
 
     const bookable = await assertSlotIsBookable(
       service.establishment,
@@ -132,32 +348,56 @@ export const createBooking = async (
       return;
     }
 
-    const conflictFilter: Record<string, unknown> = {
-      establishment: service.establishment,
-      status: { $in: BUSY_STATUSES },
-      scheduledAt: { $lt: end },
-      endsAt: { $gt: start },
-    };
-    if (prof) conflictFilter.professional = prof;
-    const conflito = await Booking.findOne(conflictFilter);
-    if (conflito) {
+    // conflito por SEGMENTOS: busca os agendamentos do dia (do profissional, se
+    // houver) e compara segmento a segmento — assim a pausa de um nao bloqueia
+    // o outro.
+    if (await hasSegmentConflict(service.establishment, prof, start, newSegments)) {
       res.status(409).json({ message: "Horario nao esta mais disponivel" });
       return;
     }
+
+    // items so e preenchido no combo; servico unico fica com [] (legado)
+    const items = isCombo
+      ? orderedServices.map((s) => ({
+          service: s._id,
+          title: s.title,
+          price: s.price,
+          durationMinutes: s.durationMinutes,
+        }))
+      : [];
 
     const booking = await Booking.create({
       client: req.userId,
       establishment: service.establishment,
       owner: establishment.owner,
       service: service._id,
+      items,
+      bufferMinutes,
+      busySegments: newSegments,
       professional: prof,
       scheduledAt: start,
       endsAt: end,
       notes,
-      address,
+      address: homeAddressStr,
+      atHome,
+      travelMinutes,
+      travelKm,
+      travelFee: travelFeeValue,
+      homeLat,
+      homeLng,
       clientReminderMinutes,
-      payment: { status: "pendente", amount: service.price },
+      payment: {
+        status: "pendente",
+        amount: totalPrice + travelFeeValue,
+        depositRequired,
+        depositPaid: false,
+      },
     });
+
+    // rotulo do servico p/ notificacoes/e-mails ("Corte +2" no combo)
+    const serviceLabel = isCombo
+      ? `${service.title} +${orderedServices.length - 1}`
+      : service.title;
 
     // notifica o lado do estabelecimento: dono e, se houver, o funcionario
     // vinculado ao profissional escolhido.
@@ -185,7 +425,7 @@ export const createBooking = async (
     notifyManyAsync(recipients, {
       type: "booking_created",
       title: "Novo agendamento",
-      body: `${service.title} em ${whenLabel}`,
+      body: `${serviceLabel} em ${whenLabel}`,
       booking: booking._id,
       establishment: service.establishment,
     });
@@ -201,7 +441,7 @@ export const createBooking = async (
     notifyBookingCreatedAsync({
       establishmentEmails: estMails,
       ctx: {
-        serviceTitle: service.title,
+        serviceTitle: serviceLabel,
         establishmentName: establishment.name,
         whenLabel,
         professionalName: profNameCreated,
@@ -626,8 +866,10 @@ export const rescheduleBooking = async (
       res.status(404).json({ message: "Servico nao encontrado" });
       return;
     }
-    const end = new Date(start);
-    end.setUTCMinutes(end.getUTCMinutes() + service.durationMinutes);
+    // preserva a duracao total do agendamento (vale para combo tambem)
+    const durationMs =
+      booking.endsAt.getTime() - booking.scheduledAt.getTime();
+    const end = new Date(start.getTime() + durationMs);
 
     let prof: Types.ObjectId | null = booking.professional
       ? new Types.ObjectId(booking.professional.toString())
@@ -665,6 +907,19 @@ export const rescheduleBooking = async (
       return;
     }
 
+    // combo: o profissional precisa realizar todos os servicos do agendamento
+    for (const it of booking.items) {
+      const svc = await Service.findById(it.service).select(
+        "professionals title"
+      );
+      if (svc && !professionalDoesService(svc.professionals, prof)) {
+        res.status(400).json({
+          message: `Este profissional nao realiza o servico: ${it.title}`,
+        });
+        return;
+      }
+    }
+
     const bookable = await assertSlotIsBookable(
       booking.establishment,
       start,
@@ -676,16 +931,22 @@ export const rescheduleBooking = async (
       return;
     }
 
-    const conflictFilter: Record<string, unknown> = {
-      _id: { $ne: booking._id },
-      establishment: booking.establishment,
-      status: { $in: BUSY_STATUSES },
-      scheduledAt: { $lt: end },
-      endsAt: { $gt: start },
-    };
-    if (prof) conflictFilter.professional = prof;
-    const conflito = await Booking.findOne(conflictFilter);
-    if (conflito) {
+    // desloca os segmentos de ocupacao para o novo horario (mesma duracao e
+    // mesma estrutura de pausa) e checa conflito por segmentos.
+    const delta = start.getTime() - booking.scheduledAt.getTime();
+    const shifted = bookingSegments(booking).map((s) => ({
+      start: new Date(s.start.getTime() + delta),
+      end: new Date(s.end.getTime() + delta),
+    }));
+    if (
+      await hasSegmentConflict(
+        booking.establishment,
+        prof,
+        start,
+        shifted,
+        booking._id
+      )
+    ) {
       res.status(409).json({ message: "Horario nao esta disponivel" });
       return;
     }
@@ -704,6 +965,7 @@ export const rescheduleBooking = async (
 
     booking.scheduledAt = start;
     booking.endsAt = end;
+    booking.set("busySegments", shifted);
     booking.professional = prof;
     booking.status = "pendente";
     booking.reservationExpiresAt = undefined;
@@ -1036,7 +1298,12 @@ export const createRecurringBookings = async (
         notes,
         address,
         clientReminderMinutes,
-        payment: { status: "pendente", amount: service.price },
+        payment: {
+          status: "pendente",
+          amount: service.price,
+          depositRequired: depositFor(service),
+          depositPaid: false,
+        },
       });
 
       created.push(booking);
@@ -1255,5 +1522,164 @@ export const declineReservation = async (
   } catch (err) {
     console.error("declineReservation:", err);
     res.status(500).json({ message: "Erro ao recusar a reserva" });
+  }
+};
+
+// PATCH /api/bookings/:id/deposit  (protegido, dono/profissional do agendamento)
+// registra (ou estorna) o recebimento do sinal. body: { paid: boolean, method? }
+export const markDeposit = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const paid = req.body.paid !== false; // default true
+    const rawMethod = String(req.body.method || "");
+    const method = VALID_METHODS.includes(rawMethod) ? rawMethod : "";
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+
+    // so o estabelecimento registra: dono OU o profissional do agendamento
+    const isOwner = booking.owner.toString() === req.userId;
+    let isAssignedProfessional = false;
+    if (!isOwner && booking.professional) {
+      const estProf = await Establishment.findById(
+        booking.establishment
+      ).select("professionals");
+      const prof = estProf?.professionals.id(booking.professional);
+      isAssignedProfessional =
+        !!prof &&
+        !!prof.linkedUser &&
+        prof.linkedUser.toString() === req.userId;
+    }
+    if (!isOwner && !isAssignedProfessional) {
+      res.status(403).json({ message: "Sem permissao" });
+      return;
+    }
+
+    if ((booking.payment.depositRequired || 0) <= 0) {
+      res
+        .status(400)
+        .json({ message: "Este agendamento nao exige sinal" });
+      return;
+    }
+
+    booking.payment.depositPaid = paid;
+    booking.payment.depositPaidAt = paid ? new Date() : undefined;
+    booking.payment.depositMethod = paid
+      ? (method as typeof booking.payment.depositMethod)
+      : "";
+    await booking.save();
+
+    // tempo real: cliente + lado do estabelecimento
+    const estSide = await establishmentRecipients(
+      booking.establishment,
+      booking.professional
+    );
+    const io = getIO();
+    for (const uid of new Set([booking.client.toString(), ...estSide])) {
+      io.to(`user:${uid}`).emit("booking:updated", booking);
+    }
+
+    res.json(booking);
+  } catch (err) {
+    console.error("markDeposit:", err);
+    res.status(500).json({ message: "Erro ao registrar o sinal" });
+  }
+};
+
+// PATCH /api/bookings/:id/extend  (protegido, dono/profissional do agendamento)
+// adiciona tempo extra ao atendimento (imprevistos): estende o fim e a
+// ocupacao, para nao abrir horario onde o profissional ainda esta ocupado.
+// body: { extraMinutes }
+export const extendBooking = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const extra = Math.max(0, Math.floor(Number(req.body.extraMinutes)) || 0);
+    if (extra <= 0) {
+      res.status(400).json({ message: "Informe os minutos extras" });
+      return;
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+
+    // so o estabelecimento estende: dono OU o profissional do agendamento
+    const isOwner = booking.owner.toString() === req.userId;
+    let isAssignedProfessional = false;
+    if (!isOwner && booking.professional) {
+      const estProf = await Establishment.findById(
+        booking.establishment
+      ).select("professionals");
+      const prof = estProf?.professionals.id(booking.professional);
+      isAssignedProfessional =
+        !!prof &&
+        !!prof.linkedUser &&
+        prof.linkedUser.toString() === req.userId;
+    }
+    if (!isOwner && !isAssignedProfessional) {
+      res.status(403).json({ message: "Sem permissao" });
+      return;
+    }
+
+    if (booking.status === "concluido" || booking.status === "cancelado") {
+      res.status(400).json({
+        message: "Nao da para estender um agendamento concluido ou cancelado",
+      });
+      return;
+    }
+
+    const MIN = 60000;
+    // estende o ULTIMO segmento de ocupacao (fim do atendimento)
+    const segs = bookingSegments(booking);
+    const extended = segs.map((s, i) =>
+      i === segs.length - 1
+        ? { start: s.start, end: new Date(s.end.getTime() + extra * MIN) }
+        : s
+    );
+
+    // nao pode invadir um agendamento logo em seguida
+    const conflict = await hasSegmentConflict(
+      booking.establishment,
+      booking.professional,
+      booking.scheduledAt,
+      extended,
+      booking._id
+    );
+    if (conflict) {
+      res.status(409).json({
+        message:
+          "Ha outro agendamento logo em seguida; nao da para adicionar esse tempo",
+      });
+      return;
+    }
+
+    booking.endsAt = new Date(booking.endsAt.getTime() + extra * MIN);
+    booking.extraMinutes = (booking.extraMinutes || 0) + extra;
+    booking.set("busySegments", extended);
+    await booking.save();
+
+    // tempo real: cliente + lado do estabelecimento
+    const estSide = await establishmentRecipients(
+      booking.establishment,
+      booking.professional
+    );
+    const io = getIO();
+    for (const uid of new Set([booking.client.toString(), ...estSide])) {
+      io.to(`user:${uid}`).emit("booking:updated", booking);
+    }
+
+    res.json(booking);
+  } catch (err) {
+    console.error("extendBooking:", err);
+    res.status(500).json({ message: "Erro ao adicionar tempo extra" });
   }
 };

@@ -714,3 +714,107 @@ WHATSAPP_TEMPLATE_REMINDER=lembrete_agendamento
 
 Depois de preencher, reiniciar o server. Guia visual do passo a passo foi gerado
 à parte (checklist "Ligar o WhatsApp").
+
+---
+
+## 28. Recursos clínicos (área Saúde)
+
+Verticalização por **segmento** (`geral | beleza | saude`) em `config/segments.ts`
+(espelhado no front). Uma **categoria** pode liberar módulos extras (ex.:
+odontologia → `odontograma`; fisioterapia → `fisioterapia`). Middleware
+`requireModule(mod)` protege as rotas por área; middleware `audit(resource)`
+registra acesso a dados de paciente (LGPD). **Veterinária foi removida** do seed
+e dos segments (25/08/2026).
+
+### 28.1. Evolução clínica SOAP + CID-10
+- `models/Evolution.ts`, `controllers/evolutionController.ts`,
+  `routes/evolutionRoutes.ts` → **`/api/evolutions`** (módulo `prontuario`, auditado).
+- Uma coleção própria (várias por paciente): campos SOAP
+  (`subjective/objective/assessment/plan`), `date`, `author`, `booking?`
+  (atendimento vinculado) e **`cids[] { code, description }`** (CID-10).
+- Rotas: `GET/POST /:est/:clientId`, `PUT/DELETE /:est/:clientId/:evolutionId`.
+
+### 28.2. Documentos em PDF + prescrição + pedido de exame
+- `utils/documentPdf.ts` (**pdfkit**) gera PDF de verdade no servidor dos 4 tipos:
+  `atestado`, `declaracao`, `receita` (comum / controle_especial / azul / amarela;
+  controlados saem em **2 vias**) e `pedido_exame`.
+- `controllers/emittedDocumentController.ts` + `routes/emittedDocumentRoutes.ts`
+  (**`/api/documents`**, módulo `documentos`, auditado):
+  - `POST /:est/:clientId/pdf` — baixar o PDF.
+  - `POST /:est/:clientId` — registrar emissão (histórico/auditoria).
+  - `GET /:est/:clientId` — histórico do paciente; `GET /:est` — auditoria.
+- `EmittedDocument` guarda metadados + campos de assinatura (ver seção 29).
+
+### 28.3. Fisioterapia (categoria fisioterapia, módulo `fisioterapia`)
+- `models/SessionPackage.ts` (pacote de sessões, saldo usado/total, `auto`
+  status), `models/PhysioAssessment.ts` (avaliação com **EVA 0-10**, ADM,
+  força, queixa, objetivos).
+- `controllers/physioController.ts`, `routes/physioRoutes.ts` → **`/api/physio`**:
+  `/:est/:clientId/packages[...]` e `/:est/:clientId/assessments[...]`.
+
+### 28.4. Odontologia — periograma + odontograma→plano (categoria odontologia)
+- Periograma: `models/Periogram.ts` (6 sítios/dente: PS, REC, sangramento,
+  mobilidade, furca), `controllers/periogramController.ts`,
+  `routes/periogramRoutes.ts` → **`/api/periogram`** (módulo `odontograma`).
+- Odontograma → plano de tratamento: só frontend (usa `treatmentPlanApi`), sem
+  rota nova.
+
+---
+
+## 29. Assinatura digital ICP-Brasil (Clicksign)
+
+**Status: validado no sandbox de ponta a ponta.** Padrão env-gated (vazio =
+desligado, no-op). O código assina o **PDF gerado no servidor** (seção 28.2).
+
+### Dependência nova
+```bash
+npm install pdfkit
+npm install -D @types/pdfkit
+```
+
+### Variáveis de ambiente (`.env`)
+```
+CLICKSIGN_API_TOKEN=<access token do painel Clicksign>
+CLICKSIGN_BASE_URL=https://sandbox.clicksign.com   # produção: https://clicksign.com
+CLICKSIGN_WEBHOOK_SECRET=<segredo gerado pelo Clicksign ao cadastrar webhook>
+CLICKSIGN_SIGN_AUTH=email                            # produção: icp_brasil
+```
+Vazio → `signingConfigured()` = false → nada é enviado.
+
+### Arquivos e fluxo
+- `config/env.ts` (`env.clicksign` + `signingConfigured()`), `app.ts`
+  (`express.json({ verify })` guarda `req.rawBody` p/ HMAC do webhook).
+- `utils/signing.ts` — `requestSignature()` (API v3): criar envelope
+  **`auto_close: true`** → subir PDF base64 → criar signatário → **2 requisitos**
+  (`{action:"agree",role:"sign"}` + `{action:"provide_evidence",auth: signAuth}`)
+  → PATCH `status:"running"` → **POST `/envelopes/{id}/notifications`** (dispara o
+  e-mail; a ativação sozinha NÃO envia). `getEnvelopeStatus` (fechado = assinado),
+  `getSignedFileUrl` (**`data[0].links.files.signed`**, URL do S3 que **expira em
+  ~5 min** → buscada na hora), `verifyWebhook`/`parseWebhookEvent`.
+- `models/EmittedDocument.ts` — `signatureStatus`
+  (`nao_assinado|pendente|assinado|falhou`), `signatureProvider`,
+  `signatureRequestId` (id do envelope), `signedUrl?`, `signedAt?`.
+- Rotas em `/api/documents`:
+  - `POST /:est/:clientId/sign` — gera o PDF e envia para assinatura.
+  - `GET /:est/:clientId/:docId/refresh-signature` — consulta o status (sem webhook).
+  - `GET /:est/:clientId/:docId/signed-pdf` — devolve `{ url }` fresca do PDF assinado.
+  - `POST /webhook/signing` — **público**, chamado pelo Clicksign (valida HMAC).
+
+### Pegadinhas aprendidas
+- E-mail do signatário tem que ser válido (o app deixa editar no formulário).
+- Ativar ≠ notificar (precisa do POST /notifications).
+- Sem `auto_close: true` o envelope nunca fecha.
+- Consultar demais → **429**; o front consulta 1 doc por vez a cada 6s, só pendentes.
+- Link do PDF assinado expira (~5 min) → buscar na hora, não guardar.
+- Usar **`links.files.signed`** (não `original`, que é a minuta sem assinatura;
+  nem `links.self`, que é endpoint da API e dá 401 no navegador).
+
+### Produção
+Trocar `CLICKSIGN_BASE_URL` para `https://clicksign.com`, o token para o de
+produção e `CLICKSIGN_SIGN_AUTH=icp_brasil` (cada profissional assina com o
+certificado ICP-Brasil dele). No sandbox o PDF assinado sai com a tarja
+"SEM VALOR LEGAL" — some em produção. Para status automático (sem clicar), ligar
+o webhook (`/api/documents/webhook/signing`) num servidor com URL pública.
+
+> Limpeza p/ produção: remover os `console.log("[webhook] ...")` de depuração em
+> `emittedDocumentController.ts`.

@@ -6,6 +6,10 @@ import { Establishment } from "../api/establishment";
 import { useAuth } from "../context/AuthContext";
 import { AuthModal } from "./AuthModal";
 import { ReminderModal } from "./ReminderModal";
+import {
+  AddressAutocomplete,
+  ResolvedAddress,
+} from "./AddressAutocomplete";
 
 // monta "YYYY-MM-DD" a partir da data LOCAL (sem converter para UTC)
 function toLocalYMD(d: Date) {
@@ -83,7 +87,12 @@ export function BookingModal({
   const [maxFutureDays, setMaxFutureDays] = useState(30);
 
   const [step, setStep] = useState<Step>("service");
-  const [serviceId, setServiceId] = useState<string>(initialServiceId ?? "");
+  // combo: varios servicos selecionados. serviceId (primeiro) fica derivado
+  // para compatibilidade com o resto do fluxo (recorrencia, lista de espera).
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    initialServiceId ? [initialServiceId] : []
+  );
+  const serviceId = selectedIds[0] ?? "";
 
   // servico veio travado pelo card: nao existe etapa de escolha de servico
   const serviceLocked = Boolean(initialServiceId);
@@ -118,11 +127,115 @@ export function BookingModal({
   const [recurringResult, setRecurringResult] =
     useState<RecurringResult | null>(null);
 
+  // atendimento a domicilio: modalidade + endereco/coordenadas do cliente
+  const [atHome, setAtHome] = useState(false);
+  const [homeCoords, setHomeCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [homeAddr, setHomeAddr] = useState<{
+    country: string;
+    state: string;
+    city: string;
+    neighborhood: string;
+    street: string;
+    number: string;
+  } | null>(null);
+
   const days = useMemo(() => nextDays(maxFutureDays + 1), [maxFutureDays]);
 
   const selectedService = services.find((s) => s._id === serviceId);
   const hasTeam = professionals.length > 0;
   const selectedPro = professionals.find((p) => p._id === professionalId);
+
+  // servicos selecionados (combo), na ordem escolhida, e os totais
+  const selectedServices = useMemo(
+    () =>
+      selectedIds
+        .map((id) => services.find((s) => s._id === id))
+        .filter((s): s is ServiceItem => Boolean(s)),
+    [selectedIds, services]
+  );
+  const isCombo = selectedServices.length > 1;
+  const totalDuration = selectedServices.reduce(
+    (sum, s) => sum + s.durationMinutes,
+    0
+  );
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  // sinal exigido (soma por servico); 0 = nenhum servico pede sinal
+  const depositForItem = (s: ServiceItem): number => {
+    const type = s.depositType || "none";
+    const val = s.depositValue || 0;
+    if (type === "none" || val <= 0) return 0;
+    const raw = type === "percent" ? (s.price * val) / 100 : val;
+    return Math.round(Math.min(raw, s.price) * 100) / 100;
+  };
+  const totalDeposit =
+    Math.round(
+      selectedServices.reduce((sum, s) => sum + depositForItem(s), 0) * 100
+    ) / 100;
+
+  // ---- atendimento a domicilio ----
+  const homeCfg = establishment.homeService;
+  // oferece quando TODOS os servicos escolhidos podem ser a domicilio
+  // (modo != "local"). Forcado quando algum servico e so domicilio.
+  const homeAvailable =
+    selectedServices.length > 0 &&
+    selectedServices.every((s) => (s.serviceMode || "local") !== "local");
+  const homeForced =
+    homeAvailable &&
+    selectedServices.some((s) => s.serviceMode === "domicilio");
+
+  // estimativa de deslocamento (linha reta x velocidade media), so p/ exibir.
+  // O valor definitivo e calculado no servidor ao agendar.
+  const travelEstimate = useMemo(() => {
+    if (!atHome || !homeCoords) return null;
+    const est = establishment.location?.coordinates;
+    if (!est || (est[0] === 0 && est[1] === 0)) return null;
+    const speed = homeCfg?.avgSpeedKmh || 25;
+    const baseFee = homeCfg?.baseFee || 0;
+    const feePerKm = homeCfg?.feePerKm || 0;
+    const maxRadiusKm = homeCfg?.maxRadiusKm || 0;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(homeCoords.lat - est[1]);
+    const dLon = toRad(homeCoords.lon - est[0]);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.sin(dLon / 2) ** 2 *
+        Math.cos(toRad(est[1])) *
+        Math.cos(toRad(homeCoords.lat));
+    const straight = 2 * R * Math.asin(Math.sqrt(a));
+    const km = Math.round(straight * 1.3 * 100) / 100;
+    const oneWay = Math.ceil((km / speed) * 60);
+    const fee = Math.round((baseFee + feePerKm * km * 2) * 100) / 100;
+    const overRadius = maxRadiusKm > 0 && km > maxRadiusKm;
+    return { km, oneWay, fee, overRadius };
+  }, [atHome, homeCoords, homeCfg, establishment.location]);
+
+  // força/limpa a modalidade conforme a disponibilidade
+  useEffect(() => {
+    if (homeForced) setAtHome(true);
+    else if (!homeAvailable) setAtHome(false);
+  }, [homeForced, homeAvailable]);
+
+  const applyHomeAddress = (addr: ResolvedAddress) => {
+    setHomeAddr({
+      country: addr.country || "Brasil",
+      state: addr.state,
+      city: addr.city,
+      neighborhood: addr.neighborhood,
+      street: addr.street,
+      number: addr.number || "",
+    });
+    setHomeCoords({ lat: addr.lat, lon: addr.lon });
+  };
+  // a domicilio: precisa do NUMERO do endereco (local exato do atendimento)
+  const homeNumberOk = atHome
+    ? !!homeAddr && homeAddr.number.trim() !== ""
+    : true;
+  // a domicilio fora do raio: bloqueia a confirmacao
+  const homeBlocked = atHome && travelEstimate?.overRadius === true;
 
   // serviços visíveis: filtrados pelo profissional escolhido
   const visibleServices = useMemo(() => {
@@ -184,17 +297,38 @@ export function BookingModal({
   }, [establishment._id, serviceLocked]);
 
   useEffect(() => {
-    if (step !== "slot" || !serviceId || !date) return;
+    if (step !== "slot" || selectedIds.length === 0 || !date) return;
+    // a domicilio: sem endereco/coordenadas/numero ainda, nao busca horarios
+    if (atHome && (!homeCoords || !homeNumberOk)) {
+      setSlots([]);
+      setLoadingSlots(false);
+      return;
+    }
     setLoadingSlots(true);
     setSelectedSlot(null);
     setWaitlistJoined(false);
     setError(null);
-    scheduleApi
-      .freeSlots(serviceId, date, professionalId)
+    // deslocamento (a domicilio) reserva a agenda ao redor do horario
+    const home =
+      atHome && homeCoords
+        ? { lat: homeCoords.lat, lng: homeCoords.lon }
+        : null;
+    // combo (>1 servico): usa combo-slots (soma das duracoes); senao, freeSlots
+    const req = isCombo
+      ? scheduleApi.comboSlots(
+          establishment._id,
+          selectedIds,
+          date,
+          professionalId,
+          home
+        )
+      : scheduleApi.freeSlots(serviceId, date, professionalId, home);
+    req
       .then((res) => setSlots(res.slots))
       .catch(() => setError("Não foi possível carregar os horários."))
       .finally(() => setLoadingSlots(false));
-  }, [step, serviceId, date, professionalId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selectedIds, date, professionalId, atHome, homeCoords, homeNumberOk]);
 
   // executa a acao pendente assim que o usuario estiver autenticado
   useEffect(() => {
@@ -213,10 +347,11 @@ export function BookingModal({
     setStep(serviceLocked ? "slot" : "service");
   };
 
-  const pickService = (id: string) => {
-    setServiceId(id);
-    setStep("slot");
-  };
+  // combo: alterna um servico na selecao (marca/desmarca)
+  const toggleService = (id: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
 
   const goBack = () => {
     if (step === "slot") {
@@ -265,7 +400,7 @@ export function BookingModal({
     setBooking(true);
     setError(null);
     try {
-      if (recurring) {
+      if (recurring && !isCombo && !atHome) {
         const res = await scheduleApi.createRecurring({
           serviceId,
           scheduledAt: selectedSlot,
@@ -282,11 +417,17 @@ export function BookingModal({
         });
       } else {
         await scheduleApi.createBooking({
-          serviceId,
+          serviceIds: selectedIds,
           scheduledAt: selectedSlot,
           notes: notes.trim() || undefined,
           professionalId: professionalId || undefined,
           clientReminderMinutes: reminderMinutes,
+          atHome,
+          homeAddress: atHome && homeAddr ? homeAddr : undefined,
+          homeCoords:
+            atHome && homeCoords
+              ? { lat: homeCoords.lat, lng: homeCoords.lon }
+              : undefined,
         });
       }
       setShowReminder(false);
@@ -479,32 +620,94 @@ export function BookingModal({
                       : "Este estabelecimento ainda não cadastrou serviços."}
                   </p>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {visibleServices.map((s) => (
-                      <button
-                        key={s._id}
-                        onClick={() => pickService(s._id)}
-                        className="group flex flex-col rounded-xl border border-ink/10 bg-white p-4 text-left transition hover:border-teal-500 hover:shadow-sm"
-                      >
-                        <h3 className="font-medium text-ink group-hover:text-teal-600">
-                          {s.title}
-                        </h3>
-                        {s.description && (
-                          <p className="mt-1 line-clamp-2 text-sm text-ink/60">
-                            {s.description}
+                  <>
+                    <p className="mb-3 text-sm text-ink/50">
+                      Selecione um ou mais serviços.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {visibleServices.map((s) => {
+                        const on = selectedIds.includes(s._id);
+                        return (
+                          <button
+                            key={s._id}
+                            onClick={() => toggleService(s._id)}
+                            className={`group flex flex-col rounded-xl border p-4 text-left transition hover:shadow-sm ${
+                              on
+                                ? "border-teal-500 bg-teal-500/5"
+                                : "border-ink/10 bg-white hover:border-teal-500"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="font-medium text-ink group-hover:text-teal-600">
+                                {s.title}
+                              </h3>
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${
+                                  on
+                                    ? "border-teal-500 bg-teal-500 text-white"
+                                    : "border-ink/25 text-transparent"
+                                }`}
+                              >
+                                ✓
+                              </span>
+                            </div>
+                            {s.description && (
+                              <p className="mt-1 line-clamp-2 text-sm text-ink/60">
+                                {s.description}
+                              </p>
+                            )}
+                            <div className="mt-3 flex items-center justify-between">
+                              <span className="font-semibold text-ink">
+                                R$ {s.price.toFixed(2)}
+                              </span>
+                              <span className="text-xs text-ink/50">
+                                {s.durationMinutes} min
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedServices.length > 0 && (
+                      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-sand/60 px-4 py-3">
+                        <div className="min-w-0 text-sm">
+                          <p className="font-medium text-ink">
+                            {selectedServices.length} serviço
+                            {selectedServices.length !== 1 ? "s" : ""} ·{" "}
+                            {totalDuration} min
                           </p>
-                        )}
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="font-semibold text-ink">
-                            R$ {s.price.toFixed(2)}
-                          </span>
-                          <span className="text-xs text-ink/50">
-                            {s.durationMinutes} min
-                          </span>
+                          <p className="truncate text-xs text-ink/50">
+                            {selectedServices.map((s) => s.title).join(" + ")}
+                          </p>
                         </div>
-                      </button>
-                    ))}
-                  </div>
+                        <span className="shrink-0 font-semibold text-ink">
+                          R$ {totalPrice.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    {totalDeposit > 0 && (
+                      <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Este agendamento pede um{" "}
+                        <span className="font-semibold">
+                          sinal de R$ {totalDeposit.toFixed(2)}
+                        </span>{" "}
+                        para reduzir faltas. O valor é acertado com o
+                        estabelecimento e abatido do total.
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() =>
+                        selectedServices.length > 0 && setStep("slot")
+                      }
+                      disabled={selectedServices.length === 0}
+                      className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
+                    >
+                      Continuar
+                    </button>
+                  </>
                 )}
               </>
             )}
@@ -512,20 +715,132 @@ export function BookingModal({
             {/* ETAPA 2 — data + horários */}
             {step === "slot" && (
               <div className="space-y-5">
-                {selectedService && (
-                  <div className="flex items-center justify-between rounded-xl bg-sand/60 px-4 py-3">
-                    <div>
+                {selectedServices.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-sand/60 px-4 py-3">
+                    <div className="min-w-0">
                       <p className="font-medium text-ink">
-                        {selectedService.title}
+                        {selectedServices.map((s) => s.title).join(" + ")}
                       </p>
                       <p className="text-xs text-ink/50">
-                        {selectedService.durationMinutes} min
+                        {totalDuration} min
                         {selectedPro && <> · com {selectedPro.name}</>}
                       </p>
                     </div>
-                    <span className="font-semibold text-ink">
-                      R$ {selectedService.price.toFixed(2)}
+                    <span className="shrink-0 font-semibold text-ink">
+                      R$ {totalPrice.toFixed(2)}
                     </span>
+                  </div>
+                )}
+
+                {/* modalidade: no estabelecimento x a domicílio */}
+                {homeAvailable && (
+                  <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
+                    <span className="mb-2 block text-sm font-medium text-ink/70">
+                      Onde você quer ser atendido?
+                    </span>
+                    {homeForced ? (
+                      <p className="text-sm text-ink/60">
+                        Este atendimento é a domicílio.
+                      </p>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAtHome(false)}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                            !atHome
+                              ? "border-teal-500 bg-teal-500 text-white"
+                              : "border-ink/15 bg-white text-ink/70 hover:border-teal-500"
+                          }`}
+                        >
+                          No estabelecimento
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAtHome(true)}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                            atHome
+                              ? "border-teal-500 bg-teal-500 text-white"
+                              : "border-ink/15 bg-white text-ink/70 hover:border-teal-500"
+                          }`}
+                        >
+                          A domicílio
+                        </button>
+                      </div>
+                    )}
+
+                    {atHome && (
+                      <div className="mt-3">
+                        {homeAddr ? (
+                          <div className="space-y-2 text-sm">
+                            <p className="text-ink/70">
+                              {[
+                                homeAddr.street,
+                                homeAddr.neighborhood,
+                                `${homeAddr.city}/${homeAddr.state}`,
+                              ]
+                                .filter(Boolean)
+                                .join(" - ")}
+                            </p>
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium text-ink/70">
+                                Número *
+                              </span>
+                              <input
+                                value={homeAddr.number}
+                                onChange={(e) =>
+                                  setHomeAddr({
+                                    ...homeAddr,
+                                    number: e.target.value,
+                                  })
+                                }
+                                placeholder="Ex: 1373 (ou S/N)"
+                                className="h-10 w-40 rounded-lg border border-ink/15 px-3 outline-none focus:border-teal-500"
+                              />
+                            </label>
+                            {!homeAddr.number.trim() && (
+                              <p className="text-xs font-medium text-amber-500 dark:text-amber-400">
+                                Informe o número para o endereço exato do
+                                atendimento.
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setHomeAddr(null);
+                                setHomeCoords(null);
+                              }}
+                              className="text-xs font-medium text-teal-600 hover:underline"
+                            >
+                              Trocar endereço
+                            </button>
+                          </div>
+                        ) : (
+                          <AddressAutocomplete
+                            onResolved={applyHomeAddress}
+                            label="Endereço do atendimento"
+                            hint="Digite a rua e escolha na lista; depois informe o número."
+                          />
+                        )}
+
+                        {travelEstimate && !travelEstimate.overRadius && (
+                          <p className="mt-2 text-xs text-ink/60">
+                            Deslocamento ~{travelEstimate.oneWay} min cada trecho
+                            · taxa estimada{" "}
+                            <span className="font-semibold">
+                              R$ {travelEstimate.fee.toFixed(2)}
+                            </span>{" "}
+                            (confirmada ao agendar).
+                          </p>
+                        )}
+                        {travelEstimate?.overRadius && (
+                          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                            Endereço fora da área de atendimento (~
+                            {travelEstimate.km.toFixed(1)} km).
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -561,7 +876,12 @@ export function BookingModal({
                   <label className="mb-1.5 block text-sm font-medium text-ink">
                     Horários disponíveis
                   </label>
-                  {loadingSlots ? (
+                  {atHome && (!homeCoords || !homeNumberOk) ? (
+                    <p className="rounded-xl border border-dashed border-ink/20 p-6 text-center text-sm text-ink/50">
+                      Informe o endereço e o número do atendimento acima para
+                      ver os horários disponíveis.
+                    </p>
+                  ) : loadingSlots ? (
                     <div className="flex items-center gap-2 py-6 text-ink/50">
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-teal-500" />
                       Buscando horários...
@@ -610,8 +930,8 @@ export function BookingModal({
                   )}
                 </div>
 
-                {/* Repetir (recorrência) */}
-                {selectedSlot && (
+                {/* Repetir (recorrência) — indisponível em combo e a domicílio */}
+                {selectedSlot && !isCombo && !atHome && (
                   <div className="rounded-xl border border-ink/10 p-4">
                     <label className="flex items-center justify-between gap-3">
                       <div>
@@ -711,35 +1031,44 @@ export function BookingModal({
         {/* Rodapé */}
         {!done && step === "slot" && (
           <div className="border-t border-ink/10 p-5">
-            {selectedSlot && selectedService && (
-              <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="text-ink/60">
-                  {selectedService.title}
+            {selectedSlot && selectedServices.length > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-ink/60">
+                  {selectedServices.map((s) => s.title).join(" + ")}
                   {selectedPro && <> · {selectedPro.name}</>} ·{" "}
                   <span className="capitalize">
                     {days.find((d) => d.value === date)?.day}
                   </span>{" "}
                   às {slotLabel(selectedSlot)}
-                  {recurring && (
+                  {recurring && !isCombo && (
                     <> · {repetitions}x {frequency}</>
                   )}
                 </span>
-                <span className="font-semibold text-ink">
+                <span className="shrink-0 font-semibold text-ink">
                   R${" "}
                   {(
-                    selectedService.price * (recurring ? repetitions : 1)
+                    totalPrice * (recurring && !isCombo ? repetitions : 1) +
+                    (atHome && travelEstimate ? travelEstimate.fee : 0)
                   ).toFixed(2)}
                 </span>
               </div>
             )}
+            {selectedSlot && atHome && travelEstimate && (
+              <p className="mb-3 text-xs text-ink/50">
+                Inclui taxa de deslocamento estimada de R${" "}
+                {travelEstimate.fee.toFixed(2)} (confirmada ao agendar).
+              </p>
+            )}
             <button
               onClick={openReminder}
-              disabled={!selectedSlot || booking}
+              disabled={
+                !selectedSlot || booking || homeBlocked || !homeNumberOk
+              }
               className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
             >
               {booking
                 ? "Agendando..."
-                : recurring
+                : recurring && !isCombo
                   ? `Confirmar ${repetitions} agendamentos`
                   : "Confirmar agendamento"}
             </button>
@@ -766,7 +1095,7 @@ export function BookingModal({
           }}
           saving={booking}
           confirmLabel={
-            recurring
+            recurring && !isCombo
               ? `Confirmar ${repetitions} agendamentos`
               : "Confirmar agendamento"
           }

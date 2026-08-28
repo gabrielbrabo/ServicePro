@@ -122,13 +122,36 @@ export const getReport = async (
     }
     const { est, isOwner, myProfessionalId } = access;
 
-    // periodo: padrao = mes atual ate agora
-    const to = req.query.to ? new Date(String(req.query.to)) : new Date();
-    to.setHours(23, 59, 59, 999);
-    const from = req.query.from
-      ? new Date(String(req.query.from))
-      : new Date(to.getFullYear(), to.getMonth(), 1);
-    from.setHours(0, 0, 0, 0);
+    // periodo: padrao = mes atual ate agora.
+    // "YYYY-MM-DD" precisa ser interpretado como dia LOCAL. new Date("YYYY-MM-DD")
+    // parseia como meia-noite UTC, o que no fuso do servidor (UTC-3) cai no dia
+    // ANTERIOR — e fazia o "ate" terminar ontem, excluindo os atendimentos
+    // concluidos hoje. Aqui montamos a data pelos componentes, em hora local.
+    const parseLocalDay = (s: string, endOfDay: boolean): Date | null => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (!m) return null;
+      return new Date(
+        Number(m[1]),
+        Number(m[2]) - 1,
+        Number(m[3]),
+        endOfDay ? 23 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 999 : 0
+      );
+    };
+
+    const toParsed = req.query.to
+      ? parseLocalDay(String(req.query.to), true)
+      : null;
+    const to = toParsed || new Date();
+    if (!toParsed) to.setHours(23, 59, 59, 999);
+
+    const fromParsed = req.query.from
+      ? parseLocalDay(String(req.query.from), false)
+      : null;
+    const from = fromParsed || new Date(to.getFullYear(), to.getMonth(), 1);
+    if (!fromParsed) from.setHours(0, 0, 0, 0);
 
     const cfg = await CommissionSetting.findOne({
       establishment: establishmentId,
@@ -165,7 +188,7 @@ export const getReport = async (
     }
 
     const bookings = await Booking.find(query).select(
-      "professional service payment.amount"
+      "professional service items payment.amount"
     );
 
     // nome de cada profissional (subdoc do estabelecimento)
@@ -187,8 +210,19 @@ export const getReport = async (
 
     for (const b of bookings) {
       const amount = b.payment?.amount || 0;
-      const pct = rateOf.get(String(b.service)) || 0;
-      const commission = (amount * pct) / 100;
+
+      // combo: soma a comissao item a item (cada servico com sua taxa);
+      // servico unico (items vazio): taxa do servico sobre o valor total.
+      let commission = 0;
+      if (b.items && b.items.length > 0) {
+        for (const it of b.items) {
+          const pct = rateOf.get(String(it.service)) || 0;
+          commission += (it.price * pct) / 100;
+        }
+      } else {
+        const pct = rateOf.get(String(b.service)) || 0;
+        commission = (amount * pct) / 100;
+      }
 
       const pid = b.professional ? String(b.professional) : null;
       const keyId = pid || "__none__";

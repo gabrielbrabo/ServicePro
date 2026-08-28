@@ -13,9 +13,23 @@ import {
 } from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
 
+// categorias em destaque quando a lista esta recolhida (as demais aparecem no
+// "Ver mais categorias"). Ordem aqui = ordem de exibicao.
+const MAIN_SLUGS = [
+  "barbearia",
+  "salao-de-beleza",
+  "manicure-pedicure",
+  "estetica-automotiva",
+  "odontologia",
+  "psicologia",
+  "assistencia-tecnica",
+  "refrigeracao",
+];
+
 export function SearchPage() {
   const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showAllCats, setShowAllCats] = useState(false);
 
   // filtros
   const [activeCat, setActiveCat] = useState("");
@@ -113,13 +127,32 @@ export function SearchPage() {
   const geoActive = Boolean(geoCoords && radiusKm);
   const hasAnyFilter = activeCat || name || service || city || geoActive;
 
+  // categorias principais (as do MAIN_SLUGS que existem); se nenhuma casar,
+  // cai nas 8 primeiras. Recolhido mostra so essas; "Ver mais" mostra todas.
+  const mainCategories = MAIN_SLUGS.map((slug) =>
+    categories.find((c) => c.slug === slug)
+  ).filter((c): c is Category => Boolean(c));
+  const collapsedCategories =
+    mainCategories.length > 0 ? mainCategories : categories.slice(0, 8);
+  const visibleCategories = showAllCats ? categories : collapsedCategories;
+  // se a categoria selecionada nao esta entre as visiveis, mostra-a tambem
+  const activeHidden =
+    !showAllCats &&
+    activeCat &&
+    !visibleCategories.some((c) => c._id === activeCat);
+  const activeCategory = activeHidden
+    ? categories.find((c) => c._id === activeCat)
+    : undefined;
+  const canToggleCats = categories.length > collapsedCategories.length;
+
   return (
     <PageContainer>
       <h1 className="font-display text-3xl font-bold text-ink">
-        Encontre e agende
+        Explore e agende
       </h1>
       <p className="mt-1 text-ink/60">
-        Busque por estabelecimento, serviço ou localização.
+        Encontre o serviço que você precisa e agende com os melhores
+        estabelecimentos perto de você.
       </p>
 
       {/* Campos de busca */}
@@ -204,7 +237,17 @@ export function SearchPage() {
         >
           Todas
         </button>
-        {categories.map((c) => (
+        {/* categoria selecionada que esta escondida no recolhido: mostra o chip */}
+        {activeCategory && (
+          <button
+            key={activeCategory._id}
+            onClick={() => setActiveCat(activeCategory._id)}
+            className="rounded-full bg-teal-500 px-4 py-2 text-sm font-medium text-white transition"
+          >
+            {activeCategory.icon} {activeCategory.name}
+          </button>
+        )}
+        {visibleCategories.map((c) => (
           <button
             key={c._id}
             onClick={() => setActiveCat(c._id)}
@@ -217,6 +260,14 @@ export function SearchPage() {
             {c.icon} {c.name}
           </button>
         ))}
+        {canToggleCats && (
+          <button
+            onClick={() => setShowAllCats((v) => !v)}
+            className="rounded-full px-4 py-2 text-sm font-semibold text-teal-600 ring-1 ring-teal-300 transition hover:bg-teal-50"
+          >
+            {showAllCats ? "Ver menos" : "Ver mais categorias"}
+          </button>
+        )}
       </div>
 
       {/* Cabeçalho dos resultados */}

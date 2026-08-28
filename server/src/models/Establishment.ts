@@ -50,6 +50,16 @@ export interface IEstablishment extends Document {
   professionals: Types.DocumentArray<IProfessionalDoc>;
   active: boolean;
   cashAutoEntry: boolean; // lanca entrada no caixa ao concluir servico
+  // atendimento a domicilio (padrao do estabelecimento; cada servico pode
+  // sobrescrever a taxa). enabled=false => nenhum servico atende a domicilio,
+  // mesmo que o servico esteja marcado como "ambos/domicilio".
+  homeService: {
+    enabled: boolean;
+    avgSpeedKmh: number; // velocidade media p/ estimar o tempo de deslocamento
+    baseFee: number; // taxa fixa de deslocamento (R$)
+    feePerKm: number; // taxa por km rodado (ida e volta) (R$)
+    maxRadiusKm: number; // distancia maxima atendida (0 = sem limite)
+  };
   // nota agregada (sistema de avaliacao). Recalculados a cada avaliacao no
   // reviewController; ficam no proprio doc para os cards/busca/perfil
   // exibirem a nota sem consultar a colecao de reviews.
@@ -134,6 +144,14 @@ const establishmentSchema = new Schema<IEstablishment>(
     professionals: { type: [professionalSchema], default: [] },
     active: { type: Boolean, default: true },
     cashAutoEntry: { type: Boolean, default: true },
+    // atendimento a domicilio (padrao do estabelecimento)
+    homeService: {
+      enabled: { type: Boolean, default: false },
+      avgSpeedKmh: { type: Number, default: 25, min: 1 },
+      baseFee: { type: Number, default: 0, min: 0 },
+      feePerKm: { type: Number, default: 0, min: 0 },
+      maxRadiusKm: { type: Number, default: 0, min: 0 },
+    },
     // nota agregada do sistema de avaliacao
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
     ratingCount: { type: Number, default: 0, min: 0 },

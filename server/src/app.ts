@@ -29,6 +29,18 @@ import emittedDocumentRoutes from "./routes/emittedDocumentRoutes";
 import commissionRoutes from "./routes/commissionRoutes";
 import auditRoutes from "./routes/auditRoutes";
 import convenioRoutes from "./routes/convenioRoutes";
+import beautyRecordRoutes from "./routes/beautyRecordRoutes";
+import beautyFormulaRoutes from "./routes/beautyFormulaRoutes";
+import beautyBeforeAfterRoutes from "./routes/beautyBeforeAfterRoutes";
+import beautyPackageRoutes from "./routes/beautyPackageRoutes";
+import loyaltyRoutes from "./routes/loyaltyRoutes";
+import consentRoutes from "./routes/consentRoutes";
+import beautyTattooRoutes from "./routes/beautyTattooRoutes";
+import aestheticRoutes from "./routes/aestheticRoutes";
+import browLashRoutes from "./routes/browLashRoutes";
+import sterilizationRoutes from "./routes/sterilizationRoutes";
+import massageRoutes from "./routes/massageRoutes";
+import serviceOrderRoutes from "./routes/serviceOrderRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -72,6 +84,18 @@ export const createApp = (): Application => {
   app.use("/api/commissions", commissionRoutes);
   app.use("/api/audit", auditRoutes);
   app.use("/api/convenios", convenioRoutes);
+  app.use("/api/beauty-records", beautyRecordRoutes);
+  app.use("/api/beauty-formulas", beautyFormulaRoutes);
+  app.use("/api/beauty-before-after", beautyBeforeAfterRoutes);
+  app.use("/api/beauty-packages", beautyPackageRoutes);
+  app.use("/api/loyalty", loyaltyRoutes);
+  app.use("/api/consents", consentRoutes);
+  app.use("/api/beauty-tattoo", beautyTattooRoutes);
+  app.use("/api/beauty-aesthetic", aestheticRoutes);
+  app.use("/api/beauty-brows", browLashRoutes);
+  app.use("/api/sterilization", sterilizationRoutes);
+  app.use("/api/beauty-massage", massageRoutes);
+  app.use("/api/service-orders", serviceOrderRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -3,6 +3,7 @@ import { formatDateShort, formatTime, formatPrice } from "../lib/time";
 import { Avatar } from "./Avatar";
 import { EstablishmentAvatar } from "./EstablishmentAvatar";
 import { MiniMap } from "./MiniMap";
+import { RouteMap } from "./RouteMap";
 
 const STATUS_LABEL: Record<Booking["status"], string> = {
   pendente: "Pendente",
@@ -70,6 +71,15 @@ export function BookingDetailModal({
     (coords[0] !== 0 || coords[1] !== 0);
   const lon = hasCoords ? coords![0] : 0;
   const lat = hasCoords ? coords![1] : 0;
+
+  // atendimento a domicilio: coords do cliente (local do serviço)
+  const hasHome =
+    b.atHome === true && b.homeLat != null && b.homeLng != null;
+  // rota saida (estabelecimento) -> servico (cliente) no OSM
+  const routeUrl =
+    hasCoords && hasHome
+      ? `https://www.openstreetmap.org/directions?route=${lat}%2C${lon}%3B${b.homeLat}%2C${b.homeLng}`
+      : "";
 
   const durationLabel = b.service?.durationMinutes
     ? `${b.service.durationMinutes} min`
@@ -158,8 +168,76 @@ export function BookingDetailModal({
             </div>
           )}
 
-          {/* Lado CLIENTE: endereco + mapa do estabelecimento */}
-          {isClient && (
+          {/* Atendimento a domicílio: endereço do cliente + rota saída→serviço */}
+          {b.atHome && (
+            <div className="space-y-3">
+              <div className="rounded-xl bg-teal-500/10 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-100">
+                  Atendimento a domicílio
+                </p>
+                <p className="mt-2 text-xs font-semibold text-ink/50">
+                  Local de saída (estabelecimento)
+                </p>
+                <p className="text-sm text-ink/80">
+                  {b.establishment?.name}
+                  {b.establishment?.address
+                    ? ` — ${formatAddress(b.establishment.address)}`
+                    : ""}
+                </p>
+                <p className="mt-2 text-xs font-semibold text-ink/50">
+                  Local do serviço (cliente)
+                </p>
+                <p className="text-sm text-ink/80">
+                  {b.address || "Endereço não informado"}
+                </p>
+                <p className="mt-2 text-xs text-ink/60">
+                  Deslocamento ~{b.travelMinutes ?? 0} min cada trecho
+                  {b.travelKm ? ` · ${b.travelKm.toFixed(1)} km` : ""}
+                  {b.travelFee ? ` · taxa ${formatPrice(b.travelFee)}` : ""}
+                </p>
+                {!!b.extraMinutes && b.extraMinutes > 0 && (
+                  <p className="mt-1 text-xs font-medium text-amber-500 dark:text-amber-400">
+                    + {b.extraMinutes} min de tempo extra adicionados.
+                  </p>
+                )}
+              </div>
+
+              {/* mapa com as duas marcações (saída x serviço) */}
+              {hasCoords && hasHome ? (
+                <RouteMap
+                  from={{ lat, lon, label: b.establishment?.name || "Saída" }}
+                  to={{
+                    lat: b.homeLat as number,
+                    lon: b.homeLng as number,
+                    label: "Local do serviço",
+                  }}
+                  heightClass="h-64"
+                />
+              ) : hasHome ? (
+                <MiniMap
+                  lat={b.homeLat as number}
+                  lon={b.homeLng as number}
+                  label="Local do serviço"
+                />
+              ) : hasCoords ? (
+                <MiniMap lat={lat} lon={lon} label="Local de saída" />
+              ) : null}
+
+              {routeUrl && (
+                <a
+                  href={routeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-lg bg-teal-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-teal-600"
+                >
+                  Abrir rota no mapa (saída → serviço)
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Lado CLIENTE: endereco + mapa do estabelecimento (não domicílio) */}
+          {isClient && !b.atHome && (
             <>
               {b.establishment?.address && (
                 <Row

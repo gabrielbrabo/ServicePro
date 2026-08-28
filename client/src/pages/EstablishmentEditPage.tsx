@@ -28,6 +28,14 @@ export function EstablishmentEditPage() {
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(
     null
   );
+  // atendimento a domicilio (padrao do estabelecimento)
+  const [home, setHome] = useState({
+    enabled: false,
+    avgSpeedKmh: "25",
+    baseFee: "0",
+    feePerKm: "0",
+    maxRadiusKm: "0",
+  });
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -53,6 +61,14 @@ export function EstablishmentEditPage() {
           neighborhood: est.address?.neighborhood || "",
           street: est.address?.street || "",
           number: est.address?.number || "",
+        });
+        const h = est.homeService;
+        setHome({
+          enabled: !!h?.enabled,
+          avgSpeedKmh: String(h?.avgSpeedKmh ?? 25),
+          baseFee: String(h?.baseFee ?? 0),
+          feePerKm: String(h?.feePerKm ?? 0),
+          maxRadiusKm: String(h?.maxRadiusKm ?? 0),
         });
       })
       .catch(() => setNotFound(true))
@@ -128,6 +144,13 @@ export function EstablishmentEditPage() {
               },
             }
           : {}),
+        homeService: {
+          enabled: home.enabled,
+          avgSpeedKmh: Math.max(1, Number(home.avgSpeedKmh) || 25),
+          baseFee: Math.max(0, Number(home.baseFee) || 0),
+          feePerKm: Math.max(0, Number(home.feePerKm) || 0),
+          maxRadiusKm: Math.max(0, Number(home.maxRadiusKm) || 0),
+        },
       });
       // atualiza a lista/estado do painel
       refresh();
@@ -318,6 +341,101 @@ export function EstablishmentEditPage() {
                 />
               </label>
             </div>
+          </div>
+
+          {/* Atendimento a domicílio (padrão) */}
+          <div className="rounded-xl border border-ink/10 bg-sand/50 p-4">
+            <label className="flex items-center justify-between gap-3">
+              <span>
+                <span className="block text-sm font-semibold text-ink/70">
+                  Atendimento a domicílio
+                </span>
+                <span className="block text-xs text-ink/50">
+                  Permite marcar serviços na casa do cliente. O deslocamento
+                  (ida e volta) é reservado na agenda automaticamente.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={home.enabled}
+                onChange={(e) =>
+                  setHome({ ...home, enabled: e.target.checked })
+                }
+                className="h-5 w-5 shrink-0 accent-teal-500"
+              />
+            </label>
+
+            {home.enabled && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Velocidade média (km/h)
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={home.avgSpeedKmh}
+                    onChange={(e) =>
+                      setHome({ ...home, avgSpeedKmh: e.target.value })
+                    }
+                    className={inputClass}
+                  />
+                  <span className="mt-1 block text-xs text-ink/40">
+                    Usada para estimar o tempo de deslocamento.
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Raio máximo (km)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={home.maxRadiusKm}
+                    onChange={(e) =>
+                      setHome({ ...home, maxRadiusKm: e.target.value })
+                    }
+                    className={inputClass}
+                  />
+                  <span className="mt-1 block text-xs text-ink/40">
+                    0 = sem limite de distância.
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Taxa fixa de deslocamento (R$)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={home.baseFee}
+                    onChange={(e) =>
+                      setHome({ ...home, baseFee: e.target.value })
+                    }
+                    className={inputClass}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Taxa por km rodado (R$)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={home.feePerKm}
+                    onChange={(e) =>
+                      setHome({ ...home, feePerKm: e.target.value })
+                    }
+                    className={inputClass}
+                  />
+                  <span className="mt-1 block text-xs text-ink/40">
+                    Cobrada sobre a distância de ida e volta.
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           {error && (

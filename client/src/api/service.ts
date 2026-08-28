@@ -10,6 +10,9 @@ export interface ServiceItem {
   durationMinutes: number;
   photos: string[];
   professionals?: string[]; // ids de quem faz; vazio/ausente = todos
+  depositType?: "none" | "percent" | "fixed"; // sinal exigido ao agendar
+  depositValue?: number; // % (percent) ou R$ (fixed)
+  serviceMode?: "local" | "domicilio" | "ambos"; // modalidade de atendimento
   active: boolean;
 }
 

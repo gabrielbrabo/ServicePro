@@ -25,8 +25,11 @@ export type PanelTab =
   | "comissoes"
   | "avaliacoes"
   | "prontuario"
+  | "ficha"
   | "convenio"
-  | "auditoria";
+  | "auditoria"
+  | "esterilizacao"
+  | "ordem_servico";
 
 const LAST_KEY = "servicepro:lastEstablishmentId";
 

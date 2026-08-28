@@ -13,6 +13,12 @@ export type ModuleKey =
   | "avaliacoes"
   | "galeria"
   | "produtos"
+  | "ficha"
+  | "formulas"
+  | "antes_depois"
+  | "pacotes"
+  | "fidelidade"
+  | "consentimento"
   | "prontuario"
   | "anamnese"
   | "plano_tratamento"
@@ -20,7 +26,16 @@ export type ModuleKey =
   | "convenio"
   | "auditoria"
   | "odontograma"
-  | "fisioterapia";
+  | "fisioterapia"
+  | "tattoo"
+  | "estetica"
+  | "visagismo"
+  | "esterilizacao"
+  | "massagem"
+  | "ordem_servico"
+  | "veiculo"
+  | "equipamento"
+  | "dedetizacao";
 
 export interface SegmentDef {
   key: SegmentKey;
@@ -47,21 +62,30 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
     key: "geral",
     label: "Serviços gerais",
     description: "Lava-rápido, assistência e outros serviços por agendamento.",
-    priceMonthly: 29,
-    modules: [...COMMON],
+    priceMonthly: 39,
+    modules: [...COMMON, "ordem_servico"],
   },
   beleza: {
     key: "beleza",
     label: "Beleza e bem-estar",
     description: "Barbearia, salão, estética, sobrancelha, etc.",
-    priceMonthly: 39,
-    modules: [...COMMON, "produtos"],
+    priceMonthly: 69,
+    modules: [
+      ...COMMON,
+      "produtos",
+      "ficha",
+      "formulas",
+      "antes_depois",
+      "pacotes",
+      "fidelidade",
+      "consentimento",
+    ],
   },
   saude: {
     key: "saude",
     label: "Saúde",
     description: "Clínicas, odontologia e fisioterapia.",
-    priceMonthly: 89,
+    priceMonthly: 149,
     modules: [
       ...COMMON,
       "produtos",
@@ -79,6 +103,20 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
 export const CATEGORY_EXTRA_MODULES: Record<string, ModuleKey[]> = {
   odontologia: ["odontograma"],
   fisioterapia: ["fisioterapia"],
+  tatuagem: ["tattoo"],
+  estetica: ["estetica"],
+  "sobrancelha-cilios": ["visagismo"],
+  "manicure-pedicure": ["esterilizacao"],
+  massagem: ["massagem"],
+  // veiculos (servicos gerais)
+  "oficina-mecanica": ["veiculo"],
+  borracharia: ["veiculo"],
+  "estetica-automotiva": ["veiculo"],
+  "lava-rapido": ["veiculo"],
+  // assistencia tecnica
+  "assistencia-tecnica": ["equipamento"],
+  // dedetizacao
+  dedetizacao: ["dedetizacao"],
 };
 
 // Mapa fallback slug -> area, usado quando a categoria AINDA nao tem `segment`
@@ -93,9 +131,20 @@ export const CATEGORY_SEGMENT: Record<string, SegmentKey> = {
   massagem: "beleza",
   tatuagem: "beleza",
   "sobrancelha-cilios": "beleza",
+  depilacao: "beleza",
+  "maquiagem-penteados": "beleza",
+  bronzeamento: "beleza",
   clinica: "saude",
   odontologia: "saude",
   fisioterapia: "saude",
+  psicologia: "saude",
+  nutricao: "saude",
+  fonoaudiologia: "saude",
+  dermatologia: "saude",
+  podologia: "saude",
+  enfermagem: "saude",
+  acupuntura: "saude",
+  quiropraxia: "saude",
   "lava-rapido": "geral",
 };
 

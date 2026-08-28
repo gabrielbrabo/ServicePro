@@ -10,7 +10,7 @@ import { Avatar } from "./Avatar";
 import { useTheme } from "../lib/theme";
 
 const links = [
-  { to: "/buscar", label: "Buscar" },
+  { to: "/buscar", label: "Explorar" },
   { to: "/agendamentos", label: "Agendamentos" },
   { to: "/painel", label: "Painel Pro" },
 ];

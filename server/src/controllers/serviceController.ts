@@ -52,6 +52,55 @@ const sanitizeProfessionals = async (
   return { ok: invalid.length === 0, ids, invalid };
 };
 
+// Normaliza a lista de duracoes por profissional: mantem apenas profissionais
+// DAQUELE estabelecimento e duracoes positivas. undefined => nao mexe no campo.
+const sanitizeProDurations = async (
+  establishmentId: string,
+  raw: unknown
+): Promise<{ professional: Types.ObjectId; durationMinutes: number }[] | undefined> => {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return [];
+  const est = await Establishment.findById(establishmentId).select(
+    "professionals"
+  );
+  const validIds = new Set(
+    (est?.professionals || []).map((p) => p._id.toString())
+  );
+  const list: { professional: Types.ObjectId; durationMinutes: number }[] = [];
+  for (const item of raw) {
+    const pid = String((item as { professional?: unknown })?.professional ?? "");
+    const dur = Math.floor(
+      Number((item as { durationMinutes?: unknown })?.durationMinutes)
+    );
+    if (Types.ObjectId.isValid(pid) && validIds.has(pid) && dur > 0) {
+      list.push({ professional: new Types.ObjectId(pid), durationMinutes: dur });
+    }
+  }
+  return list;
+};
+
+const clampBuffer = (v: unknown): number =>
+  Math.max(0, Math.floor(Number(v)) || 0);
+
+const DEPOSIT_TYPES = ["none", "percent", "fixed"];
+const sanitizeDepositType = (v: unknown): "none" | "percent" | "fixed" =>
+  DEPOSIT_TYPES.includes(String(v))
+    ? (String(v) as "none" | "percent" | "fixed")
+    : "none";
+const clampDepositValue = (v: unknown): number =>
+  Math.max(0, Number(v) || 0);
+
+const SERVICE_MODES = ["local", "domicilio", "ambos"];
+const sanitizeServiceMode = (v: unknown): "local" | "domicilio" | "ambos" =>
+  SERVICE_MODES.includes(String(v))
+    ? (String(v) as "local" | "domicilio" | "ambos")
+    : "local";
+// override de taxa: null/""/undefined => usa o padrao do estabelecimento
+const clampFeeOrNull = (v: unknown): number | null =>
+  v === null || v === undefined || v === ""
+    ? null
+    : Math.max(0, Number(v) || 0);
+
 // GET /api/services  (busca publica, com filtros opcionais)
 // ?establishment=ID  ?category=ID  ?q=texto
 export const listServices = async (
@@ -121,6 +170,27 @@ export const createService = async (
     }
 
     const payload = { ...req.body, professionals: sane.ids };
+    const durs = await sanitizeProDurations(
+      establishment,
+      req.body.professionalDurations
+    );
+    if (durs !== undefined) payload.professionalDurations = durs;
+    if (req.body.bufferMinutes !== undefined)
+      payload.bufferMinutes = clampBuffer(req.body.bufferMinutes);
+    if (req.body.processingGapAfter !== undefined)
+      payload.processingGapAfter = clampBuffer(req.body.processingGapAfter);
+    if (req.body.processingGapMinutes !== undefined)
+      payload.processingGapMinutes = clampBuffer(req.body.processingGapMinutes);
+    if (req.body.depositType !== undefined)
+      payload.depositType = sanitizeDepositType(req.body.depositType);
+    if (req.body.depositValue !== undefined)
+      payload.depositValue = clampDepositValue(req.body.depositValue);
+    if (req.body.serviceMode !== undefined)
+      payload.serviceMode = sanitizeServiceMode(req.body.serviceMode);
+    if (req.body.homeBaseFee !== undefined)
+      payload.homeBaseFee = clampFeeOrNull(req.body.homeBaseFee);
+    if (req.body.homeFeePerKm !== undefined)
+      payload.homeFeePerKm = clampFeeOrNull(req.body.homeFeePerKm);
     const service = await Service.create(payload);
     res.status(201).json(service);
   } catch (err) {
@@ -162,6 +232,38 @@ export const updateService = async (
         return;
       }
       req.body.professionals = sane.ids;
+    }
+
+    if (req.body.professionalDurations !== undefined) {
+      req.body.professionalDurations =
+        (await sanitizeProDurations(
+          service.establishment.toString(),
+          req.body.professionalDurations
+        )) ?? [];
+    }
+    if (req.body.bufferMinutes !== undefined) {
+      req.body.bufferMinutes = clampBuffer(req.body.bufferMinutes);
+    }
+    if (req.body.processingGapAfter !== undefined) {
+      req.body.processingGapAfter = clampBuffer(req.body.processingGapAfter);
+    }
+    if (req.body.processingGapMinutes !== undefined) {
+      req.body.processingGapMinutes = clampBuffer(req.body.processingGapMinutes);
+    }
+    if (req.body.depositType !== undefined) {
+      req.body.depositType = sanitizeDepositType(req.body.depositType);
+    }
+    if (req.body.depositValue !== undefined) {
+      req.body.depositValue = clampDepositValue(req.body.depositValue);
+    }
+    if (req.body.serviceMode !== undefined) {
+      req.body.serviceMode = sanitizeServiceMode(req.body.serviceMode);
+    }
+    if (req.body.homeBaseFee !== undefined) {
+      req.body.homeBaseFee = clampFeeOrNull(req.body.homeBaseFee);
+    }
+    if (req.body.homeFeePerKm !== undefined) {
+      req.body.homeFeePerKm = clampFeeOrNull(req.body.homeFeePerKm);
     }
 
     Object.assign(service, req.body);

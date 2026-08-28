@@ -20,8 +20,14 @@ export type ModuleKey =
   | "comissoes"
   | "avaliacoes"
   // beleza / estetica
-  | "galeria" // antes-depois
+  | "galeria" // antes-depois (portfolio publico)
   | "produtos" // estoque
+  | "ficha" // ficha tecnica do cliente (prontuario da beleza)
+  | "formulas" // historico de formulas quimicas por cliente
+  | "antes_depois" // fotos antes/depois por cliente (privado)
+  | "pacotes" // pacotes de sessoes pre-pagas por cliente
+  | "fidelidade" // programa de fidelidade (carimbos) por cliente
+  | "consentimento" // termos de consentimento / autorizacao de imagem
   // saude
   | "prontuario"
   | "anamnese"
@@ -32,7 +38,25 @@ export type ModuleKey =
   // odontologia (extra por categoria)
   | "odontograma"
   // fisioterapia (extra por categoria)
-  | "fisioterapia";
+  | "fisioterapia"
+  // tatuagem (extra por categoria)
+  | "tattoo"
+  // estetica (extra por categoria): avaliacao + mapa de aplicacao
+  | "estetica"
+  // sobrancelha & cilios (extra por categoria): perfil tecnico / mapping
+  | "visagismo"
+  // manicure & pedicure (extra por categoria): controle de esterilizacao
+  | "esterilizacao"
+  // massagem (extra por categoria): avaliacao + evolucao por sessao
+  | "massagem"
+  // servicos gerais (base): ordem de servico (OS)
+  | "ordem_servico"
+  // veiculos (extra por categoria): dados do veiculo + checklist na OS
+  | "veiculo"
+  // assistencia tecnica (extra): dados do equipamento + laudo tecnico na OS
+  | "equipamento"
+  // dedetizacao (extra): certificado (praga-alvo, produtos, proxima aplicacao)
+  | "dedetizacao";
 
 export interface SegmentDef {
   key: SegmentKey;
@@ -60,21 +84,30 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
     key: "geral",
     label: "Serviços gerais",
     description: "Lava-rápido, assistência e outros serviços por agendamento.",
-    priceMonthly: 29,
-    modules: [...COMMON],
+    priceMonthly: 39,
+    modules: [...COMMON, "ordem_servico"],
   },
   beleza: {
     key: "beleza",
     label: "Beleza e bem-estar",
     description: "Barbearia, salão, estética, sobrancelha, etc.",
-    priceMonthly: 39,
-    modules: [...COMMON, "produtos"],
+    priceMonthly: 69,
+    modules: [
+      ...COMMON,
+      "produtos",
+      "ficha",
+      "formulas",
+      "antes_depois",
+      "pacotes",
+      "fidelidade",
+      "consentimento",
+    ],
   },
   saude: {
     key: "saude",
     label: "Saúde",
     description: "Clínicas, odontologia e fisioterapia.",
-    priceMonthly: 89,
+    priceMonthly: 149,
     modules: [
       ...COMMON,
       "produtos",
@@ -92,6 +125,20 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
 export const CATEGORY_EXTRA_MODULES: Record<string, ModuleKey[]> = {
   odontologia: ["odontograma"],
   fisioterapia: ["fisioterapia"],
+  tatuagem: ["tattoo"],
+  estetica: ["estetica"],
+  "sobrancelha-cilios": ["visagismo"],
+  "manicure-pedicure": ["esterilizacao"],
+  massagem: ["massagem"],
+  // veiculos (servicos gerais)
+  "oficina-mecanica": ["veiculo"],
+  borracharia: ["veiculo"],
+  "estetica-automotiva": ["veiculo"],
+  "lava-rapido": ["veiculo"],
+  // assistencia tecnica
+  "assistencia-tecnica": ["equipamento"],
+  // dedetizacao
+  dedetizacao: ["dedetizacao"],
 };
 
 // area padrao dos estabelecimentos antigos (sem segment gravado)

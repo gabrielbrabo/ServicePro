@@ -10,6 +10,8 @@ import {
   cancelSeries,
   acceptReservation,
   declineReservation,
+  markDeposit,
+  extendBooking,
 } from "../controllers/bookingController";
 import { protect } from "../middleware/auth";
 
@@ -27,5 +29,7 @@ router.patch("/:id/status", protect, updateBookingStatus);
 router.patch("/:id/reschedule", protect, rescheduleBooking);
 router.patch("/:id/accept-reservation", protect, acceptReservation);
 router.patch("/:id/decline-reservation", protect, declineReservation);
+router.patch("/:id/deposit", protect, markDeposit);
+router.patch("/:id/extend", protect, extendBooking);
 
 export default router;

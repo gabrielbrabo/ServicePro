@@ -9,6 +9,15 @@ import { EstablishmentAvatar } from "./EstablishmentAvatar";
 import { BookingDetailModal } from "./BookingDetailModal";
 import { useNotifications } from "../context/NotificationContext";
 
+// titulo do agendamento: no combo, junta os servicos ("Corte + Barba");
+// senao, o titulo do servico unico.
+function bookingTitle(b: Booking): string {
+  if (b.items && b.items.length > 0) {
+    return b.items.map((i) => i.title).join(" + ");
+  }
+  return b.service?.title || "Serviço";
+}
+
 const STATUS_LABEL: Record<Booking["status"], string> = {
   pendente: "Pendente",
   confirmado: "Confirmado",
@@ -110,6 +119,10 @@ export function BookingList({
   );
   const [reservationError, setReservationError] = useState<string | null>(null);
 
+  // tempo extra: card em edição + mensagem de conflito
+  const [extendingId, setExtendingId] = useState<string | null>(null);
+  const [extendError, setExtendError] = useState<string | null>(null);
+
   // relógio para o contador regressivo
   const [now, setNow] = useState(() => Date.now());
 
@@ -198,6 +211,27 @@ export function BookingList({
     const updated = await scheduleApi.updateStatus(id, status);
     setBookings((b) => b.map((x) => (x._id === id ? updated : x)));
     refreshBadges();
+  };
+
+  // registra/estorna o sinal (so o estabelecimento). Alterna o estado.
+  const toggleDeposit = async (b: Booking) => {
+    const paid = !b.payment?.depositPaid;
+    const updated = await scheduleApi.markDeposit(b._id, paid);
+    setBookings((list) => list.map((x) => (x._id === b._id ? updated : x)));
+  };
+
+  // adiciona tempo extra ao atendimento (imprevistos). Fecha ao concluir.
+  const addExtra = async (id: string, mins: number) => {
+    setExtendError(null);
+    try {
+      const updated = await scheduleApi.extendBooking(id, mins);
+      setBookings((list) => list.map((x) => (x._id === id ? updated : x)));
+      setExtendingId(null);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      setExtendError(msg || "Não foi possível adicionar o tempo.");
+    }
   };
 
   // abre o modal de lembrete antes de confirmar (quem confirma escolhe a
@@ -354,7 +388,7 @@ export function BookingList({
                       </span>
                     </div>
                     <h3 className="mt-2 font-display font-bold text-ink">
-                      {b.service?.title}
+                      {bookingTitle(b)}
                     </h3>
                     <p className="mt-0.5 text-sm text-ink/70">
                       {formatDateShort(b.scheduledAt)} às{" "}
@@ -460,7 +494,7 @@ export function BookingList({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-display font-bold text-ink">
-                      {b.service?.title}
+                      {bookingTitle(b)}
                     </h3>
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]
@@ -533,6 +567,45 @@ export function BookingList({
                   <p className="mt-1 text-sm font-semibold text-teal-600">
                     {formatPrice(b.payment?.amount ?? 0)}
                   </p>
+                  {(b.payment?.depositRequired ?? 0) > 0 && (
+                    <span
+                      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        b.payment?.depositPaid
+                          ? "bg-teal-50 text-teal-600"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      Sinal {formatPrice(b.payment?.depositRequired ?? 0)} ·{" "}
+                      {b.payment?.depositPaid ? "recebido" : "pendente"}
+                    </span>
+                  )}
+                  {b.atHome && (
+                    <div className="mt-1 rounded-lg bg-teal-500/10 px-2.5 py-1.5 text-xs text-ink/70">
+                      <p className="font-medium text-teal-600 dark:text-teal-100">
+                        🏠 A domicílio
+                        {b.travelFee
+                          ? ` · deslocamento ${formatPrice(b.travelFee)}`
+                          : ""}
+                      </p>
+                      {b.establishment?.address && (
+                        <p className="mt-0.5">
+                          <span className="text-ink/45">Saída:</span>{" "}
+                          {formatAddress(b.establishment.address)}
+                        </p>
+                      )}
+                      {b.address && (
+                        <p className="mt-0.5">
+                          <span className="text-ink/45">Serviço:</span>{" "}
+                          {b.address}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {!!b.extraMinutes && b.extraMinutes > 0 && (
+                    <p className="mt-1 text-xs font-medium text-amber-500 dark:text-amber-400">
+                      +{b.extraMinutes} min de tempo extra
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -540,6 +613,22 @@ export function BookingList({
                 className="flex flex-wrap gap-2"
                 onClick={(e) => e.stopPropagation()}
               >
+                {role === "provider" &&
+                  (b.payment?.depositRequired ?? 0) > 0 &&
+                  b.status !== "cancelado" && (
+                    <button
+                      onClick={() => toggleDeposit(b)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                        b.payment?.depositPaid
+                          ? "border border-ink/15 text-ink/70 hover:bg-sand"
+                          : "bg-amber-500 text-white hover:bg-amber-600"
+                      }`}
+                    >
+                      {b.payment?.depositPaid
+                        ? "Estornar sinal"
+                        : "Marcar sinal"}
+                    </button>
+                  )}
                 {role === "provider" && b.status === "pendente" && (
                   <button
                     onClick={() => startConfirm(b)}
@@ -571,6 +660,46 @@ export function BookingList({
                   >
                     Cancelar
                   </button>
+                )}
+                {/* tempo extra: so o estabelecimento, em atendimentos ativos */}
+                {role === "provider" &&
+                  (b.status === "pendente" || b.status === "confirmado") &&
+                  (extendingId === b._id ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[15, 30, 60].map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => addExtra(b._id, m)}
+                          className="rounded-lg bg-amber-500 px-2.5 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-600"
+                        >
+                          +{m} min
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => {
+                          setExtendingId(null);
+                          setExtendError(null);
+                        }}
+                        className="rounded-lg border border-ink/15 px-2.5 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-sand"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setExtendingId(b._id);
+                        setExtendError(null);
+                      }}
+                      className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-sand"
+                    >
+                      + Tempo extra
+                    </button>
+                  ))}
+                {extendingId === b._id && extendError && (
+                  <p className="w-full rounded-lg bg-red-50 px-3 py-1.5 text-xs text-red-700">
+                    {extendError}
+                  </p>
                 )}
               </div>
             </div>

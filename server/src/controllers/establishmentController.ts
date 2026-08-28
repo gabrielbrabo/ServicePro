@@ -365,6 +365,18 @@ export const updateEstablishment = async (
       }
     }
 
+    // config de atendimento a domicilio (objeto aninhado, sanitizado)
+    if (req.body.homeService !== undefined) {
+      const h = req.body.homeService || {};
+      establishment.homeService = {
+        enabled: !!h.enabled,
+        avgSpeedKmh: Math.max(1, Number(h.avgSpeedKmh) || 25),
+        baseFee: Math.max(0, Number(h.baseFee) || 0),
+        feePerKm: Math.max(0, Number(h.feePerKm) || 0),
+        maxRadiusKm: Math.max(0, Number(h.maxRadiusKm) || 0),
+      };
+    }
+
     if (req.body.address) {
       establishment.address = req.body.address;
 
