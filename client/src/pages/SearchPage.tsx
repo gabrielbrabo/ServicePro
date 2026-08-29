@@ -18,12 +18,12 @@ import { useAuth } from "../context/AuthContext";
 const MAIN_SLUGS = [
   "barbearia",
   "salao-de-beleza",
-  "manicure-pedicure",
-  "estetica-automotiva",
+  "fisioterapia",
+  "enfermagem",
   "odontologia",
   "psicologia",
-  "assistencia-tecnica",
   "refrigeracao",
+  "estetica-automotiva",
 ];
 
 export function SearchPage() {
