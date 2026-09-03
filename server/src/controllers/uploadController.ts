@@ -25,6 +25,10 @@ const ALLOWED_FOLDERS = [
   "produtos",
   "usuarios",
   "personal",
+  "nutricao",
+  "podologia",
+  "dermatologia",
+  "quiropraxia",
 ];
 
 // extensao a partir do mime

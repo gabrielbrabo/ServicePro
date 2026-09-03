@@ -100,7 +100,7 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
   saude: {
     key: "saude",
     label: "Saúde",
-    description: "Odontologia, fisioterapia, quiropraxia, enfermagem, acupuntura.",
+    description: "Odontologia, fisioterapia, quiropraxia, enfermagem, psicologia.",
     priceMonthly: 159,
     modules: [
       ...COMMON,

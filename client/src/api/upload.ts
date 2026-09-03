@@ -7,7 +7,11 @@ export type UploadFolder =
   | "galeria"
   | "produtos"
   | "usuarios"
-  | "personal";
+  | "personal"
+  | "nutricao"
+  | "podologia"
+  | "dermatologia"
+  | "quiropraxia";
 
 interface PresignResponse {
   uploadUrl: string;
