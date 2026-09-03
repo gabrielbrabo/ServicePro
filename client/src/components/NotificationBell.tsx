@@ -14,6 +14,7 @@ const ICON: Record<AppNotification["type"], string> = {
     booking_completed: "★",
     review_request: "⭐",
     review_received: "🌟",
+    loyalty_reward: "🎁",
 };
 
 const timeAgo = (iso: string): string => {
