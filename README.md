@@ -581,6 +581,7 @@ lista expandida DENTRO do menu hambúrguer. O switcher só aparece no `/painel`.
   trim, colapsa espaços, ignora acentos e escapa/remove metacaracteres de regex
   (^ ~ * ( ) etc). Aplicado em `q`, `city` e `service`.
 - **Sistema de avaliações (estrelas):** ver seção 17.
+- **Módulos próprios por categoria (Saúde/Beleza/Automotivo), controle de retorno na agenda, plano anual no cadastro e consentimento por procedimento:** ver seção 30.
 - **Ordenação da busca por nota ponderada:** ver seção 15.
 
 **Etapa C (depois) — Lembretes agendados:** cliente escolhe antecedência,
@@ -770,3 +771,90 @@ validado). No histórico, o documento mostra o selo de status:
 
 `api/emittedDocument.ts` expõe `pdf`, `sign`, `refreshSignature`, `signedPdf`.
 Configuração e detalhes do provedor: ver o README do backend (seção 29).
+
+
+---
+
+## 30. Módulos por categoria + retorno na agenda + cadastro (atualizações recentes)
+
+Cada **módulo extra** é liberado por **categoria** em
+`CATEGORY_EXTRA_MODULES` (`config/segments.ts`, espelhado em
+`client/src/lib/segments.ts`) e vira uma aba no painel via
+`hasModule(segment, mod, categorySlug)`. Padrão de cada módulo:
+`models/<X>Profile.ts` + modelo(s) datado(s) → `controllers/<x>Controller.ts`
+→ `routes/<x>Routes.ts` (com `requireModule("<key>")`) → `api/<x>.ts` →
+`components/<X>Manager.tsx` (lista de pacientes/clientes via
+`recordApi.clients` → painel com abas). Só cria ficha para cliente que já tem
+booking no estabelecimento (`clientHasBooking`).
+
+### Saúde — novos módulos próprios
+- **Nutrição** (`nutricao`) — rota `/api/nutrition`. Antropometria
+  (peso/altura, **IMC + classificação OMS**, %gordura, **RCQ**, massa gorda/magra,
+  circunferências) com **evolução (gráfico SVG)** e comparação; **plano alimentar
+  por refeição** (kcal/macros, subtotais e total do dia, vs. meta) + **metas** +
+  **PDF do plano**. Arquivos: `NutritionProfile`, `NutritionAssessment`,
+  `NutritionPlan`, `nutritionController`, `utils/nutritionPlanPdf`, `api/nutrition.ts`,
+  `NutricaoManager.tsx`.
+- **Podologia** (`podologia`) — `/api/podiatry`. **Mapa do pé** (SVG esquerdo/direito
+  × dorsal/plantar) com achados por região (calo, micose, onicomicose, unha
+  encravada, fissura…), **procedimentos**, **antes/depois** e **PDF do atendimento**.
+- **Enfermagem** (`enfermagem`) — `/api/nursing`. **Sinais vitais** (PA/FC/FR/Temp/
+  SpO₂/glicemia/dor com **faixas e destaque fora do normal** + gráfico), **curativos**,
+  **medicação/vacina** (via, local, lote, validade) e aba **Retornos** (agenda).
+- **Dermatologia** (`dermatologia`) — `/api/dermatology`. **Mapa do corpo** (frente/
+  costas) de lesões/pintas com tipo, tamanho (mm), cor e **critérios ABCDE**;
+  **acompanhamento por região**; antes/depois; **próxima visita** (agenda).
+- **Quiropraxia** (`quiropraxia`) — `/api/chiropractic`. **Avaliação postural
+  estruturada** (cabeça/ombros/pelve/curvaturas/escoliose) + **registro de ajustes**
+  (segmento/técnica/lado) + **EVA** (gráfico) + próxima visita (agenda).
+- **Acupuntura** (`acupuntura`) — `/api/acupuncture`. **Pontos aplicados por sessão**
+  (ponto com autocompletar, lado, método: agulha/moxa/eletro/ventosa/auricular/laser,
+  estímulo), retenção, **EVA** (gráfico) + próxima visita (agenda).
+- **Personal** (`personal`) e **Prontuário** ganharam a aba **Retornos** (agenda).
+
+### Controle de retorno integrado à agenda — `components/ReturnScheduler.tsx`
+Componente **reutilizável**: escolhe serviço + profissional + data, mostra **só
+horários livres** (`scheduleApi.freeSlots(serviceId, date, prof, null, admin=true)`)
+e **agenda o retorno para o próprio paciente/cliente**; lista os próximos e cancela.
+Backend: `createBooking` ganhou um branch — quando vem `clientId` e o requisitante é
+**dono/equipe** do estabelecimento, agenda **para aquele cliente** já como
+`confirmado` (`schedule.ts` `createBooking` aceita `clientId`). Nenhum modelo novo:
+usa a própria agenda/`Booking`.
+Presente em: podologia, dermatologia, quiropraxia, acupuntura (dentro do atendimento,
+"Próxima visita"); enfermagem, personal, nutrição, **prontuário** (cobre odonto/
+clínica/fisioterapia) e **Ficha do cliente da Beleza** (aba "Retornos"). As categorias
+de **serviços** (veículo, obra, foto, aulas, OS…) usam o reagendamento normal da agenda.
+Observação: a **ficha clínica** (psico/fono) usa nome/telefone livres (sem cliente
+agendável), então mantém só "Retorno previsto" como data.
+
+### Beleza — consentimento por procedimento
+`client/src/lib/consentTemplates.ts`: **19 modelos** de termo agrupados por categoria
+(estética facial/corporal, depilação, micropigmentação, cílios & sobrancelhas, tatuagem,
+bronzeamento, imagem, geral). Seletor **"Modelo por procedimento"** na aba
+**Consentimento** (`FichaBelezaManager`) preenche tipo/título/texto — **editável** antes
+de salvar. Sem mudança de backend (o `ConsentTerm` guarda título + conteúdo). Os textos
+são **modelos editáveis, não substituem orientação jurídica**.
+
+### Automotivo — carros **e motos**
+Módulo `veiculo` (oficina-mecânica, lava-rápido, estética-automotiva; chaveiro): a OS
+(`ServiceOrder`) ganhou `vehicle.type` (`carro` | `moto`). No formulário há **seletor
+Carro/Moto**; o **checklist padrão** troca conforme o tipo (moto: relação/corrente, freios
+dianteiro/traseiro, vela, filtro de ar, garfo…), com **troca inteligente** (só substitui se
+o checklist ainda estiver intacto) e botão **"Checklist padrão"**. O tipo aparece no **PDF
+da OS** (`utils/serviceOrderPdf.ts`). Arquivos: `models/ServiceOrder.ts`,
+`controllers/serviceOrderController.ts` (`sanitizeVehicle`), `api/serviceOrder.ts`,
+`components/OrdemServicoManager.tsx`.
+
+### Cadastro e edição do estabelecimento
+- **Plano anual (2 meses grátis)** no cadastro: seletor **Mensal/Anual** em
+  `EstablishmentForm`; anual = **10× a mensalidade** da área, mostra valor/ano,
+  equivalente/mês e a economia. Salvo em `Establishment.billingCycle`
+  (`"mensal" | "anual"`, padrão `mensal`) — pronto para o futuro sistema de cobrança.
+- **Editar estabelecimento** reorganizado em seções + **troca de categoria** somente
+  entre categorias da **mesma área** (validado no `updateEstablishment`; a área/segment
+  não muda na edição).
+
+> Pendência sugerida: seed/migração para gravar `segment` nas categorias antigas de
+> Saúde (hoje o front cai no mapa por slug em `CATEGORY_SEGMENT` quando o campo do banco
+> está vazio).
+

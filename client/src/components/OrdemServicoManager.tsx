@@ -49,6 +49,7 @@ const statusMeta = (s: OrderStatus) =>
   STATUS.find((x) => x.key === s) || STATUS[0];
 
 const emptyVehicle = () => ({
+  type: "carro",
   plate: "",
   brand: "",
   model: "",
@@ -112,6 +113,24 @@ const DEFAULT_INSPECTION = [
   "Correias",
   "Escapamento",
 ];
+// checklist sugerido para MOTOS
+const DEFAULT_INSPECTION_MOTO = [
+  "Pneus (dianteiro/traseiro)",
+  "Freios (dianteiro/traseiro)",
+  "Óleo do motor",
+  "Relação (corrente, coroa e pinhão)",
+  "Vela de ignição",
+  "Bateria",
+  "Luzes e setas",
+  "Filtro de ar",
+  "Suspensão / garfo",
+  "Escapamento",
+];
+// itens do checklist conforme o tipo de veículo (carro/moto)
+const inspectionItemsFor = (type: string): InspectionItem[] =>
+  (type === "moto" ? DEFAULT_INSPECTION_MOTO : DEFAULT_INSPECTION).map(
+    (item) => ({ item, status: "na" as InspectionStatus, note: "" })
+  );
 const INSPECTION_OPTS: { key: InspectionStatus; label: string }[] = [
   { key: "na", label: "—" },
   { key: "ok", label: "OK" },
@@ -242,6 +261,7 @@ export function OrdemServicoManager({
       photosAfter: o.photosAfter || [],
       notes: o.notes,
       vehicle: {
+        type: o.vehicle?.type ?? "carro",
         plate: o.vehicle?.plate ?? "",
         brand: o.vehicle?.brand ?? "",
         model: o.vehicle?.model ?? "",
@@ -334,6 +354,27 @@ export function OrdemServicoManager({
 
   const setVehicle = (k: keyof FormState["vehicle"], v: string) =>
     set("vehicle", { ...form.vehicle, [k]: v });
+
+  // troca carro/moto e ajusta o checklist padrao quando ainda esta intacto
+  const changeVehicleType = (t: "carro" | "moto") =>
+    setForm((f) => {
+      const otherNames =
+        t === "moto" ? DEFAULT_INSPECTION : DEFAULT_INSPECTION_MOTO;
+      const untouched =
+        f.inspection.length === 0 ||
+        (f.inspection.length === otherNames.length &&
+          f.inspection.every(
+            (x, i) =>
+              x.item === otherNames[i] &&
+              x.status === "na" &&
+              !x.note.trim()
+          ));
+      return {
+        ...f,
+        vehicle: { ...f.vehicle, type: t },
+        inspection: untouched ? inspectionItemsFor(t) : f.inspection,
+      };
+    });
   const setEquipment = (k: keyof FormState["equipment"], v: string) =>
     set("equipment", { ...form.equipment, [k]: v });
   const setPest = (k: keyof FormState["pestControl"], v: string) =>
@@ -412,6 +453,7 @@ export function OrdemServicoManager({
       photosAfter: form.photosAfter,
       notes: form.notes.trim(),
       vehicle: {
+        type: form.vehicle.type === "moto" ? "moto" : "carro",
         plate: form.vehicle.plate.trim(),
         brand: form.vehicle.brand.trim(),
         model: form.vehicle.model.trim(),
@@ -554,6 +596,27 @@ export function OrdemServicoManager({
               <span className="mb-2 block text-sm font-medium text-ink/70">
                 Veículo
               </span>
+              <div className="mb-3 inline-flex rounded-lg border border-ink/15 p-0.5">
+                {(
+                  [
+                    ["carro", "Carro"],
+                    ["moto", "Moto"],
+                  ] as ["carro" | "moto", string][]
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => changeVehicleType(k)}
+                    className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+                      form.vehicle.type === k
+                        ? "bg-teal-500 text-white"
+                        : "text-ink/60 hover:text-ink"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-ink/70">
@@ -1010,14 +1073,27 @@ export function OrdemServicoManager({
           {showVehicle && (
             <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-ink/70">Inspeção</span>
-                <button
-                  type="button"
-                  onClick={addInspection}
-                  className="rounded-lg bg-teal-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-teal-600"
-                >
-                  + Item
-                </button>
+                <span className="text-sm font-medium text-ink/70">
+                  Inspeção {form.vehicle.type === "moto" ? "(moto)" : "(carro)"}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      set("inspection", inspectionItemsFor(form.vehicle.type))
+                    }
+                    className="rounded-lg border border-ink/15 px-3 py-1 text-xs font-semibold text-ink/70 transition hover:bg-white"
+                  >
+                    Checklist padrão
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addInspection}
+                    className="rounded-lg bg-teal-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-teal-600"
+                  >
+                    + Item
+                  </button>
+                </div>
               </div>
               {form.inspection.length === 0 && (
                 <p className="text-xs text-ink/40">Nenhum item.</p>

@@ -17,6 +17,7 @@ export function EstablishmentForm({
     name: "",
     // area do negocio: define as ferramentas e o preco
     segment: "beleza" as SegmentKey,
+    billingCycle: "mensal" as "mensal" | "anual",
     category: "",
     description: "",
     phone: "",
@@ -115,6 +116,7 @@ export function EstablishmentForm({
       const created = await establishmentApi.create({
         name: form.name,
         segment: form.segment,
+        billingCycle: form.billingCycle,
         category: form.category,
         description: form.description || undefined,
         phone: form.phone || undefined,
@@ -139,6 +141,17 @@ export function EstablishmentForm({
       setSaving(false);
     }
   };
+
+  // preço do plano conforme a área escolhida (anual = 2 meses grátis)
+  const planPrice =
+    SEGMENT_LIST.find((s) => s.key === form.segment)?.priceMonthly ?? 0;
+  const annualPrice = planPrice * 10;
+  const annualMonthly = annualPrice / 12;
+  const money = (n: number) =>
+    n.toLocaleString("pt-BR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -175,6 +188,50 @@ export function EstablishmentForm({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Plano de pagamento */}
+      <div>
+        <span className="mb-1.5 block text-sm font-medium text-ink/70">
+          Plano
+        </span>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, billingCycle: "mensal" }))}
+            className={`rounded-xl border p-4 text-left transition ${
+              form.billingCycle === "mensal"
+                ? "border-teal-500 ring-2 ring-teal-500/20"
+                : "border-ink/15 hover:border-teal-500"
+            }`}
+          >
+            <p className="font-semibold text-ink">Mensal</p>
+            <p className="mt-2 text-sm font-semibold text-teal-600">
+              R$ {money(planPrice)}/mês
+            </p>
+            <p className="mt-0.5 text-xs text-ink/50">Cobrança todo mês</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, billingCycle: "anual" }))}
+            className={`relative rounded-xl border p-4 text-left transition ${
+              form.billingCycle === "anual"
+                ? "border-teal-500 ring-2 ring-teal-500/20"
+                : "border-ink/15 hover:border-teal-500"
+            }`}
+          >
+            <span className="absolute right-2 top-2 rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold text-teal-600">
+              2 MESES GRÁTIS
+            </span>
+            <p className="font-semibold text-ink">Anual</p>
+            <p className="mt-2 text-sm font-semibold text-teal-600">
+              R$ {money(annualPrice)}/ano
+            </p>
+            <p className="mt-0.5 text-xs text-ink/50">
+              equivale a R$ {money(annualMonthly)}/mês · economize R$ {money(planPrice * 2)}
+            </p>
+          </button>
         </div>
       </div>
 

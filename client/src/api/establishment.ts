@@ -35,6 +35,8 @@ export interface Establishment {
   address: Address;
   // area do estabelecimento (define os modulos/ferramentas liberados)
   segment?: "geral" | "beleza" | "saude";
+  // ciclo de cobranca escolhido no cadastro (anual = 2 meses gratis)
+  billingCycle?: "mensal" | "anual";
   location?: { type: string; coordinates: [number, number] };
   photo?: string;
   coverPhotos?: string[];
@@ -106,6 +108,7 @@ export const establishmentApi = {
     name: string;
     category: string;
     segment?: "geral" | "beleza" | "saude";
+    billingCycle?: "mensal" | "anual";
     description?: string;
     phone?: string;
     address: Address;

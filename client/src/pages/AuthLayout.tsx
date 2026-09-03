@@ -25,11 +25,11 @@ const audiences = [
 const areas = [
   {
     name: "Beleza & bem-estar",
-    tags: ["Barbearia", "Salão", "Estética", "Manicure", "Tatuagem"],
+    tags: ["Barbearia", "Salão", "Estética", "Manicure", "Sobrancelha", "Cílios"],
   },
   {
     name: "Saúde",
-    tags: ["Odontologia", "Fisioterapia", "Quiropraxia", "Enfermagem"],
+    tags: ["Odontologia", "Fisioterapia", "Quiropraxia", "Enfermagem", "Psicologia", " Nutrição"],
   },
   {
     name: "Serviços gerais",

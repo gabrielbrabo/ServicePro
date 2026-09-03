@@ -21,6 +21,7 @@ export interface InspectionItem {
   note: string;
 }
 export interface Vehicle {
+  type: string; // "carro" | "moto"
   plate: string;
   brand: string;
   model: string;

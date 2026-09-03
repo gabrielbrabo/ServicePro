@@ -27,6 +27,8 @@ export const createEstablishment = async (
     const segment = isSegment(req.body.segment)
       ? req.body.segment
       : DEFAULT_SEGMENT;
+    // ciclo de cobranca: mensal (padrao) ou anual (2 meses gratis)
+    const billingCycle = req.body.billingCycle === "anual" ? "anual" : "mensal";
 
     if (
       !address ||
@@ -50,6 +52,7 @@ export const createEstablishment = async (
       photo,
       address,
       segment,
+      billingCycle,
       members: [{ professional: req.userId, role: "owner", active: true }],
     };
 

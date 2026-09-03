@@ -40,6 +40,8 @@ export interface IEstablishment extends Document {
   address: IAddress;
   // area/segmento do estabelecimento — define quais modulos ele libera
   segment: SegmentKey;
+  // ciclo de cobranca (mensal | anual). Anual = 2 meses gratis.
+  billingCycle: "mensal" | "anual";
   location: {
     type: "Point";
     coordinates: [number, number]; // [longitude, latitude]
@@ -117,6 +119,12 @@ const establishmentSchema = new Schema<IEstablishment>(
       type: String,
       enum: Object.keys(SEGMENTS),
       default: DEFAULT_SEGMENT,
+    },
+    // ciclo de cobranca escolhido no cadastro (anual = 2 meses gratis)
+    billingCycle: {
+      type: String,
+      enum: ["mensal", "anual"],
+      default: "mensal",
     },
     // GeoJSON para permitir busca por proximidade no futuro
     location: {

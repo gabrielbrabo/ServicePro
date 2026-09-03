@@ -30,6 +30,7 @@ export interface OrderPdfInput {
   warrantyNote?: string;
   notes?: string;
   vehicle?: {
+    type?: string; // carro | moto
     plate?: string;
     brand?: string;
     model?: string;
@@ -165,6 +166,7 @@ export function generateServiceOrderPdf(input: OrderPdfInput): Promise<Buffer> {
       const veh = input.vehicle;
       if (veh && (veh.plate || veh.model || veh.brand)) {
         const vehStr = [
+          veh.type === "moto" ? "Moto" : "Carro",
           [veh.brand, veh.model].filter(Boolean).join(" "),
           veh.plate ? `Placa ${veh.plate}` : "",
           veh.year ? String(veh.year) : "",

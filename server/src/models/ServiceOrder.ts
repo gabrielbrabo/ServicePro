@@ -32,6 +32,7 @@ export interface IInspectionItem {
 }
 // dados do veiculo (extra da categoria automotiva)
 export interface IVehicle {
+  type: string; // "carro" | "moto"
   plate: string;
   brand: string;
   model: string;
@@ -172,6 +173,7 @@ const serviceOrderSchema = new Schema<IServiceOrder>(
     notes: { type: String, default: "", trim: true },
     // extra automotivo (categoria com modulo "veiculo")
     vehicle: {
+      type: { type: String, default: "carro", trim: true },
       plate: { type: String, default: "", trim: true },
       brand: { type: String, default: "", trim: true },
       model: { type: String, default: "", trim: true },

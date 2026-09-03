@@ -111,6 +111,7 @@ const sanitizeUrls = (raw: unknown): string[] =>
 const sanitizeVehicle = (raw: unknown) => {
   const v = (raw || {}) as Record<string, unknown>;
   return {
+    type: v.type === "moto" ? "moto" : "carro",
     plate: cleanText(v.plate),
     brand: cleanText(v.brand),
     model: cleanText(v.model),
