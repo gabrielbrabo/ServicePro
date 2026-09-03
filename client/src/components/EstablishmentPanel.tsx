@@ -14,6 +14,19 @@ import { ProntuarioManager } from "./ProntuarioManager";
 import { FichaBelezaManager } from "./FichaBelezaManager";
 import { SterilizationManager } from "./SterilizationManager";
 import { OrdemServicoManager } from "./OrdemServicoManager";
+import { PersonalManager } from "./PersonalManager";
+import { NutricaoManager } from "./NutricaoManager";
+import { PodologiaManager } from "./PodologiaManager";
+import { EnfermagemManager } from "./EnfermagemManager";
+import { DermatologiaManager } from "./DermatologiaManager";
+import { QuiropraxiaManager } from "./QuiropraxiaManager";
+import { AcupunturaManager } from "./AcupunturaManager";
+import { AulasManager } from "./AulasManager";
+import { MaintenanceManager } from "./MaintenanceManager";
+import { FotografiaManager } from "./FotografiaManager";
+import { ObrasManager } from "./ObrasManager";
+import { AnamneseManager } from "./AnamneseManager";
+import { EnrollmentManager } from "./EnrollmentManager";
 import { CommissionsManager } from "./CommissionsManager";
 import { ConvenioManager } from "./ConvenioManager";
 import { AuditManager } from "./AuditManager";
@@ -22,6 +35,8 @@ import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
 import { useCoverageAlerts, useProsWithoutSchedule } from "../lib/coverage";
 import { hasModule } from "../lib/segments";
+import { scheduleApi } from "../api/schedule";
+import { catalogApi } from "../api/catalog";
 
 export function EstablishmentPanel({
   establishment,
@@ -53,6 +68,70 @@ export function EstablishmentPanel({
   );
 
   const [copied, setCopied] = useState(false);
+
+  // A aba Matriculas so faz sentido quando o estabelecimento tem servico do
+  // tipo "aula" (matricula gera aulas recorrentes na agenda). hasAula controla
+  // a exibicao da aba; semMatricula e o alerta de aluno com aula avulsa sem
+  // matricula (so para o dono).
+  const [hasAula, setHasAula] = useState(false);
+  const [semMatricula, setSemMatricula] = useState(0);
+  useEffect(() => {
+    if (establishment.segment !== "geral") {
+      setHasAula(false);
+      setSemMatricula(0);
+      return;
+    }
+    let alive = true;
+    const compute = () => {
+      catalogApi
+        .byEstablishment(establishment._id)
+        .catch(() => [])
+        .then((svcs) => {
+          if (!alive) return;
+          const aulaIds = svcs
+            .filter((s) => s.kind === "aula")
+            .map((s) => s._id);
+          setHasAula(aulaIds.length > 0);
+          // alerta de aula avulsa sem matricula: so o dono age nisso
+          if (isEmployee || aulaIds.length === 0) {
+            setSemMatricula(0);
+            return;
+          }
+          const aula = new Set(aulaIds);
+          scheduleApi
+            .listBookings("provider", establishment._id)
+            .catch(() => [])
+            .then((bookings) => {
+              if (!alive) return;
+              const enrolled = new Set(
+                bookings
+                  .filter(
+                    (b) =>
+                      b.seriesId && b.status !== "cancelado" && b.client?._id
+                  )
+                  .map((b) => b.client._id)
+              );
+              const has = bookings.some(
+                (b) =>
+                  !b.seriesId &&
+                  b.status !== "cancelado" &&
+                  b.service?._id &&
+                  aula.has(b.service._id) &&
+                  b.client?._id &&
+                  !enrolled.has(b.client._id)
+              );
+              setSemMatricula(has ? 1 : 0);
+            });
+        });
+    };
+    compute();
+    // recalcula ao voltar o foco (ex.: apos um cliente agendar em outra aba)
+    window.addEventListener("focus", compute);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", compute);
+    };
+  }, [establishment._id, establishment.segment, isEmployee, tab]);
 
   // Rola a tela ate a FOTO DE PERFIL ficar ~20px abaixo da navbar. Ancorar na
   // foto (que existe desde o inicio) evita depender do carregamento do conteudo.
@@ -91,8 +170,21 @@ export function EstablishmentPanel({
     ["agenda", "Expediente"],
     ["recebidos", "Agendamentos"],
     ["ordem_servico", "Ordens de serviço"],
+    ["personal", "Alunos"],
+    ["nutricao", "Nutrição"],
+    ["podologia", "Podologia"],
+    ["enfermagem", "Enfermagem"],
+    ["dermatologia", "Dermatologia"],
+    ["quiropraxia", "Quiropraxia"],
+    ["acupuntura", "Acupuntura"],
+    ["aulas", "Aulas"],
+    ["manutencao", "Manutenção"],
+    ["foto", "Ensaios"],
+    ["obra", "Obras"],
+    ["matriculas", "Matrículas"],
     ["clientes", "Clientes"],
     ["prontuario", "Prontuário"],
+    ["anamnese_link", "Anamnese online"],
     ["ficha", "Ficha do cliente"],
     ["avaliacoes", "Avaliações"],
     ["galeria", "Galeria"],
@@ -108,7 +200,9 @@ export function EstablishmentPanel({
   // (estabelecimentos antigos sem segment caem no padrao = beleza).
   const tabs = allTabs
     .filter(([key]) =>
-      hasModule(establishment.segment, key, establishment.category?.slug)
+      key === "matriculas"
+        ? establishment.segment === "geral" && hasAula // so com servico "aula"
+        : hasModule(establishment.segment, key, establishment.category?.slug)
     )
     // funcionario nao ve "equipe" nem "auditoria" (dados do dono/controlador).
     // "comissoes" ele ve, mas so a propria (limitado no componente).
@@ -231,6 +325,15 @@ export function EstablishmentPanel({
                   !
                 </span>
               )}
+            {/* alerta: aluno agendou aula avulsa sem matricula */}
+            {!isEmployee && key === "matriculas" && semMatricula > 0 && (
+              <span
+                title="Há aluno sem matrícula"
+                className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+              >
+                !
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -268,6 +371,9 @@ export function EstablishmentPanel({
         )}
         {tab === "prontuario" && (
           <ProntuarioManager establishment={establishment} />
+        )}
+        {tab === "anamnese_link" && (
+          <AnamneseManager establishmentId={establishment._id} />
         )}
         {tab === "ficha" && (
           <FichaBelezaManager establishment={establishment} />
@@ -314,7 +420,53 @@ export function EstablishmentPanel({
               "dedetizacao",
               establishment.category?.slug
             )}
+            showWarranty={hasModule(
+              establishment.segment,
+              "garantia",
+              establishment.category?.slug
+            )}
+            showMeasurements={hasModule(
+              establishment.segment,
+              "medidas",
+              establishment.category?.slug
+            )}
           />
+        )}
+        {tab === "personal" && (
+          <PersonalManager establishment={establishment} />
+        )}
+        {tab === "nutricao" && (
+          <NutricaoManager establishment={establishment} />
+        )}
+        {tab === "podologia" && (
+          <PodologiaManager establishment={establishment} />
+        )}
+        {tab === "enfermagem" && (
+          <EnfermagemManager establishment={establishment} />
+        )}
+        {tab === "dermatologia" && (
+          <DermatologiaManager establishment={establishment} />
+        )}
+        {tab === "quiropraxia" && (
+          <QuiropraxiaManager establishment={establishment} />
+        )}
+        {tab === "acupuntura" && (
+          <AcupunturaManager establishment={establishment} />
+        )}
+        {tab === "aulas" && (
+          <AulasManager establishmentId={establishment._id} />
+        )}
+        {tab === "manutencao" && (
+          <MaintenanceManager establishmentId={establishment._id} />
+        )}
+        {tab === "foto" && (
+          <FotografiaManager establishmentId={establishment._id} />
+        )}
+        {tab === "obra" && (
+          <ObrasManager establishmentId={establishment._id} />
+        )}
+        {tab === "matriculas" && (
+          <EnrollmentManager establishment={establishment} />
         )}
         {tab === "auditoria" && !isEmployee && (
           <AuditManager establishmentId={establishment._id} />

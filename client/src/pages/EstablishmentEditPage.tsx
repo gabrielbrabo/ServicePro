@@ -1,9 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { PageContainer } from "../components/NavBar";
 import { establishmentApi, Establishment } from "../api/establishment";
-import { AddressAutocomplete, ResolvedAddress } from "../components/AddressAutocomplete";
+import { catalogApi, Category } from "../api/catalog";
+import {
+  AddressAutocomplete,
+  ResolvedAddress,
+} from "../components/AddressAutocomplete";
 import { useEstablishments } from "../context/EstablishmentContext";
+import {
+  SEGMENTS,
+  SegmentKey,
+  DEFAULT_SEGMENT,
+  categorySegment,
+  isSegment,
+} from "../lib/segments";
 
 export function EstablishmentEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,12 +48,32 @@ export function EstablishmentEditPage() {
     maxRadiusKm: "0",
   });
 
+  // categoria + area do estabelecimento. A AREA (segment) nao muda na edicao;
+  // so e possivel trocar a categoria por outra da mesma area.
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [segment, setSegment] = useState<SegmentKey>(DEFAULT_SEGMENT);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
 
   const inputClass =
     "h-12 w-full rounded-xl border border-ink/15 bg-white px-4 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20";
+
+  // categoria pertence a area? (categoria sem area definida serve a qualquer uma)
+  const catInArea = (c: Category, seg: string) => {
+    const s = categorySegment(c);
+    return !s || s === seg;
+  };
+
+  // carrega a lista de categorias (para o seletor)
+  useEffect(() => {
+    catalogApi
+      .categories()
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, []);
 
   // carrega o estabelecimento
   useEffect(() => {
@@ -70,6 +101,12 @@ export function EstablishmentEditPage() {
           feePerKm: String(h?.feePerKm ?? 0),
           maxRadiusKm: String(h?.maxRadiusKm ?? 0),
         });
+        setCategoryId(est.category?._id || "");
+        // area: usa a gravada no estabelecimento; senao infere pela categoria
+        const seg = isSegment(est.segment)
+          ? est.segment
+          : categorySegment(est.category) || DEFAULT_SEGMENT;
+        setSegment(seg);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -100,6 +137,15 @@ export function EstablishmentEditPage() {
     setError("");
   };
 
+  // categorias visiveis: mesma area do estabelecimento (mais a atual, sempre)
+  const visibleCategories = useMemo(() => {
+    const list = categories.filter(
+      (c) => catInArea(c, segment) || c._id === categoryId
+    );
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, segment, categoryId]);
+
   const save = async () => {
     if (!id) return;
     setError("");
@@ -107,6 +153,10 @@ export function EstablishmentEditPage() {
 
     if (!form.name.trim()) {
       setError("O nome não pode ficar vazio.");
+      return;
+    }
+    if (!categoryId) {
+      setError("Selecione uma categoria.");
       return;
     }
     if (
@@ -127,6 +177,7 @@ export function EstablishmentEditPage() {
         name: form.name.trim(),
         description: form.description.trim(),
         phone: form.phone.trim(),
+        category: categoryId,
         address: {
           country: form.country,
           state: form.state,
@@ -157,8 +208,11 @@ export function EstablishmentEditPage() {
       setSavedMsg("Alterações salvas.");
       // volta ao painel apos um instante
       setTimeout(() => navigate("/painel"), 700);
-    } catch {
-      setError("Não foi possível salvar. Tente novamente.");
+    } catch (e) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || "Não foi possível salvar. Tente novamente.";
+      setError(msg);
     } finally {
       setSaving(false);
     }
@@ -188,6 +242,10 @@ export function EstablishmentEditPage() {
     );
   }
 
+  const sectionTitle = "font-display text-lg font-bold text-ink";
+  const fieldLabel = "mb-1.5 block text-sm font-medium text-ink/70";
+  const areaLabel = SEGMENTS[segment]?.label || "—";
+
   return (
     <PageContainer>
       <div className="mx-auto max-w-2xl">
@@ -209,64 +267,119 @@ export function EstablishmentEditPage() {
           </div>
         )}
 
-        <div className="space-y-4 rounded-2xl border border-ink/10 bg-white p-6">
-          {/* Nome */}
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink/70">
-              Nome do negócio
-            </span>
-            <input
-              value={form.name}
-              onChange={update("name")}
-              className={inputClass}
-            />
-          </label>
+        <div className="space-y-5">
+          {/* ---- Informações do negócio ---- */}
+          <section className="rounded-2xl border border-ink/10 bg-white p-6">
+            <h2 className={sectionTitle}>Informações do negócio</h2>
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className={fieldLabel}>Nome do negócio</span>
+                <input
+                  value={form.name}
+                  onChange={update("name")}
+                  className={inputClass}
+                />
+              </label>
 
-          {/* Telefone */}
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink/70">
-              Telefone
-            </span>
-            <input
-              value={form.phone}
-              onChange={update("phone")}
-              placeholder="(38) 99999-0000"
-              className={inputClass}
-            />
-          </label>
+              <label className="block">
+                <span className={fieldLabel}>Telefone</span>
+                <input
+                  value={form.phone}
+                  onChange={update("phone")}
+                  placeholder="(38) 99999-0000"
+                  className={inputClass}
+                />
+              </label>
 
-          {/* Descrição */}
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink/70">
-              Descrição
-            </span>
-            <textarea
-              value={form.description}
-              onChange={update("description")}
-              rows={3}
-              className="w-full rounded-xl border border-ink/15 bg-white px-4 py-3 outline-none focus:border-teal-500"
-            />
-          </label>
+              <label className="block">
+                <span className={fieldLabel}>Descrição</span>
+                <textarea
+                  value={form.description}
+                  onChange={update("description")}
+                  rows={3}
+                  className="w-full rounded-xl border border-ink/15 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                />
+              </label>
+            </div>
+          </section>
 
-          {/* Endereço */}
-          <div className="rounded-xl border border-ink/10 bg-sand/50 p-4">
-            <p className="mb-1 text-sm font-semibold text-ink/70">Endereço</p>
-            <p className="mb-3 text-xs text-ink/50">
+          {/* ---- Categoria e área ---- */}
+          <section className="rounded-2xl border border-ink/10 bg-white p-6">
+            <h2 className={sectionTitle}>Categoria e área</h2>
+
+            {/* área — somente leitura (define ferramentas e cobrança) */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink/10 bg-sand/50 px-4 py-3">
+              <div>
+                <span className="block text-sm font-medium text-ink/70">
+                  Área do negócio
+                </span>
+                <span className="text-xs text-ink/50">
+                  A área define as ferramentas do painel e não pode ser
+                  alterada aqui.
+                </span>
+              </div>
+              <span className="rounded-full bg-teal-500/10 px-3 py-1 text-sm font-semibold text-teal-600">
+                {areaLabel}
+              </span>
+            </div>
+
+            <label className="mt-4 block">
+              <span className={fieldLabel}>Categoria</span>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className={inputClass}
+              >
+                {visibleCategories.length === 0 && (
+                  <option value="">Nenhuma categoria disponível</option>
+                )}
+                {visibleCategories.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.icon ? `${c.icon} ` : ""}
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1.5 block text-xs text-ink/50">
+                Só aparecem categorias da área{" "}
+                <span className="font-medium text-ink/70">{areaLabel}</span>.
+                Trocar a categoria pode ajustar recursos específicos (ex.:
+                odontograma, ficha do aluno) dentro da mesma área.
+              </span>
+            </label>
+          </section>
+
+          {/* ---- Endereço ---- */}
+          <section className="rounded-2xl border border-ink/10 bg-white p-6">
+            <h2 className={sectionTitle}>Endereço</h2>
+            <p className="mt-3 text-xs text-ink/50">
               Endereço atual:{" "}
-              {[form.street, form.number, form.neighborhood, form.city, form.state]
+              {[
+                form.street,
+                form.number,
+                form.neighborhood,
+                form.city,
+                form.state,
+              ]
                 .filter(Boolean)
                 .join(", ") || "não informado"}
             </p>
 
-            <AddressAutocomplete
-              onResolved={applyResolved}
-              label="Buscar novo endereço"
-              hint="Digite e escolha na lista para atualizar o endereço e a localização no mapa."
-            />
+            <div className="mt-3">
+              <AddressAutocomplete
+                onResolved={applyResolved}
+                label="Buscar novo endereço"
+                hint="Digite e escolha na lista para atualizar o endereço e a localização no mapa."
+              />
+            </div>
 
             {coords && (
               <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-teal-600">
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
                   <path
                     fillRule="evenodd"
                     d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L8 12.6l7.3-7.3a1 1 0 011.4 0z"
@@ -280,9 +393,7 @@ export function EstablishmentEditPage() {
             {/* campos editaveis para ajuste fino */}
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  Rua
-                </span>
+                <span className={fieldLabel}>Rua</span>
                 <input
                   value={form.street}
                   onChange={update("street")}
@@ -290,9 +401,7 @@ export function EstablishmentEditPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  Número
-                </span>
+                <span className={fieldLabel}>Número</span>
                 <input
                   value={form.number}
                   onChange={update("number")}
@@ -300,9 +409,7 @@ export function EstablishmentEditPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  Bairro
-                </span>
+                <span className={fieldLabel}>Bairro</span>
                 <input
                   value={form.neighborhood}
                   onChange={update("neighborhood")}
@@ -310,9 +417,7 @@ export function EstablishmentEditPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  Cidade
-                </span>
+                <span className={fieldLabel}>Cidade</span>
                 <input
                   value={form.city}
                   onChange={update("city")}
@@ -320,9 +425,7 @@ export function EstablishmentEditPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  Estado (UF)
-                </span>
+                <span className={fieldLabel}>Estado (UF)</span>
                 <input
                   value={form.state}
                   onChange={update("state")}
@@ -330,9 +433,7 @@ export function EstablishmentEditPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                  País
-                </span>
+                <span className={fieldLabel}>País</span>
                 <input
                   value={form.country}
                   onChange={update("country")}
@@ -341,10 +442,10 @@ export function EstablishmentEditPage() {
                 />
               </label>
             </div>
-          </div>
+          </section>
 
-          {/* Atendimento a domicílio (padrão) */}
-          <div className="rounded-xl border border-ink/10 bg-sand/50 p-4">
+          {/* ---- Atendimento a domicílio ---- */}
+          <section className="rounded-2xl border border-ink/10 bg-white p-6">
             <label className="flex items-center justify-between gap-3">
               <span>
                 <span className="block text-sm font-semibold text-ink/70">
@@ -436,7 +537,7 @@ export function EstablishmentEditPage() {
                 </label>
               </div>
             )}
-          </div>
+          </section>
 
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

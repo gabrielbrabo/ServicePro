@@ -208,7 +208,7 @@ export const getAvailability = async (
 // professional opcional: se presente, usa a agenda e os bookings daquele
 // profissional; se ausente, usa a agenda geral do estabelecimento.
 export const getFreeSlots = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ): Promise<void> => {
   try {
@@ -221,6 +221,13 @@ export const getFreeSlots = async (
       res.status(404).json({ message: "Servico nao encontrado" });
       return;
     }
+
+    // modo dono/equipe (admin): so vale se autenticado e gerencia o estab.
+    // ignora a janela de dias futuros e a antecedencia minima do cliente, para
+    // marcar retorno/visita em qualquer data futura livre.
+    const admin =
+      (req.query.admin === "true" || req.query.admin === "1") &&
+      (await canManage(String(service.establishment), req.userId));
 
     // valida formato YYYY-MM-DD
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
@@ -258,7 +265,7 @@ export const getFreeSlots = async (
     const diffDays = Math.round(
       (targetMid.getTime() - todayMid.getTime()) / 86400000
     );
-    if (diffDays < 0 || diffDays > availability.maxFutureDays) {
+    if (diffDays < 0 || (!admin && diffDays > availability.maxFutureDays)) {
       res.json({ date: dateStr, slots: [] });
       return;
     }
@@ -306,7 +313,7 @@ export const getFreeSlots = async (
     const dayBlocks = await TimeBlock.find(blockFilter);
 
     const minStart = new Date(
-      now.getTime() + availability.minAdvanceMinutes * 60000
+      now.getTime() + (admin ? 0 : availability.minAdvanceMinutes) * 60000
     );
 
     // duracao efetiva por profissional (override) e folga do servico
@@ -359,8 +366,25 @@ export const getFreeSlots = async (
           travelMin,
           travelMin
         );
-        if (bookings.some((b) => segmentsOverlap(candSegs, bookingSegments(b))))
+        // TURMA: o mesmo horario aceita ate `capacity` alunos. So bloqueia se
+        // (a) ha outro agendamento (fora desta turma) ocupando, ou (b) lotou.
+        if (service.classMode === "turma") {
+          const isSameTurma = (b: (typeof bookings)[number]) =>
+            String(b.service) === String(service._id) &&
+            b.scheduledAt.getTime() === slotStart.getTime();
+          const blockedByOther = bookings.some(
+            (b) =>
+              !isSameTurma(b) &&
+              segmentsOverlap(candSegs, bookingSegments(b))
+          );
+          if (blockedByOther) continue;
+          const taken = bookings.filter(isSameTurma).length;
+          if (taken >= Math.max(1, service.capacity || 1)) continue;
+        } else if (
+          bookings.some((b) => segmentsOverlap(candSegs, bookingSegments(b)))
+        ) {
           continue;
+        }
 
         slots.push(slotStart.toISOString());
       }

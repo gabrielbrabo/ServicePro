@@ -3,6 +3,7 @@ import {
   listEvolutions,
   createEvolution,
   updateEvolution,
+  evolutionsPdf,
   deleteEvolution,
 } from "../controllers/evolutionController";
 import { protect } from "../middleware/auth";
@@ -19,6 +20,7 @@ const mod = requireModule("prontuario");
 const log = audit("prontuario");
 
 router.get("/:establishmentId/:clientId", protect, mod, log, listEvolutions);
+router.get("/:establishmentId/:clientId/pdf", protect, mod, log, evolutionsPdf);
 router.post("/:establishmentId/:clientId", protect, mod, log, createEvolution);
 router.put(
   "/:establishmentId/:clientId/:evolutionId",

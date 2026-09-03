@@ -41,6 +41,19 @@ import browLashRoutes from "./routes/browLashRoutes";
 import sterilizationRoutes from "./routes/sterilizationRoutes";
 import massageRoutes from "./routes/massageRoutes";
 import serviceOrderRoutes from "./routes/serviceOrderRoutes";
+import personalRoutes from "./routes/personalRoutes";
+import nutritionRoutes from "./routes/nutritionRoutes";
+import podiatryRoutes from "./routes/podiatryRoutes";
+import nursingRoutes from "./routes/nursingRoutes";
+import dermatologyRoutes from "./routes/dermatologyRoutes";
+import chiropracticRoutes from "./routes/chiropracticRoutes";
+import acupunctureRoutes from "./routes/acupunctureRoutes";
+import lessonPlanRoutes from "./routes/lessonPlanRoutes";
+import maintenancePlanRoutes from "./routes/maintenancePlanRoutes";
+import photoJobRoutes from "./routes/photoJobRoutes";
+import constructionProjectRoutes from "./routes/constructionProjectRoutes";
+import clinicalRecordRoutes from "./routes/clinicalRecordRoutes";
+import anamneseRoutes, { publicAnamneseRoutes } from "./routes/anamneseRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -96,6 +109,20 @@ export const createApp = (): Application => {
   app.use("/api/sterilization", sterilizationRoutes);
   app.use("/api/beauty-massage", massageRoutes);
   app.use("/api/service-orders", serviceOrderRoutes);
+  app.use("/api/personal", personalRoutes);
+  app.use("/api/nutrition", nutritionRoutes);
+  app.use("/api/podiatry", podiatryRoutes);
+  app.use("/api/nursing", nursingRoutes);
+  app.use("/api/dermatology", dermatologyRoutes);
+  app.use("/api/chiropractic", chiropracticRoutes);
+  app.use("/api/acupuncture", acupunctureRoutes);
+  app.use("/api/lesson-plans", lessonPlanRoutes);
+  app.use("/api/maintenance-plans", maintenancePlanRoutes);
+  app.use("/api/photo-jobs", photoJobRoutes);
+  app.use("/api/construction-projects", constructionProjectRoutes);
+  app.use("/api/clinical-records", clinicalRecordRoutes);
+  app.use("/api/public/anamnese", publicAnamneseRoutes);
+  app.use("/api/anamnese", anamneseRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

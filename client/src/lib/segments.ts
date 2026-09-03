@@ -25,6 +25,8 @@ export type ModuleKey =
   | "documentos"
   | "convenio"
   | "auditoria"
+  | "ficha_clinica"
+  | "anamnese_link"
   | "odontograma"
   | "fisioterapia"
   | "tattoo"
@@ -35,7 +37,20 @@ export type ModuleKey =
   | "ordem_servico"
   | "veiculo"
   | "equipamento"
-  | "dedetizacao";
+  | "dedetizacao"
+  | "garantia"
+  | "medidas"
+  | "aulas"
+  | "manutencao"
+  | "foto"
+  | "obra"
+  | "personal"
+  | "nutricao"
+  | "podologia"
+  | "enfermagem"
+  | "dermatologia"
+  | "quiropraxia"
+  | "acupuntura";
 
 export interface SegmentDef {
   key: SegmentKey;
@@ -61,14 +76,15 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
   geral: {
     key: "geral",
     label: "Serviços gerais",
-    description: "Lava-rápido, assistência e outros serviços por agendamento.",
-    priceMonthly: 39,
+    description:
+      "Limpeza e diarista, aulas particulares, reformas e construção e outros serviços por agendamento.",
+    priceMonthly: 69,
     modules: [...COMMON, "ordem_servico"],
   },
   beleza: {
     key: "beleza",
     label: "Beleza e bem-estar",
-    description: "Barbearia, salão, estética, sobrancelha, etc.",
+    description: "Barbearia, salão de beleza, estética, manicure e pedicure.",
     priceMonthly: 69,
     modules: [
       ...COMMON,
@@ -84,8 +100,8 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
   saude: {
     key: "saude",
     label: "Saúde",
-    description: "Clínicas, odontologia e fisioterapia.",
-    priceMonthly: 149,
+    description: "Odontologia, fisioterapia, quiropraxia, enfermagem, acupuntura.",
+    priceMonthly: 159,
     modules: [
       ...COMMON,
       "produtos",
@@ -95,6 +111,7 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
       "documentos",
       "convenio",
       "auditoria",
+      "anamnese_link",
     ],
   },
 };
@@ -110,13 +127,45 @@ export const CATEGORY_EXTRA_MODULES: Record<string, ModuleKey[]> = {
   massagem: ["massagem"],
   // veiculos (servicos gerais)
   "oficina-mecanica": ["veiculo"],
-  borracharia: ["veiculo"],
   "estetica-automotiva": ["veiculo"],
   "lava-rapido": ["veiculo"],
+  // chaveiro: dados do veiculo p/ chave automotiva (na OS)
+  chaveiro: ["veiculo"],
   // assistencia tecnica
   "assistencia-tecnica": ["equipamento"],
   // dedetizacao
   dedetizacao: ["dedetizacao"],
+  // termo de garantia (refrigeracao, eletrica e hidraulica)
+  refrigeracao: ["garantia", "manutencao"],
+  "eletrica-hidraulica": ["garantia"],
+  // costura / ajustes: ficha de medidas
+  "costura-ajustes": ["medidas"],
+  // aulas particulares: plano de aulas + frequencia
+  "aulas-particulares": ["aulas"],
+  // jardinagem e paisagismo: plano de manutencao recorrente
+  "jardinagem-paisagismo": ["manutencao"],
+  // fotografia: briefing/contrato + galeria de entrega
+  fotografia: ["foto"],
+  // reformas e construcao: orcamento por etapas + medicoes + agenda
+  "reformas-construcao": ["obra"],
+  // pintura: trabalho faseado -> obras (etapas + medicoes + diarias)
+  pintura: ["obra"],
+  // limpeza e diarista: plano recorrente (faxina semanal/quinzenal)
+  "limpeza-diarista": ["manutencao"],
+  // personal trainer: ficha do aluno
+  "personal-trainer": ["personal"],
+  // nutricao: antropometria + plano alimentar + metas
+  nutricao: ["nutricao"],
+  // podologia: mapa do pe + procedimentos + antes/depois
+  podologia: ["podologia"],
+  // enfermagem: sinais vitais + curativos + medicacao + retorno
+  enfermagem: ["enfermagem"],
+  // dermatologia: mapa de lesoes + antes/depois + retorno
+  dermatologia: ["dermatologia"],
+  // quiropraxia: avaliacao postural + registro de ajustes + retorno
+  quiropraxia: ["quiropraxia"],
+  // acupuntura: pontos aplicados por sessao + retorno
+  acupuntura: ["acupuntura"],
 };
 
 // Mapa fallback slug -> area, usado quando a categoria AINDA nao tem `segment`

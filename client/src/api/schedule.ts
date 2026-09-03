@@ -90,6 +90,7 @@ export interface Booking {
   scheduledAt: string;
   endsAt: string;
   status: "pendente" | "confirmado" | "concluido" | "cancelado" | "reservado";
+  attendance?: "pendente" | "presente" | "falta" | "reposicao"; // presenca (aulas)
   notes?: string;
   payment: {
     status: string;
@@ -154,11 +155,15 @@ export const scheduleApi = {
   // horarios livres de um servico num dia; professional opcional.
   // home: coordenadas do cliente (atendimento a domicilio) para reservar o
   // deslocamento na ocupacao dos horarios.
+  // admin=true (dono/equipe autenticados): ignora a janela de dias futuros e a
+  // antecedencia minima do cliente, para o estabelecimento marcar retorno/visita
+  // em qualquer data futura livre.
   freeSlots: (
     serviceId: string,
     date: string,
     professional?: string | null,
-    home?: { lat: number; lng: number } | null
+    home?: { lat: number; lng: number } | null,
+    admin?: boolean
   ) =>
     api
       .get<{ date: string; slots: string[] }>(`/services/${serviceId}/slots`, {
@@ -166,6 +171,7 @@ export const scheduleApi = {
           date,
           ...(professional ? { professional } : {}),
           ...(home ? { atHome: "true", lat: home.lat, lng: home.lng } : {}),
+          ...(admin ? { admin: "true" } : {}),
         },
       })
       .then((r) => r.data),
@@ -194,6 +200,8 @@ export const scheduleApi = {
   createBooking: (data: {
     serviceId?: string;
     serviceIds?: string[];
+    // agendamento feito pelo estabelecimento para um cliente (ex.: retorno)
+    clientId?: string;
     scheduledAt: string;
     notes?: string;
     address?: string;
@@ -233,11 +241,43 @@ export const scheduleApi = {
       }>("/bookings/recurring", data)
       .then((r) => r.data),
 
+  // o estabelecimento matricula um aluno numa serie recorrente.
+  // `slots` = horarios (ISO) da 1a semana, um por dia da semana escolhido.
+  createEnrollment: (data: {
+    establishmentId: string;
+    serviceId: string;
+    clientId: string;
+    professionalId?: string | null;
+    slots: string[];
+    weeks: number;
+    notes?: string;
+    address?: string;
+    seriesId?: string; // informar p/ anexar aulas a uma matricula existente
+  }) =>
+    api
+      .post<{
+        seriesId: string;
+        createdCount: number;
+        skippedCount: number;
+        created: Booking[];
+        skipped: { date: string; reason: string }[];
+      }>("/bookings/enrollment", data)
+      .then((r) => r.data),
+
   cancelSeries: (seriesId: string) =>
     api
       .delete<{ message: string; cancelledCount: number }>(
         `/bookings/series/${seriesId}`
       )
+      .then((r) => r.data),
+
+  // marca a presenca do aluno numa aula (frequencia)
+  markAttendance: (
+    id: string,
+    attendance: "pendente" | "presente" | "falta" | "reposicao"
+  ) =>
+    api
+      .patch<Booking>(`/bookings/${id}/attendance`, { attendance })
       .then((r) => r.data),
 
   listBookings: (role: "client" | "provider", establishmentId?: string) =>

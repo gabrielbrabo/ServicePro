@@ -20,6 +20,11 @@ export interface IServiceOrderPart {
 }
 
 export type InspectionStatus = "ok" | "atencao" | "troca" | "na";
+// item de medida (extra da categoria costura/ajustes)
+export interface IMeasureItem {
+  name: string; // nome da medida (busto, cintura, manga...)
+  value: string; // valor (texto livre: "92 cm", "M", etc.)
+}
 export interface IInspectionItem {
   item: string;
   status: InspectionStatus;
@@ -33,6 +38,8 @@ export interface IVehicle {
   year: number;
   km: number;
   color: string;
+  nextRevisionKm: number; // km alvo da proxima revisao (0 = nao definido)
+  nextRevisionDate: string; // data/prazo da proxima revisao (texto)
 }
 // dados do equipamento (extra da categoria assistencia tecnica)
 export interface IEquipment {
@@ -76,6 +83,19 @@ export interface IServiceOrder extends Document {
     nextApplication: string; // proxima aplicacao / validade (texto/data)
     technician: string; // responsavel tecnico + registro
   };
+  // extra termo de garantia (refrigeracao / eletrica-hidraulica)
+  warranty: {
+    coverage: string; // o que a garantia cobre (servico, pecas trocadas)
+    exclusions: string; // o que exclui / faz perder a garantia
+  };
+  // extra costura/ajustes (ficha de medidas)
+  measurements: {
+    garment: string; // peca (vestido, calca, terno...)
+    fabric: string; // tecido / material
+    fittingDate: string; // data da prova / entrega (texto/data)
+    items: Types.DocumentArray<IMeasureItem & Document>; // medidas
+    notes: string; // observacoes da costura
+  };
   paymentMethod: "dinheiro" | "cartao" | "pix" | "outro"; // forma de pagamento
   postedToCash: boolean; // ja lancado no caixa (ao ser "entregue")
   author: Types.ObjectId; // quem registrou
@@ -101,6 +121,14 @@ const inspectionSchema = new Schema<IInspectionItem>(
       default: "na",
     },
     note: { type: String, default: "", trim: true },
+  },
+  { _id: false }
+);
+
+const measureItemSchema = new Schema<IMeasureItem>(
+  {
+    name: { type: String, default: "", trim: true },
+    value: { type: String, default: "", trim: true },
   },
   { _id: false }
 );
@@ -150,6 +178,8 @@ const serviceOrderSchema = new Schema<IServiceOrder>(
       year: { type: Number, default: 0 },
       km: { type: Number, default: 0 },
       color: { type: String, default: "", trim: true },
+      nextRevisionKm: { type: Number, default: 0, min: 0 },
+      nextRevisionDate: { type: String, default: "", trim: true },
     },
     inspection: { type: [inspectionSchema], default: [] },
     // extra assistencia tecnica (categoria com modulo "equipamento")
@@ -168,6 +198,19 @@ const serviceOrderSchema = new Schema<IServiceOrder>(
       method: { type: String, default: "", trim: true },
       nextApplication: { type: String, default: "", trim: true },
       technician: { type: String, default: "", trim: true },
+    },
+    // extra termo de garantia (refrigeracao / eletrica-hidraulica)
+    warranty: {
+      coverage: { type: String, default: "", trim: true },
+      exclusions: { type: String, default: "", trim: true },
+    },
+    // extra costura/ajustes (ficha de medidas)
+    measurements: {
+      garment: { type: String, default: "", trim: true },
+      fabric: { type: String, default: "", trim: true },
+      fittingDate: { type: String, default: "", trim: true },
+      items: { type: [measureItemSchema], default: [] },
+      notes: { type: String, default: "", trim: true },
     },
     paymentMethod: {
       type: String,

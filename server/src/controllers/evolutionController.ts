@@ -3,7 +3,107 @@ import { Types } from "mongoose";
 import { Evolution } from "../models/Evolution";
 import { Establishment } from "../models/Establishment";
 import { Booking } from "../models/Booking";
+import { Service, effectiveDuration } from "../models/Service";
+import { User } from "../models/User";
+import { generateEvolutionsPdf } from "../utils/evolutionsPdf";
+import { assertSlotIsBookable } from "../utils/slotValidation";
 import { AuthRequest } from "../middleware/auth";
+
+// Sincroniza o RETORNO com a agenda: se ha data + servico, cria (ou atualiza) um
+// agendamento confirmado do paciente; se o retorno foi removido, cancela o
+// agendamento futuro. Idempotente via returnBookingId.
+async function syncReturnBooking(
+  item: InstanceType<typeof Evolution>
+): Promise<{ scheduled: boolean; reason?: string }> {
+  const wants = !!item.nextReturn && !!item.returnService;
+  if (wants) {
+    const service = await Service.findById(item.returnService);
+    if (!service || service.establishment.toString() !== item.establishment.toString())
+      return { scheduled: false };
+    const prof = item.returnProfessional || null;
+    const start = new Date(item.nextReturn as Date);
+    const end = new Date(start);
+    end.setMinutes(end.getMinutes() + effectiveDuration(service, prof));
+
+    // valida a disponibilidade (expediente, intervalos e bloqueios). Se o
+    // horario nao estiver livre, NAO agenda; guarda o retorno so como lembrete e
+    // cancela um agendamento anterior que porventura exista.
+    const bookable = await assertSlotIsBookable(
+      item.establishment,
+      start,
+      end,
+      prof
+    );
+    if (!bookable.ok) {
+      if (item.returnBookingId) {
+        await Booking.updateOne(
+          { _id: item.returnBookingId, scheduledAt: { $gte: new Date() } },
+          { status: "cancelado" }
+        );
+        item.returnBookingId = null;
+        await item.save();
+      }
+      return { scheduled: false, reason: bookable.reason };
+    }
+
+    const est = await Establishment.findById(item.establishment).select("owner");
+    if (item.returnBookingId) {
+      await Booking.updateOne(
+        { _id: item.returnBookingId },
+        {
+          scheduledAt: start,
+          endsAt: end,
+          service: service._id,
+          professional: prof,
+          status: "confirmado",
+        }
+      );
+    } else {
+      const b = await Booking.create({
+        client: item.client,
+        establishment: item.establishment,
+        owner: est?.owner,
+        service: service._id,
+        professional: prof,
+        scheduledAt: start,
+        endsAt: end,
+        status: "confirmado",
+        notes: "Retorno (evolução)",
+        payment: {
+          status: "pendente",
+          amount: service.price,
+          depositRequired: 0,
+          depositPaid: false,
+        },
+      });
+      item.returnBookingId = b._id as unknown as typeof item.returnBookingId;
+      await item.save();
+    }
+    return { scheduled: true };
+  } else if (item.returnBookingId) {
+    await Booking.updateOne(
+      { _id: item.returnBookingId, scheduledAt: { $gte: new Date() } },
+      { status: "cancelado" }
+    );
+    item.returnBookingId = null;
+    await item.save();
+  }
+  return { scheduled: false };
+}
+
+// anexa ao JSON de resposta um aviso quando havia retorno mas o horario estava
+// indisponivel (o retorno fica so como lembrete, sem entrar na agenda).
+function withReturnStatus(
+  doc: InstanceType<typeof Evolution>,
+  sync: { scheduled: boolean; reason?: string }
+): Record<string, unknown> {
+  const out = doc.toObject() as unknown as Record<string, unknown>;
+  if (doc.nextReturn && doc.returnService && !sync.scheduled) {
+    out.returnUnavailable = true;
+    out.returnReason = sync.reason || "Horario indisponivel na agenda";
+  }
+  return out;
+}
 
 // dono OU membro do estabelecimento
 const canManage = async (
@@ -138,6 +238,8 @@ export const createEvolution = async (
       if (!b) booking = undefined; // vinculo invalido: ignora em vez de travar
     }
 
+    const nrRaw = req.body.nextReturn ? new Date(req.body.nextReturn) : null;
+    const nextReturn = nrRaw && !isNaN(nrRaw.getTime()) ? nrRaw : undefined;
     const item = await Evolution.create({
       establishment: establishmentId,
       client: clientId,
@@ -146,10 +248,14 @@ export const createEvolution = async (
       date,
       ...soap,
       cids: cleanCids(req.body.cids),
+      nextReturn,
+      returnService: parseObjectId(req.body.returnService),
+      returnProfessional: parseObjectId(req.body.returnProfessional) || null,
     });
+    const sync = await syncReturnBooking(item);
 
     const withAuthor = await item.populate("author", "name");
-    res.status(201).json(withAuthor);
+    res.status(201).json(withReturnStatus(withAuthor, sync));
   } catch (err) {
     console.error("createEvolution:", err);
     res.status(500).json({ message: "Erro ao criar evolucao" });
@@ -212,6 +318,13 @@ export const updateEvolution = async (
       const d = new Date(req.body.date);
       if (!isNaN(d.getTime())) item.date = d;
     }
+    if (req.body.nextReturn !== undefined) {
+      if (!req.body.nextReturn) item.nextReturn = undefined;
+      else {
+        const d = new Date(req.body.nextReturn);
+        if (!isNaN(d.getTime())) item.nextReturn = d;
+      }
+    }
     if (req.body.bookingId !== undefined) {
       const booking = parseObjectId(req.body.bookingId);
       if (!booking) {
@@ -226,12 +339,59 @@ export const updateEvolution = async (
       }
     }
 
+    if (req.body.returnService !== undefined)
+      item.returnService = parseObjectId(req.body.returnService);
+    if (req.body.returnProfessional !== undefined)
+      item.returnProfessional = parseObjectId(req.body.returnProfessional) || null;
+
     await item.save();
+    const sync = await syncReturnBooking(item);
     const withAuthor = await item.populate("author", "name");
-    res.json(withAuthor);
+    res.json(withReturnStatus(withAuthor, sync));
   } catch (err) {
     console.error("updateEvolution:", err);
     res.status(500).json({ message: "Erro ao atualizar evolucao" });
+  }
+};
+
+// GET /api/evolutions/:establishmentId/:clientId/pdf -> linha do tempo (PDF)
+export const evolutionsPdf = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { establishmentId, clientId } = req.params;
+    if (!(await canManage(establishmentId, req.userId))) {
+      res.status(403).json({ message: "Sem permissao neste estabelecimento" });
+      return;
+    }
+    const [items, est, patient] = await Promise.all([
+      Evolution.find({ establishment: establishmentId, client: clientId }).sort({
+        date: -1,
+        createdAt: -1,
+      }),
+      Establishment.findById(establishmentId).select("name phone"),
+      User.findById(clientId).select("name"),
+    ]);
+    const pdf = await generateEvolutionsPdf({
+      establishmentName: est?.name || "",
+      phone: est?.phone,
+      patientName: patient?.name,
+      items: items.map((ev) => ({
+        date: ev.date ? new Date(ev.date).toISOString() : "",
+        subjective: ev.subjective,
+        objective: ev.objective,
+        assessment: ev.assessment,
+        plan: ev.plan,
+        cids: ev.cids.map((c) => ({ code: c.code, description: c.description })),
+      })),
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="evolucao.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error("evolutionsPdf:", err);
+    res.status(500).json({ message: "Erro ao gerar o PDF" });
   }
 };
 

@@ -24,6 +24,16 @@ export interface IService extends Document {
   // "percent" = depositValue% do preco; "fixed" = depositValue em R$.
   depositType: "none" | "percent" | "fixed";
   depositValue: number;
+  // tipo do servico: avulso ("servico") ou aula recorrente ("aula").
+  // "aula" liga os defaults de agendamento de aula (recorrencia, turma, mensal).
+  kind: "servico" | "aula";
+  // modo da aula: individual (1 aluno/horario) ou turma (varios ate `capacity`).
+  classMode: "individual" | "turma";
+  capacity: number; // vagas por horario quando turma (1 quando individual)
+  // cobranca: por sessao (usa `price`), por diaria (usa `price` como valor/dia)
+  // ou mensal (usa `monthlyPrice`).
+  billing: "por_sessao" | "diaria" | "mensal";
+  monthlyPrice: number; // valor mensal quando billing = "mensal"
   // modalidade: no estabelecimento (local), a domicilio, ou ambos.
   serviceMode: "local" | "domicilio" | "ambos";
   // override da taxa de deslocamento (null = usa o padrao do estabelecimento)
@@ -61,6 +71,24 @@ const serviceSchema = new Schema<IService>(
       default: "none",
     },
     depositValue: { type: Number, default: 0, min: 0 },
+    // tipo do servico: avulso ou aula recorrente
+    kind: {
+      type: String,
+      enum: ["servico", "aula"],
+      default: "servico",
+    },
+    classMode: {
+      type: String,
+      enum: ["individual", "turma"],
+      default: "individual",
+    },
+    capacity: { type: Number, default: 1, min: 1 },
+    billing: {
+      type: String,
+      enum: ["por_sessao", "diaria", "mensal"],
+      default: "por_sessao",
+    },
+    monthlyPrice: { type: Number, default: 0, min: 0 },
     // atendimento a domicilio
     serviceMode: {
       type: String,

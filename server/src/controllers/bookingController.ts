@@ -94,6 +94,47 @@ async function hasSegmentConflict(
   return candidates.some((b) => segmentsOverlap(segments, bookingSegments(b)));
 }
 
+// Servico TURMA: o mesmo horario (mesmo service + mesmo inicio) aceita ate
+// `capacity` alunos. Bloqueia se (a) a turma lotou, ou (b) ha outro agendamento
+// OCUPANDO o profissional/estab. que NAO seja desta mesma turma (o professor nao
+// pode estar em duas coisas ao mesmo tempo). Alunos da mesma turma nao conflitam.
+async function turmaSlotStatus(
+  establishmentId: Types.ObjectId | string,
+  serviceId: Types.ObjectId,
+  capacity: number,
+  prof: Types.ObjectId | null,
+  start: Date,
+  end: Date,
+  excludeId?: Types.ObjectId | string
+): Promise<{ ok: boolean; reason?: string }> {
+  const cap = Math.max(1, capacity || 1);
+  // (a) vagas: conta os desta mesma turma (mesmo service + mesmo inicio)
+  const sameSlot: Record<string, unknown> = {
+    establishment: establishmentId,
+    service: serviceId,
+    scheduledAt: start,
+    status: { $in: BUSY_STATUSES },
+  };
+  if (excludeId) sameSlot._id = { $ne: excludeId };
+  const taken = await Booking.countDocuments(sameSlot);
+  if (taken >= cap) return { ok: false, reason: "Turma lotada neste horario" };
+
+  // (b) outro agendamento ocupando o profissional/estab. (fora desta turma)
+  const other: Record<string, unknown> = {
+    establishment: establishmentId,
+    status: { $in: BUSY_STATUSES },
+    scheduledAt: { $lt: end },
+    endsAt: { $gt: start },
+    $nor: [{ service: serviceId, scheduledAt: start }],
+  };
+  if (prof) other.professional = prof;
+  if (excludeId) other._id = { $ne: excludeId };
+  const busy = await Booking.findOne(other).select("_id");
+  if (busy) return { ok: false, reason: "Horario ja ocupado" };
+
+  return { ok: true };
+}
+
 // POST /api/bookings  (protegido)
 export const createBooking = async (
   req: AuthRequest,
@@ -351,7 +392,23 @@ export const createBooking = async (
     // conflito por SEGMENTOS: busca os agendamentos do dia (do profissional, se
     // houver) e compara segmento a segmento — assim a pausa de um nao bloqueia
     // o outro.
-    if (await hasSegmentConflict(service.establishment, prof, start, newSegments)) {
+    // TURMA (aula em grupo): valida por vagas; senao, conflito por segmentos.
+    if (!isCombo && service.classMode === "turma") {
+      const st = await turmaSlotStatus(
+        service.establishment,
+        service._id,
+        service.capacity,
+        prof,
+        start,
+        end
+      );
+      if (!st.ok) {
+        res.status(409).json({ message: st.reason });
+        return;
+      }
+    } else if (
+      await hasSegmentConflict(service.establishment, prof, start, newSegments)
+    ) {
       res.status(409).json({ message: "Horario nao esta mais disponivel" });
       return;
     }
@@ -366,8 +423,27 @@ export const createBooking = async (
         }))
       : [];
 
+    // Agendamento feito pelo ESTABELECIMENTO para um cliente (ex.: controle de
+    // retorno da enfermagem). So dono/equipe podem; o retorno ja entra
+    // confirmado. Sem clientId, mantem o fluxo normal (cliente agenda pra si).
+    let bookingClient: string = String(req.userId);
+    let scheduledByEstablishment = false;
+    if (req.body.clientId && Types.ObjectId.isValid(String(req.body.clientId))) {
+      const uid = String(req.userId);
+      const manages =
+        establishment.owner.toString() === uid ||
+        (establishment.members || []).some(
+          (m) => m.professional && m.professional.toString() === uid
+        );
+      if (manages) {
+        bookingClient = String(req.body.clientId);
+        scheduledByEstablishment = true;
+      }
+    }
+
     const booking = await Booking.create({
-      client: req.userId,
+      client: bookingClient,
+      ...(scheduledByEstablishment ? { status: "confirmado" as const } : {}),
       establishment: service.establishment,
       owner: establishment.owner,
       service: service._id,
@@ -388,8 +464,13 @@ export const createBooking = async (
       clientReminderMinutes,
       payment: {
         status: "pendente",
-        amount: totalPrice + travelFeeValue,
-        depositRequired,
+        // aula mensal (nao-combo): cobra o valor do PLANO, nao o por sessao
+        amount:
+          (!isCombo && service.billing === "mensal"
+            ? service.monthlyPrice || 0
+            : totalPrice) + travelFeeValue,
+        depositRequired:
+          !isCombo && service.billing === "mensal" ? 0 : depositRequired,
         depositPaid: false,
       },
     });
@@ -1270,20 +1351,38 @@ export const createRecurringBookings = async (
         continue;
       }
 
-      const conflictFilter: Record<string, unknown> = {
-        establishment: service.establishment,
-        status: { $in: BUSY_STATUSES },
-        scheduledAt: { $lt: end },
-        endsAt: { $gt: start },
-      };
-      if (prof) conflictFilter.professional = prof;
-      const conflito = await Booking.findOne(conflictFilter);
-      if (conflito) {
-        skipped.push({
-          date: start.toISOString(),
-          reason: "Horario ja ocupado",
-        });
-        continue;
+      if (service.classMode === "turma") {
+        const st = await turmaSlotStatus(
+          service.establishment,
+          service._id,
+          service.capacity,
+          prof,
+          start,
+          end
+        );
+        if (!st.ok) {
+          skipped.push({
+            date: start.toISOString(),
+            reason: st.reason || "Indisponivel",
+          });
+          continue;
+        }
+      } else {
+        const conflictFilter: Record<string, unknown> = {
+          establishment: service.establishment,
+          status: { $in: BUSY_STATUSES },
+          scheduledAt: { $lt: end },
+          endsAt: { $gt: start },
+        };
+        if (prof) conflictFilter.professional = prof;
+        const conflito = await Booking.findOne(conflictFilter);
+        if (conflito) {
+          skipped.push({
+            date: start.toISOString(),
+            reason: "Horario ja ocupado",
+          });
+          continue;
+        }
       }
 
       const booking = await Booking.create({
@@ -1300,8 +1399,15 @@ export const createRecurringBookings = async (
         clientReminderMinutes,
         payment: {
           status: "pendente",
-          amount: service.price,
-          depositRequired: depositFor(service),
+          // mensal: cobra o plano so na 1a aula (i===0); demais R$0
+          amount:
+            service.billing === "mensal"
+              ? i === 0
+                ? service.monthlyPrice
+                : 0
+              : service.price,
+          depositRequired:
+            service.billing === "mensal" ? 0 : depositFor(service),
           depositPaid: false,
         },
       });
@@ -1339,6 +1445,249 @@ export const createRecurringBookings = async (
   } catch (err) {
     console.error("createRecurringBookings:", err);
     res.status(500).json({ message: "Erro ao criar agendamentos recorrentes" });
+  }
+};
+
+// POST /api/bookings/enrollment  (protegido) — o ESTABELECIMENTO matricula um
+// ALUNO numa serie recorrente. body:
+//   { establishmentId, serviceId, clientId, professionalId?, slots: ISO[],
+//     weeks, notes?, address? }
+// `slots` sao os horarios da 1a semana (um por dia da semana escolhido); a serie
+// repete cada slot +7 dias por `weeks` semanas. Timezone resolvido no cliente.
+export const createStudentEnrollment = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const {
+      establishmentId,
+      serviceId,
+      clientId,
+      professionalId,
+      slots,
+      weeks,
+      notes,
+      address,
+    } = req.body;
+
+    // so o dono/equipe pode matricular
+    const est = await Establishment.findOne({
+      _id: establishmentId,
+      $or: [{ owner: req.userId }, { "members.professional": req.userId }],
+    });
+    if (!est) {
+      res.status(403).json({ message: "Sem permissao neste estabelecimento" });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(String(clientId))) {
+      res.status(400).json({ message: "Aluno invalido" });
+      return;
+    }
+
+    const weeksN = Number(weeks);
+    if (!Number.isInteger(weeksN) || weeksN < 1 || weeksN > 53) {
+      res.status(400).json({ message: "Numero de semanas invalido (1 a 53)" });
+      return;
+    }
+    if (!Array.isArray(slots) || slots.length === 0 || slots.length > 7) {
+      res.status(400).json({ message: "Informe de 1 a 7 horarios na semana" });
+      return;
+    }
+
+    const service = await Service.findById(serviceId);
+    if (!service || service.establishment.toString() !== establishmentId) {
+      res.status(404).json({ message: "Servico nao encontrado" });
+      return;
+    }
+
+    const prof = parseProfessional(professionalId);
+    const activePros = est.professionals.filter((p) => p.active);
+    if (activePros.length > 0 && !prof) {
+      res.status(400).json({ message: "Escolha um profissional" });
+      return;
+    }
+    if (prof) {
+      const exists = activePros.some((p) => p._id.toString() === prof.toString());
+      if (!exists) {
+        res.status(404).json({ message: "Profissional nao encontrado ou inativo" });
+        return;
+      }
+    }
+    if (!professionalDoesService(service.professionals, prof)) {
+      res
+        .status(400)
+        .json({ message: "Este profissional nao realiza o servico escolhido" });
+      return;
+    }
+
+    const firstStarts = (slots as unknown[])
+      .map((s) => new Date(String(s)))
+      .filter((d) => !isNaN(d.getTime()));
+    if (firstStarts.length === 0) {
+      res.status(400).json({ message: "Horarios invalidos" });
+      return;
+    }
+
+    // seriesId informado = anexar aulas a uma matricula existente
+    const providedSeries = Types.ObjectId.isValid(String(req.body.seriesId))
+      ? new Types.ObjectId(String(req.body.seriesId))
+      : null;
+    const seriesId = providedSeries || new Types.ObjectId();
+    const created: unknown[] = [];
+    const skipped: { date: string; reason: string }[] = [];
+
+    for (const first of firstStarts) {
+      for (let w = 0; w < weeksN; w++) {
+        const start = new Date(first);
+        start.setDate(start.getDate() + w * 7);
+        const end = new Date(start);
+        end.setUTCMinutes(end.getUTCMinutes() + service.durationMinutes);
+
+        const bookable = await assertSlotIsBookable(
+          service.establishment,
+          start,
+          end,
+          prof
+        );
+        if (!bookable.ok) {
+          skipped.push({
+            date: start.toISOString(),
+            reason: bookable.reason || "Indisponivel",
+          });
+          continue;
+        }
+
+        // TURMA: valida por vagas; senao, conflito por ocupacao simples
+        if (service.classMode === "turma") {
+          const st = await turmaSlotStatus(
+            service.establishment,
+            service._id,
+            service.capacity,
+            prof,
+            start,
+            end
+          );
+          if (!st.ok) {
+            skipped.push({ date: start.toISOString(), reason: st.reason || "Indisponivel" });
+            continue;
+          }
+        } else {
+          const conflictFilter: Record<string, unknown> = {
+            establishment: service.establishment,
+            status: { $in: BUSY_STATUSES },
+            scheduledAt: { $lt: end },
+            endsAt: { $gt: start },
+          };
+          if (prof) conflictFilter.professional = prof;
+          const conflito = await Booking.findOne(conflictFilter);
+          if (conflito) {
+            skipped.push({ date: start.toISOString(), reason: "Horario ja ocupado" });
+            continue;
+          }
+        }
+
+        // cobranca mensal: as sessoes nao cobram por sessao (amount 0);
+        // o plano mensal e cobrado a parte.
+        const sessionAmount = service.billing === "mensal" ? 0 : service.price;
+        const booking = await Booking.create({
+          client: clientId,
+          establishment: service.establishment,
+          owner: est.owner,
+          service: service._id,
+          professional: prof,
+          seriesId,
+          scheduledAt: start,
+          endsAt: end,
+          status: "confirmado", // matricula pelo estabelecimento ja entra confirmada
+          notes,
+          address,
+          payment: {
+            status: "pendente",
+            amount: sessionAmount,
+            depositRequired: service.billing === "mensal" ? 0 : depositFor(service),
+            depositPaid: false,
+          },
+        });
+        created.push(booking);
+      }
+    }
+
+    if (created.length === 0) {
+      res.status(409).json({
+        message: "Nenhum horario da serie esta disponivel",
+        created: [],
+        skipped,
+      });
+      return;
+    }
+
+    // COBRANCA MENSAL: o plano do mes e cobrado UMA vez, na PRIMEIRA aula da
+    // serie (as demais R$0). Ao ANEXAR (providedSeries) nao recobra: as aulas
+    // extras entram como R$0 (o mes ja foi cobrado na 1a aula original).
+    if (!providedSeries && service.billing === "mensal" && service.monthlyPrice > 0) {
+      const docs = created as Array<{
+        scheduledAt: Date;
+        payment: { amount: number };
+        save: () => Promise<unknown>;
+      }>;
+      docs.sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+      docs[0].payment.amount = service.monthlyPrice;
+      await docs[0].save();
+    }
+
+    const recipients = await establishmentRecipients(service.establishment, prof);
+    const io = getIO();
+    for (const uid of recipients) {
+      io.to(`user:${uid}`).emit("booking:new", created[0]);
+    }
+
+    res.status(201).json({
+      seriesId: seriesId.toString(),
+      createdCount: created.length,
+      skippedCount: skipped.length,
+      created,
+      skipped,
+    });
+  } catch (err) {
+    console.error("createStudentEnrollment:", err);
+    res.status(500).json({ message: "Erro ao matricular o aluno" });
+  }
+};
+
+// PATCH /api/bookings/:id/attendance  (protegido, dono/equipe)
+// body: { attendance: "pendente" | "presente" | "falta" | "reposicao" }
+const ATTENDANCE_VALUES = ["pendente", "presente", "falta", "reposicao"];
+export const markAttendance = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const value = String(req.body.attendance);
+    if (!ATTENDANCE_VALUES.includes(value)) {
+      res.status(400).json({ message: "Presenca invalida" });
+      return;
+    }
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+    const est = await Establishment.findOne({
+      _id: booking.establishment,
+      $or: [{ owner: req.userId }, { "members.professional": req.userId }],
+    }).select("_id");
+    if (!est) {
+      res.status(403).json({ message: "Sem permissao neste estabelecimento" });
+      return;
+    }
+    booking.attendance = value as (typeof booking)["attendance"];
+    await booking.save();
+    res.json(booking);
+  } catch (err) {
+    console.error("markAttendance:", err);
+    res.status(500).json({ message: "Erro ao marcar presenca" });
   }
 };
 

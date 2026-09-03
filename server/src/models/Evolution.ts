@@ -25,6 +25,10 @@ export interface IEvolution extends Document {
   assessment: string;
   plan: string;
   cids: IEvolutionCid[]; // diagnosticos CID-10 (opcional)
+  nextReturn?: Date; // retorno previsto / recall (opcional)
+  returnService?: Types.ObjectId; // servico do retorno (p/ agendar)
+  returnProfessional?: Types.ObjectId | null;
+  returnBookingId?: Types.ObjectId | null; // agendamento gerado do retorno
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +57,10 @@ const evolutionSchema = new Schema<IEvolution>(
     assessment: { type: String, default: "", trim: true },
     plan: { type: String, default: "", trim: true },
     cids: { type: [cidSchema], default: [] },
+    nextReturn: { type: Date },
+    returnService: { type: Schema.Types.ObjectId, ref: "Service" },
+    returnProfessional: { type: Schema.Types.ObjectId, default: null },
+    returnBookingId: { type: Schema.Types.ObjectId, ref: "Booking", default: null },
   },
   { timestamps: true }
 );

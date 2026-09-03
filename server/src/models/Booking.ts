@@ -9,6 +9,8 @@ export type BookingStatus =
 
 export type PaymentStatus = "pendente" | "pago" | "reembolsado" | "falhou";
 export type PaymentMethod = "dinheiro" | "cartao" | "pix" | "outro" | "";
+// presenca do aluno em aula (frequencia); "pendente" ate o professor marcar
+export type AttendanceStatus = "pendente" | "presente" | "falta" | "reposicao";
 
 export interface IRescheduleEntry {
   previousScheduledAt: Date;
@@ -59,6 +61,7 @@ export interface IBooking extends Document {
   scheduledAt: Date;
   endsAt: Date;
   status: BookingStatus;
+  attendance: AttendanceStatus; // presenca do aluno (aulas)
   notes?: string;
   address?: string;
   completedAt?: Date;
@@ -182,6 +185,11 @@ const bookingSchema = new Schema<IBooking>(
     status: {
       type: String,
       enum: ["pendente", "confirmado", "concluido", "cancelado", "reservado"],
+      default: "pendente",
+    },
+    attendance: {
+      type: String,
+      enum: ["pendente", "presente", "falta", "reposicao"],
       default: "pendente",
     },
     notes: { type: String },

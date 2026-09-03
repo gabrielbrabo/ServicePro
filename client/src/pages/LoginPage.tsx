@@ -30,7 +30,7 @@ export function LoginPage() {
   };
 
   return (
-    <AuthLayout title="Entrar" subtitle="Bem-vindo de volta ao ServicePro.">
+    <AuthLayout title="Entrar" subtitle="Bem-vindo de volta ao ServiçoPro.">
       <GoogleLoginButton
         onSuccess={(u) => navigate(u.hasEstablishments ? "/painel" : "/buscar")}
         onError={(msg) => setError(msg)}

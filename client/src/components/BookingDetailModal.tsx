@@ -152,7 +152,14 @@ export function BookingDetailModal({
               )}`}
             />
             {durationLabel && <Row label="Duração" value={durationLabel} />}
-            <Row label="Valor" value={formatPrice(b.payment?.amount ?? 0)} />
+            <Row
+              label="Valor"
+              value={
+                b.seriesId && !(b.payment?.amount)
+                  ? "Incluído no plano"
+                  : formatPrice(b.payment?.amount ?? 0)
+              }
+            />
             {b.professionalName && (
               <Row label="Profissional" value={b.professionalName} />
             )}

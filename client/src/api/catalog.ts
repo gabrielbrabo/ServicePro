@@ -35,6 +35,11 @@ export interface Service {
   processingGapMinutes?: number; // duracao da pausa (prof. fica livre)
   depositType?: "none" | "percent" | "fixed"; // sinal exigido ao agendar
   depositValue?: number; // % (percent) ou R$ (fixed)
+  kind?: "servico" | "aula"; // avulso ou aula recorrente
+  classMode?: "individual" | "turma"; // aula 1:1 ou turma (vagas)
+  capacity?: number; // vagas por horario quando turma
+  billing?: "por_sessao" | "diaria" | "mensal"; // cobranca por sessao ou mensal
+  monthlyPrice?: number; // valor mensal quando billing = "mensal"
   serviceMode?: "local" | "domicilio" | "ambos"; // modalidade de atendimento
   homeBaseFee?: number | null; // override da taxa fixa (null = padrao do estab.)
   homeFeePerKm?: number | null; // override da taxa por km (null = padrao)
@@ -76,6 +81,11 @@ export const catalogApi = {
     processingGapMinutes?: number;
     depositType?: "none" | "percent" | "fixed";
     depositValue?: number;
+    kind?: "servico" | "aula";
+    classMode?: "individual" | "turma";
+    capacity?: number;
+    billing?: "por_sessao" | "diaria" | "mensal";
+    monthlyPrice?: number;
     serviceMode?: "local" | "domicilio" | "ambos";
     homeBaseFee?: number | null;
     homeFeePerKm?: number | null;
@@ -96,6 +106,11 @@ export const catalogApi = {
       processingGapMinutes: number;
       depositType: "none" | "percent" | "fixed";
       depositValue: number;
+      kind: "servico" | "aula";
+      classMode: "individual" | "turma";
+      capacity: number;
+      billing: "por_sessao" | "diaria" | "mensal";
+      monthlyPrice: number;
       serviceMode: "local" | "domicilio" | "ambos";
       homeBaseFee: number | null;
       homeFeePerKm: number | null;

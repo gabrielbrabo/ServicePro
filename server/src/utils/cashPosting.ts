@@ -20,6 +20,14 @@ export const postBookingToCash = async (
   // ja lancado? nao repete
   if (booking.payment.postedToCash) return false;
 
+  // valor zero (ex.: aulas mensais alem da 1a do mes) nao entra no caixa;
+  // marca como lancado para nao ficar reaparecendo na varredura de abertura.
+  if (!(booking.payment.amount > 0)) {
+    booking.payment.postedToCash = true;
+    await booking.save();
+    return false;
+  }
+
   // sem forma de pagamento valida, nao lanca (nao sabe o metodo)
   const method = booking.payment.method;
   const validMethods = ["dinheiro", "cartao", "pix", "outro"];

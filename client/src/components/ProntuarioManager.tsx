@@ -14,6 +14,7 @@ import { Odontograma } from "./Odontograma";
 import { Periograma } from "./Periograma";
 import { Evolutions } from "./Evolutions";
 import { PhysioPanel } from "./PhysioPanel";
+import { ReturnScheduler } from "./ReturnScheduler";
 
 // rotulo amigavel da forma de pagamento
 function methodLabel(m: string): string {
@@ -193,6 +194,7 @@ function PatientRecord({
     | "odonto"
     | "perio"
     | "fisio"
+    | "retornos"
   >("ficha");
   const [history, setHistory] = useState<ClientHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -290,6 +292,7 @@ function PatientRecord({
                 ["ficha", "Prontuário"],
                 ["evolucao", "Evolução"],
                 ["timeline", "Linha do tempo"],
+                ["retornos", "Retornos"],
                 ...(canPlano
                   ? ([["plano", "Plano de tratamento"]] as [
                       "plano",
@@ -318,6 +321,7 @@ function PatientRecord({
                   | "odonto"
                   | "perio"
                   | "fisio"
+                  | "retornos"
                 ),
                 string
               ][]
@@ -436,6 +440,16 @@ function PatientRecord({
               <PhysioPanel
                 establishmentId={establishmentId}
                 clientId={patient._id}
+              />
+            </div>
+          )}
+
+          {view === "retornos" && (
+            <div className="mt-5">
+              <ReturnScheduler
+                establishmentId={establishmentId}
+                clientId={patient._id}
+                title="Agendar retorno"
               />
             </div>
           )}

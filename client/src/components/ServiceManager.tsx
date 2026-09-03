@@ -63,6 +63,11 @@ export function ServiceManager({
     processingGapMinutes: "0",
     depositType: "none",
     depositValue: "",
+    kind: "servico",
+    classMode: "individual",
+    capacity: "8",
+    billing: "por_sessao",
+    monthlyPrice: "",
     serviceMode: "local",
     homeBaseFee: "",
     homeFeePerKm: "",
@@ -85,6 +90,11 @@ export function ServiceManager({
   const [editGapMinutes, setEditGapMinutes] = useState("0");
   const [editDepositType, setEditDepositType] = useState("none");
   const [editDepositValue, setEditDepositValue] = useState("");
+  const [editKind, setEditKind] = useState("servico");
+  const [editClassMode, setEditClassMode] = useState("individual");
+  const [editCapacity, setEditCapacity] = useState("8");
+  const [editBilling, setEditBilling] = useState("por_sessao");
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState("");
   const [editServiceMode, setEditServiceMode] = useState("local");
   const [editHomeBaseFee, setEditHomeBaseFee] = useState("");
   const [editHomeFeePerKm, setEditHomeFeePerKm] = useState("");
@@ -165,6 +175,23 @@ export function ServiceManager({
           form.depositType === "none"
             ? 0
             : Math.max(0, Number(form.depositValue) || 0),
+        kind: form.kind as "servico" | "aula",
+        classMode:
+          form.kind === "aula"
+            ? (form.classMode as "individual" | "turma")
+            : "individual",
+        capacity:
+          form.kind === "aula" && form.classMode === "turma"
+            ? Math.max(1, Math.floor(Number(form.capacity) || 1))
+            : 1,
+        billing:
+          form.kind === "aula"
+            ? (form.billing === "mensal" ? "mensal" : "por_sessao")
+            : (form.billing === "diaria" ? "diaria" : "por_sessao"),
+        monthlyPrice:
+          form.kind === "aula" && form.billing === "mensal"
+            ? Math.max(0, Number(form.monthlyPrice) || 0)
+            : 0,
         serviceMode: form.serviceMode as "local" | "domicilio" | "ambos",
         homeBaseFee:
           form.serviceMode === "local" ? null : feeOrNull(form.homeBaseFee),
@@ -184,6 +211,11 @@ export function ServiceManager({
         processingGapMinutes: "0",
         depositType: "none",
         depositValue: "",
+        kind: "servico",
+        classMode: "individual",
+        capacity: "8",
+        billing: "por_sessao",
+        monthlyPrice: "",
         serviceMode: "local",
         homeBaseFee: "",
         homeFeePerKm: "",
@@ -216,6 +248,13 @@ export function ServiceManager({
     setEditDepositValue(
       s.depositType && s.depositType !== "none" ? String(s.depositValue ?? "") : ""
     );
+    setEditKind(s.kind ?? "servico");
+    setEditClassMode(s.classMode ?? "individual");
+    setEditCapacity(String(s.capacity ?? 8));
+    setEditBilling(s.billing ?? "por_sessao");
+    setEditMonthlyPrice(
+      s.billing === "mensal" ? String(s.monthlyPrice ?? "") : ""
+    );
     setEditServiceMode(s.serviceMode ?? "local");
     setEditHomeBaseFee(
       s.homeBaseFee === null || s.homeBaseFee === undefined
@@ -238,6 +277,11 @@ export function ServiceManager({
     setEditGapMinutes("0");
     setEditDepositType("none");
     setEditDepositValue("");
+    setEditKind("servico");
+    setEditClassMode("individual");
+    setEditCapacity("8");
+    setEditBilling("por_sessao");
+    setEditMonthlyPrice("");
     setEditServiceMode("local");
     setEditHomeBaseFee("");
     setEditHomeFeePerKm("");
@@ -257,6 +301,23 @@ export function ServiceManager({
           editDepositType === "none"
             ? 0
             : Math.max(0, Number(editDepositValue) || 0),
+        kind: editKind as "servico" | "aula",
+        classMode:
+          editKind === "aula"
+            ? (editClassMode as "individual" | "turma")
+            : "individual",
+        capacity:
+          editKind === "aula" && editClassMode === "turma"
+            ? Math.max(1, Math.floor(Number(editCapacity) || 1))
+            : 1,
+        billing:
+          editKind === "aula"
+            ? (editBilling === "mensal" ? "mensal" : "por_sessao")
+            : (editBilling === "diaria" ? "diaria" : "por_sessao"),
+        monthlyPrice:
+          editKind === "aula" && editBilling === "mensal"
+            ? Math.max(0, Number(editMonthlyPrice) || 0)
+            : 0,
         serviceMode: editServiceMode as "local" | "domicilio" | "ambos",
         homeBaseFee:
           editServiceMode === "local" ? null : feeOrNull(editHomeBaseFee),
@@ -325,7 +386,7 @@ export function ServiceManager({
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-ink/70">
-                Preço (R$)
+                {form.billing === "diaria" ? "Valor da diária (R$)" : "Preço (R$)"}
               </span>
               <input
                 type="number"
@@ -388,6 +449,126 @@ export function ServiceManager({
               className="w-full rounded-xl border border-ink/15 px-3 py-2 outline-none focus:border-teal-500"
             />
           </label>
+
+          {/* Modelo de agendamento (aula) */}
+          <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
+            <span className="mb-1 block text-sm font-medium text-ink/70">
+              Modelo de agendamento
+            </span>
+            <p className="mb-2 text-xs text-ink/50">
+              "Aula" habilita recorrência (aluno fixo/turma) e cobrança mensal.
+              "Serviço" é o agendamento avulso normal.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink/70">
+                  Tipo
+                </span>
+                <select
+                  value={form.kind}
+                  onChange={(e) =>
+                    setForm({ ...form, kind: e.target.value, billing: "por_sessao" })
+                  }
+                  className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                >
+                  <option value="servico">Serviço (avulso)</option>
+                  <option value="aula">Aula (recorrente)</option>
+                </select>
+              </label>
+              {form.kind === "servico" && (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Cobrança
+                  </span>
+                  <select
+                    value={form.billing === "diaria" ? "diaria" : "por_sessao"}
+                    onChange={(e) =>
+                      setForm({ ...form, billing: e.target.value })
+                    }
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  >
+                    <option value="por_sessao">Por serviço</option>
+                    <option value="diaria">Por diária</option>
+                  </select>
+                </label>
+              )}
+              {form.kind === "aula" && (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink/70">
+                      Formato
+                    </span>
+                    <select
+                      value={form.classMode}
+                      onChange={(e) =>
+                        setForm({ ...form, classMode: e.target.value })
+                      }
+                      className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                    >
+                      <option value="individual">Individual (1:1)</option>
+                      <option value="turma">Turma (vagas)</option>
+                    </select>
+                  </label>
+                  {form.classMode === "turma" && (
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-ink/70">
+                        Vagas por horário
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={form.capacity}
+                        onChange={(e) =>
+                          setForm({ ...form, capacity: e.target.value })
+                        }
+                        placeholder="8"
+                        className="h-10 w-full rounded-lg border border-ink/15 px-2 outline-none focus:border-teal-500"
+                      />
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink/70">
+                      Cobrança
+                    </span>
+                    <select
+                      value={form.billing}
+                      onChange={(e) =>
+                        setForm({ ...form, billing: e.target.value })
+                      }
+                      className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                    >
+                      <option value="por_sessao">Por sessão</option>
+                      <option value="mensal">Mensal (plano)</option>
+                    </select>
+                  </label>
+                  {form.billing === "mensal" && (
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-ink/70">
+                        Valor mensal (R$)
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.monthlyPrice}
+                        onChange={(e) =>
+                          setForm({ ...form, monthlyPrice: e.target.value })
+                        }
+                        placeholder="200"
+                        className="h-10 w-full rounded-lg border border-ink/15 px-2 outline-none focus:border-teal-500"
+                      />
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+            {form.kind === "aula" && (
+              <p className="mt-2 text-xs text-ink/40">
+                O preço acima continua sendo o valor por sessão (usado quando a
+                cobrança é por sessão).
+              </p>
+            )}
+          </div>
 
           {/* Pausa de processamento (química/espera) */}
           <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
@@ -641,6 +822,20 @@ export function ServiceManager({
                 {s.durationMinutes} min
               </span>
             </div>
+            {s.kind === "aula" && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-600 dark:text-teal-100">
+                  {s.classMode === "turma"
+                    ? `Turma · ${s.capacity ?? 1} vagas`
+                    : "Aula individual"}
+                </span>
+                {s.billing === "mensal" && (
+                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-300">
+                    Mensal{s.monthlyPrice ? ` · ${formatPrice(s.monthlyPrice)}` : ""}
+                  </span>
+                )}
+              </div>
+            )}
             {s.description && (
               <p className="mt-1 line-clamp-2 text-sm text-ink/60">
                 {s.description}
@@ -661,6 +856,7 @@ export function ServiceManager({
             <div className="mt-2 flex items-center justify-between">
               <p className="font-semibold text-teal-600">
                 {formatPrice(s.price)}
+                {s.billing === "diaria" ? " /dia" : ""}
               </p>
               {/* remover: so o dono */}
               {!isEmployee && (
@@ -705,6 +901,90 @@ export function ServiceManager({
                     <p className="mt-1.5 text-xs text-ink/40">
                       Ninguém marcado = todos fazem.
                     </p>
+
+                    <div className="mt-3">
+                      <span className="mb-1 block text-xs font-medium text-ink/70">
+                        Modelo de agendamento
+                      </span>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <select
+                          value={editKind}
+                          onChange={(e) => {
+                            setEditKind(e.target.value);
+                            setEditBilling("por_sessao");
+                          }}
+                          className="h-9 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                        >
+                          <option value="servico">Serviço (avulso)</option>
+                          <option value="aula">Aula (recorrente)</option>
+                        </select>
+                        {editKind === "servico" && (
+                          <select
+                            value={
+                              editBilling === "diaria" ? "diaria" : "por_sessao"
+                            }
+                            onChange={(e) => setEditBilling(e.target.value)}
+                            className="h-9 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                          >
+                            <option value="por_sessao">Por serviço</option>
+                            <option value="diaria">Por diária</option>
+                          </select>
+                        )}
+                        {editKind === "aula" && (
+                          <>
+                            <select
+                              value={editClassMode}
+                              onChange={(e) => setEditClassMode(e.target.value)}
+                              className="h-9 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                            >
+                              <option value="individual">Individual</option>
+                              <option value="turma">Turma</option>
+                            </select>
+                            {editClassMode === "turma" && (
+                              <label className="flex items-center gap-1.5">
+                                <span className="text-xs text-ink/70">Vagas</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={editCapacity}
+                                  onChange={(e) =>
+                                    setEditCapacity(e.target.value)
+                                  }
+                                  className="h-9 w-16 rounded-lg border border-ink/15 px-2 text-right text-sm outline-none focus:border-teal-500"
+                                />
+                              </label>
+                            )}
+                            <select
+                              value={editBilling}
+                              onChange={(e) => setEditBilling(e.target.value)}
+                              className="h-9 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                            >
+                              <option value="por_sessao">Por sessão</option>
+                              <option value="mensal">Mensal</option>
+                            </select>
+                            {editBilling === "mensal" && (
+                              <label className="flex items-center gap-1.5">
+                                <span className="text-xs text-ink/70">
+                                  Mensal
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={editMonthlyPrice}
+                                  onChange={(e) =>
+                                    setEditMonthlyPrice(e.target.value)
+                                  }
+                                  placeholder="200"
+                                  className="h-9 w-20 rounded-lg border border-ink/15 px-2 text-right text-sm outline-none focus:border-teal-500"
+                                />
+                                <span className="text-xs text-ink/40">R$</span>
+                              </label>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
 
                     <div className="mt-3">
                       <span className="mb-1 block text-xs font-medium text-ink/70">

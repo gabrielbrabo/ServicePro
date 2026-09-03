@@ -27,6 +27,8 @@ export interface Vehicle {
   year: number;
   km: number;
   color: string;
+  nextRevisionKm: number;
+  nextRevisionDate: string;
 }
 export interface Equipment {
   brand: string;
@@ -41,6 +43,21 @@ export interface PestControl {
   method: string;
   nextApplication: string;
   technician: string;
+}
+export interface Warranty {
+  coverage: string;
+  exclusions: string;
+}
+export interface MeasureItem {
+  name: string;
+  value: string;
+}
+export interface Measurements {
+  garment: string;
+  fabric: string;
+  fittingDate: string;
+  items: MeasureItem[];
+  notes: string;
 }
 
 export interface ServiceOrder {
@@ -69,10 +86,24 @@ export interface ServiceOrder {
   equipment?: Equipment;
   technicalReport?: string;
   pestControl?: PestControl;
+  warranty?: Warranty;
+  measurements?: Measurements;
   paymentMethod?: "dinheiro" | "cartao" | "pix" | "outro";
   postedToCash?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderHistoryItem {
+  _id: string;
+  number: number;
+  title: string;
+  object: string;
+  diagnosis: string;
+  status: OrderStatus;
+  total: number;
+  vehicle?: Vehicle;
+  createdAt: string;
 }
 
 export type OrderPayload = Partial<
@@ -100,6 +131,14 @@ export const serviceOrderApi = {
       .delete<{ message: string; _id: string }>(
         `/service-orders/${establishmentId}/${id}`
       )
+      .then((r) => r.data),
+
+  // historico do veiculo por placa (OS anteriores do mesmo carro)
+  history: (establishmentId: string, plate: string) =>
+    api
+      .get<OrderHistoryItem[]>(`/service-orders/${establishmentId}/history`, {
+        params: { plate },
+      })
       .then((r) => r.data),
 
   // PDF da OS (para imprimir ou enviar ao cliente)

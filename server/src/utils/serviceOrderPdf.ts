@@ -36,6 +36,8 @@ export interface OrderPdfInput {
     year?: number;
     km?: number;
     color?: string;
+    nextRevisionKm?: number;
+    nextRevisionDate?: string;
   };
   inspection?: { item: string; status: string; note?: string }[];
   equipment?: {
@@ -52,6 +54,17 @@ export interface OrderPdfInput {
     method?: string;
     nextApplication?: string;
     technician?: string;
+  };
+  warranty?: {
+    coverage?: string;
+    exclusions?: string;
+  };
+  measurements?: {
+    garment?: string;
+    fabric?: string;
+    fittingDate?: string;
+    items?: { name: string; value: string }[];
+    notes?: string;
   };
 }
 
@@ -161,6 +174,13 @@ export function generateServiceOrderPdf(input: OrderPdfInput): Promise<Buffer> {
           .filter(Boolean)
           .join(" · ");
         line("Veículo", vehStr);
+        const rev = [
+          veh.nextRevisionKm ? `${veh.nextRevisionKm} km` : "",
+          veh.nextRevisionDate || "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        if (rev) line("Próxima revisão", rev);
       }
       // equipamento (extra assistencia tecnica)
       const eq = input.equipment;
@@ -210,6 +230,40 @@ export function generateServiceOrderPdf(input: OrderPdfInput): Promise<Buffer> {
           doc.text(`•  ${i.item}: ${label}${note}`, left, doc.y, { width });
         });
         doc.moveDown(0.5);
+      }
+
+      // ---- ficha de medidas (costura / ajustes) ----
+      const ms = input.measurements;
+      const msItems = (ms?.items || []).filter((i) => i.name || i.value);
+      if (
+        ms &&
+        (ms.garment || ms.fabric || ms.fittingDate || ms.notes || msItems.length)
+      ) {
+        doc.moveDown(0.3);
+        doc.font("Helvetica-Bold").fontSize(11).fillColor("#111111");
+        doc.text("Ficha de medidas", left, doc.y, { width });
+        doc.moveDown(0.2);
+        line("Peça", ms.garment);
+        line("Tecido", ms.fabric);
+        line("Prova / entrega", ms.fittingDate);
+        if (msItems.length > 0) {
+          doc.font("Helvetica").fontSize(10).fillColor("#333333");
+          const colW = (width - 20) / 2;
+          for (let i = 0; i < msItems.length; i += 2) {
+            const rowY = doc.y;
+            const a = msItems[i];
+            const b = msItems[i + 1];
+            doc.text(`•  ${a.name}: ${a.value}`, left, rowY, { width: colW });
+            const h = doc.y;
+            if (b)
+              doc.text(`•  ${b.name}: ${b.value}`, left + colW + 20, rowY, {
+                width: colW,
+              });
+            doc.y = Math.max(h, doc.y);
+          }
+        }
+        if (ms.notes) block("Observações da costura", ms.notes);
+        doc.moveDown(0.4);
       }
 
       // ---- tabela de pecas / materiais ----
@@ -284,11 +338,38 @@ export function generateServiceOrderPdf(input: OrderPdfInput): Promise<Buffer> {
       doc.moveDown(0.6);
 
       // ---- garantia / observacoes ----
-      if (input.warrantyDays && input.warrantyDays > 0) {
-        const w = `${input.warrantyDays} dia(s)${
-          input.warrantyNote ? " — " + input.warrantyNote : ""
-        }`;
-        block("Garantia", w);
+      const wt = input.warranty;
+      const hasTerm = !!(wt && (wt.coverage || wt.exclusions));
+      const prazoStr =
+        input.warrantyDays && input.warrantyDays > 0
+          ? `${input.warrantyDays} dia(s)${
+              input.warrantyNote ? " — " + input.warrantyNote : ""
+            }`
+          : "";
+      if (hasTerm) {
+        // termo de garantia formal (refrigeracao / eletrica-hidraulica)
+        doc.moveDown(0.3);
+        doc.font("Helvetica-Bold").fontSize(12).fillColor("#111111");
+        doc.text("TERMO DE GARANTIA", left, doc.y, { width });
+        doc.moveDown(0.3);
+        if (prazoStr) block("Prazo", prazoStr);
+        else
+          block(
+            "Prazo",
+            "A garantia vigora conforme prazo legal e o descrito neste termo."
+          );
+        block("Cobertura", wt?.coverage);
+        block("Exclusões", wt?.exclusions);
+        doc.font("Helvetica").fontSize(8).fillColor("#666666");
+        doc.text(
+          "A garantia tem início na data de entrega do serviço e cobre exclusivamente os itens descritos acima.",
+          left,
+          doc.y,
+          { width, align: "justify" }
+        );
+        doc.moveDown(0.5);
+      } else if (prazoStr) {
+        block("Garantia", prazoStr);
       }
       block("Observações", input.notes);
 

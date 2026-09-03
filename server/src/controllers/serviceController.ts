@@ -101,6 +101,17 @@ const clampFeeOrNull = (v: unknown): number | null =>
     ? null
     : Math.max(0, Number(v) || 0);
 
+// tipo do servico / modo de aula / cobranca
+const sanitizeKind = (v: unknown): "servico" | "aula" =>
+  String(v) === "aula" ? "aula" : "servico";
+const sanitizeClassMode = (v: unknown): "individual" | "turma" =>
+  String(v) === "turma" ? "turma" : "individual";
+const sanitizeBilling = (v: unknown): "por_sessao" | "mensal" =>
+  String(v) === "mensal" ? "mensal" : "por_sessao";
+const clampCapacity = (v: unknown): number =>
+  Math.max(1, Math.floor(Number(v)) || 1);
+const clampMonthly = (v: unknown): number => Math.max(0, Number(v) || 0);
+
 // GET /api/services  (busca publica, com filtros opcionais)
 // ?establishment=ID  ?category=ID  ?q=texto
 export const listServices = async (
@@ -187,6 +198,16 @@ export const createService = async (
       payload.depositValue = clampDepositValue(req.body.depositValue);
     if (req.body.serviceMode !== undefined)
       payload.serviceMode = sanitizeServiceMode(req.body.serviceMode);
+    if (req.body.kind !== undefined)
+      payload.kind = sanitizeKind(req.body.kind);
+    if (req.body.classMode !== undefined)
+      payload.classMode = sanitizeClassMode(req.body.classMode);
+    if (req.body.capacity !== undefined)
+      payload.capacity = clampCapacity(req.body.capacity);
+    if (req.body.billing !== undefined)
+      payload.billing = sanitizeBilling(req.body.billing);
+    if (req.body.monthlyPrice !== undefined)
+      payload.monthlyPrice = clampMonthly(req.body.monthlyPrice);
     if (req.body.homeBaseFee !== undefined)
       payload.homeBaseFee = clampFeeOrNull(req.body.homeBaseFee);
     if (req.body.homeFeePerKm !== undefined)
@@ -258,6 +279,21 @@ export const updateService = async (
     }
     if (req.body.serviceMode !== undefined) {
       req.body.serviceMode = sanitizeServiceMode(req.body.serviceMode);
+    }
+    if (req.body.kind !== undefined) {
+      req.body.kind = sanitizeKind(req.body.kind);
+    }
+    if (req.body.classMode !== undefined) {
+      req.body.classMode = sanitizeClassMode(req.body.classMode);
+    }
+    if (req.body.capacity !== undefined) {
+      req.body.capacity = clampCapacity(req.body.capacity);
+    }
+    if (req.body.billing !== undefined) {
+      req.body.billing = sanitizeBilling(req.body.billing);
+    }
+    if (req.body.monthlyPrice !== undefined) {
+      req.body.monthlyPrice = clampMonthly(req.body.monthlyPrice);
     }
     if (req.body.homeBaseFee !== undefined) {
       req.body.homeBaseFee = clampFeeOrNull(req.body.homeBaseFee);

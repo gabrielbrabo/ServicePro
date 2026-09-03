@@ -13,9 +13,18 @@ import {
 } from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
 
-// categorias em destaque quando a lista esta recolhida (as demais aparecem no
-// "Ver mais categorias"). Ordem aqui = ordem de exibicao.
-const MAIN_SLUGS = [
+// Categorias em destaque (recolhido). RODIZIO TRIMESTRAL: a cada 3 meses troca
+// as 8 destacadas -> 2 beleza + 4 saude + 2 gerais. As demais ficam no "Ver
+// mais categorias".
+const FEATURED_MIX: { seg: "beleza" | "saude" | "geral"; count: number }[] = [
+  { seg: "beleza", count: 2 },
+  { seg: "saude", count: 4 },
+  { seg: "geral", count: 2 },
+];
+// Trimestre de referencia (set/2026): no offset 0 mostra as ORIGINAIS; os
+// trimestres seguintes rotacionam a partir delas.
+const BASE_QUARTER = 8106;
+const ORIGINAL_SLUGS = [
   "barbearia",
   "salao-de-beleza",
   "fisioterapia",
@@ -25,6 +34,29 @@ const MAIN_SLUGS = [
   "refrigeracao",
   "estetica-automotiva",
 ];
+function featuredCategories(cats: Category[]): Category[] {
+  const now = new Date();
+  const quarter = Math.floor((now.getFullYear() * 12 + now.getMonth()) / 3);
+  const offset = quarter - BASE_QUARTER;
+  const out: Category[] = [];
+  for (const { seg, count } of FEATURED_MIX) {
+    const all = cats.filter((c) => c.segment === seg);
+    // as originais primeiro (na ordem definida), depois o resto por _id
+    const originals = ORIGINAL_SLUGS.map((sl) =>
+      all.find((c) => c.slug === sl)
+    ).filter((c): c is Category => Boolean(c));
+    const rest = all
+      .filter((c) => !ORIGINAL_SLUGS.includes(c.slug))
+      .sort((a, b) => a._id.localeCompare(b._id));
+    const group = [...originals, ...rest];
+    if (group.length === 0) continue;
+    const start = ((offset * count) % group.length + group.length) % group.length;
+    for (let i = 0; i < count && i < group.length; i++) {
+      out.push(group[(start + i) % group.length]);
+    }
+  }
+  return out;
+}
 
 export function SearchPage() {
   const { user } = useAuth();
@@ -129,9 +161,7 @@ export function SearchPage() {
 
   // categorias principais (as do MAIN_SLUGS que existem); se nenhuma casar,
   // cai nas 8 primeiras. Recolhido mostra so essas; "Ver mais" mostra todas.
-  const mainCategories = MAIN_SLUGS.map((slug) =>
-    categories.find((c) => c.slug === slug)
-  ).filter((c): c is Category => Boolean(c));
+  const mainCategories = featuredCategories(categories);
   const collapsedCategories =
     mainCategories.length > 0 ? mainCategories : categories.slice(0, 8);
   const visibleCategories = showAllCats ? categories : collapsedCategories;

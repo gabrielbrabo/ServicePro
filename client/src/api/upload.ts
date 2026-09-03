@@ -6,7 +6,8 @@ export type UploadFolder =
   | "estabelecimentos"
   | "galeria"
   | "produtos"
-  | "usuarios";
+  | "usuarios"
+  | "personal";
 
 interface PresignResponse {
   uploadUrl: string;

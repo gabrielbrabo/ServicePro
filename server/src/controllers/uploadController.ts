@@ -24,6 +24,7 @@ const ALLOWED_FOLDERS = [
   "galeria",
   "produtos",
   "usuarios",
+  "personal",
 ];
 
 // extensao a partir do mime

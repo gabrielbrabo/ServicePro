@@ -117,6 +117,8 @@ const sanitizeVehicle = (raw: unknown) => {
     year: Math.max(0, Math.floor(Number(v.year) || 0)),
     km: Math.max(0, Math.floor(Number(v.km) || 0)),
     color: cleanText(v.color),
+    nextRevisionKm: Math.max(0, Math.floor(Number(v.nextRevisionKm) || 0)),
+    nextRevisionDate: cleanText(v.nextRevisionDate),
   };
 };
 
@@ -132,6 +134,15 @@ const sanitizeEquipment = (raw: unknown) => {
   };
 };
 
+// termo de garantia (refrigeracao / eletrica-hidraulica)
+const sanitizeWarranty = (raw: unknown) => {
+  const w = (raw || {}) as Record<string, unknown>;
+  return {
+    coverage: cleanText(w.coverage),
+    exclusions: cleanText(w.exclusions),
+  };
+};
+
 // certificado de dedetizacao
 const sanitizePestControl = (raw: unknown) => {
   const p = (raw || {}) as Record<string, unknown>;
@@ -141,6 +152,27 @@ const sanitizePestControl = (raw: unknown) => {
     method: cleanText(p.method),
     nextApplication: cleanText(p.nextApplication),
     technician: cleanText(p.technician),
+  };
+};
+
+// ficha de medidas (costura / ajustes)
+const sanitizeMeasureItems = (raw: unknown) =>
+  Array.isArray(raw)
+    ? raw
+        .map((i) => {
+          const it = (i || {}) as Record<string, unknown>;
+          return { name: cleanText(it.name), value: cleanText(it.value) };
+        })
+        .filter((i) => i.name !== "" || i.value !== "")
+    : [];
+const sanitizeMeasurements = (raw: unknown) => {
+  const m = (raw || {}) as Record<string, unknown>;
+  return {
+    garment: cleanText(m.garment),
+    fabric: cleanText(m.fabric),
+    fittingDate: cleanText(m.fittingDate),
+    items: sanitizeMeasureItems(m.items),
+    notes: cleanText(m.notes),
   };
 };
 
@@ -196,6 +228,8 @@ const buildPayload = (body: Record<string, unknown>) => {
     equipment: sanitizeEquipment(body.equipment),
     technicalReport: cleanText(body.technicalReport),
     pestControl: sanitizePestControl(body.pestControl),
+    warranty: sanitizeWarranty(body.warranty),
+    measurements: sanitizeMeasurements(body.measurements),
     paymentMethod: CASH_METHODS.includes(String(body.paymentMethod))
       ? (String(body.paymentMethod) as
           | "dinheiro"
@@ -221,6 +255,39 @@ export const listOrders = async (
   } catch (err) {
     console.error("listOrders:", err);
     res.status(500).json({ message: "Erro ao listar ordens de servico" });
+  }
+};
+
+// GET /api/service-orders/:establishmentId/history?plate=XXX
+// Historico do veiculo: OS anteriores com a MESMA placa (normalizada: sem
+// separadores, maiuscula). Retorna campos resumidos, mais recente primeiro.
+const normPlate = (p: unknown): string =>
+  String(p || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+
+export const ordersByPlate = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { establishmentId } = req.params;
+    if (!(await canManage(establishmentId, req.userId))) return void deny(res);
+    const plate = normPlate((req.query as { plate?: unknown }).plate);
+    if (!plate) {
+      res.json([]);
+      return;
+    }
+    const items = await ServiceOrder.find({
+      establishment: establishmentId,
+      "vehicle.plate": { $ne: "" },
+    })
+      .select("number title object diagnosis status total vehicle createdAt")
+      .sort({ number: -1 })
+      .limit(300);
+    const matched = items.filter((o) => normPlate(o.vehicle?.plate) === plate);
+    res.json(matched);
+  } catch (err) {
+    console.error("ordersByPlate:", err);
+    res.status(500).json({ message: "Erro ao buscar historico do veiculo" });
   }
 };
 
@@ -347,6 +414,17 @@ export const orderPdf = async (
       equipment: order.equipment,
       technicalReport: order.technicalReport,
       pestControl: order.pestControl,
+      warranty: order.warranty,
+      measurements: {
+        garment: order.measurements?.garment,
+        fabric: order.measurements?.fabric,
+        fittingDate: order.measurements?.fittingDate,
+        items: (order.measurements?.items || []).map((i) => ({
+          name: i.name,
+          value: i.value,
+        })),
+        notes: order.measurements?.notes,
+      },
     });
 
     res.setHeader("Content-Type", "application/pdf");

@@ -32,7 +32,9 @@ export function ServiceCard({ service }: { service: Service }) {
 
       <div className="mt-4 flex items-center justify-between">
         <span className="font-display text-lg font-bold text-teal-600">
-          {formatPrice(service.price)}
+          {service.billing === "mensal"
+            ? `${formatPrice(service.monthlyPrice ?? 0)}/mês`
+            : formatPrice(service.price)}
         </span>
         <span className="text-sm font-semibold text-amber-500 group-hover:underline">
           Agendar →

@@ -206,7 +206,9 @@ export function EstablishmentPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="font-display text-lg font-bold text-ink">
-                        R$ {s.price.toFixed(2)}
+                        {s.billing === "mensal"
+                          ? `R$ ${(s.monthlyPrice ?? 0).toFixed(2)}/mês`
+                          : `R$ ${s.price.toFixed(2)}`}
                       </p>
                       <span className="mt-1 inline-block text-xs font-semibold text-amber-500 group-hover:underline">
                         Agendar →

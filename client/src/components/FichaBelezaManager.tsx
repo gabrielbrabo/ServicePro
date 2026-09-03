@@ -19,8 +19,13 @@ import {
 } from "../api/beauty";
 import { Establishment } from "../api/establishment";
 import { hasModule } from "../lib/segments";
+import {
+  CONSENT_TEMPLATES,
+  CONSENT_CATEGORIES,
+} from "../lib/consentTemplates";
 import { ImageUpload } from "./ImageUpload";
 import { deleteUploadByUrl } from "../api/upload";
+import { ReturnScheduler } from "./ReturnScheduler";
 
 // sub-abas da ficha do cliente (liberadas por modulo)
 type SubTab =
@@ -33,7 +38,8 @@ type SubTab =
   | "tatuagem"
   | "estetica"
   | "visagismo"
-  | "massagem";
+  | "massagem"
+  | "retornos";
 type SubTabItem = [SubTab, string];
 
 // Aba "Ficha do cliente" (area Beleza): lista clientes -> ficha tecnica
@@ -307,6 +313,7 @@ function ClientFile({
             {(
               [
                 ["ficha", "Ficha técnica"],
+                ["retornos", "Retornos"],
                 ...(canFormulas
                   ? ([["formulas", "Fórmulas"]] as SubTabItem[])
                   : []),
@@ -524,6 +531,17 @@ function ClientFile({
               <MassageView
                 establishmentId={establishmentId}
                 clientId={client._id}
+              />
+            </div>
+          )}
+
+          {view === "retornos" && (
+            <div className="mt-5">
+              <ReturnScheduler
+                establishmentId={establishmentId}
+                clientId={client._id}
+                title="Agendar retorno"
+                hint="Reagende o cliente — retoque, manutenção ou próxima sessão. Só aparecem horários livres e o agendamento entra direto na sua agenda."
               />
             </div>
           )}
@@ -1589,6 +1607,15 @@ function ConsentView({
     setAttachmentUrl("");
   };
 
+  // preenche o formulário a partir de um modelo por procedimento
+  const applyTemplate = (id: string) => {
+    const t = CONSENT_TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    setKind(t.kind);
+    setTitle(t.title);
+    setContent(t.content);
+  };
+
   const add = async () => {
     if (!title.trim()) {
       setError("Informe o título do termo.");
@@ -1674,6 +1701,33 @@ function ConsentView({
 
       {showForm && (
         <div className="mt-4 rounded-2xl border border-ink/10 bg-white p-5">
+          <label className="mb-3 block">
+            <span className="mb-1.5 block text-sm font-medium text-ink/70">
+              Modelo por procedimento (opcional)
+            </span>
+            <select
+              value=""
+              onChange={(e) => applyTemplate(e.target.value)}
+              className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500"
+            >
+              <option value="">Escolher um modelo…</option>
+              {CONSENT_CATEGORIES.map((cat) => (
+                <optgroup key={cat} label={cat}>
+                  {CONSENT_TEMPLATES.filter((t) => t.category === cat).map(
+                    (t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    )
+                  )}
+                </optgroup>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-ink/40">
+              Preenche tipo, título e texto — você pode editar antes de salvar.
+            </span>
+          </label>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink/70">

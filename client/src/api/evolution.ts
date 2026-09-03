@@ -19,6 +19,10 @@ export interface Evolution {
   assessment: string;
   plan: string;
   cids: EvolutionCid[];
+  nextReturn?: string | null;
+  returnService?: string | null;
+  returnProfessional?: string | null;
+  returnBookingId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +35,9 @@ export interface EvolutionPayload {
   date?: string;
   bookingId?: string | null;
   cids?: EvolutionCid[];
+  nextReturn?: string | null;
+  returnService?: string | null;
+  returnProfessional?: string | null;
 }
 
 const base = "/evolutions";
@@ -57,6 +64,13 @@ export const evolutionApi = {
         `${base}/${establishmentId}/${clientId}/${evolutionId}`,
         data
       )
+      .then((r) => r.data),
+
+  pdfUrl: (establishmentId: string, clientId: string) =>
+    api
+      .get<Blob>(`${base}/${establishmentId}/${clientId}/pdf`, {
+        responseType: "blob",
+      })
       .then((r) => r.data),
 
   remove: (establishmentId: string, clientId: string, evolutionId: string) =>

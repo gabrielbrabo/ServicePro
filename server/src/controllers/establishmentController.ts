@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { PipelineStage, Types } from "mongoose";
 import { Establishment } from "../models/Establishment";
 import { Service } from "../models/Service";
+import { Category } from "../models/Category";
 import { AuthRequest } from "../middleware/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
@@ -354,7 +355,6 @@ export const updateEstablishment = async (
       "description",
       "phone",
       "photo",
-      "category",
       "active",
       "cashAutoEntry",
     ] as const;
@@ -362,6 +362,34 @@ export const updateEstablishment = async (
       if (field in req.body) {
         // @ts-expect-error atribuicao dinamica controlada pela lista editable
         establishment[field] = req.body[field];
+      }
+    }
+
+    // categoria: so permite trocar para uma categoria da MESMA area (segmento).
+    // Isso evita liberar/retirar modulos que nao pertencem ao segmento do
+    // estabelecimento (o segment em si nao muda na edicao).
+    if ("category" in req.body && req.body.category) {
+      const newCatId = String(req.body.category);
+      if (newCatId !== establishment.category.toString()) {
+        if (!Types.ObjectId.isValid(newCatId)) {
+          res.status(400).json({ message: "Categoria invalida" });
+          return;
+        }
+        const cat = await Category.findById(newCatId).select("segment");
+        if (!cat) {
+          res.status(400).json({ message: "Categoria nao encontrada" });
+          return;
+        }
+        // categoria sem area definida serve a qualquer segmento; com area
+        // definida, precisa bater com a area do estabelecimento.
+        if (cat.segment && cat.segment !== establishment.segment) {
+          res.status(400).json({
+            message:
+              "So e possivel trocar para uma categoria da mesma area do estabelecimento",
+          });
+          return;
+        }
+        establishment.category = new Types.ObjectId(newCatId);
       }
     }
 

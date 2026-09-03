@@ -112,8 +112,11 @@ export const establishmentApi = {
     location?: { type: string; coordinates: [number, number] };
   }) => api.post<Establishment>("/establishments", data).then((r) => r.data),
 
-  update: (id: string, data: Partial<Establishment>) =>
-    api.put<Establishment>(`/establishments/${id}`, data).then((r) => r.data),
+  update: (
+    id: string,
+    // category vai como id (string); os demais campos seguem o modelo
+    data: Partial<Omit<Establishment, "category">> & { category?: string }
+  ) => api.put<Establishment>(`/establishments/${id}`, data).then((r) => r.data),
 
   // busca um estabelecimento por id, com seus serviços
   getById: (id: string) =>

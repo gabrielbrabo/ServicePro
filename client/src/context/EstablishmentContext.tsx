@@ -28,8 +28,22 @@ export type PanelTab =
   | "ficha"
   | "convenio"
   | "auditoria"
+  | "ficha_clinica"
+  | "anamnese_link"
   | "esterilizacao"
-  | "ordem_servico";
+  | "ordem_servico"
+  | "personal"
+  | "nutricao"
+  | "podologia"
+  | "enfermagem"
+  | "dermatologia"
+  | "quiropraxia"
+  | "acupuntura"
+  | "aulas"
+  | "manutencao"
+  | "foto"
+  | "obra"
+  | "matriculas";
 
 const LAST_KEY = "servicepro:lastEstablishmentId";
 

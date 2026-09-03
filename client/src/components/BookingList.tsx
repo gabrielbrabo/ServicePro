@@ -411,7 +411,9 @@ export function BookingList({
                       </p>
                     )}
                     <p className="mt-0.5 text-sm font-medium text-teal-600">
-                      {formatPrice(b.payment?.amount ?? 0)}
+                      {b.seriesId && !(b.payment?.amount)
+                        ? "Incluído no plano"
+                        : formatPrice(b.payment?.amount ?? 0)}
                     </p>
                   </div>
 
@@ -565,7 +567,9 @@ export function BookingList({
                   )}
 
                   <p className="mt-1 text-sm font-semibold text-teal-600">
-                    {formatPrice(b.payment?.amount ?? 0)}
+                    {b.seriesId && !(b.payment?.amount)
+                        ? "Incluído no plano"
+                        : formatPrice(b.payment?.amount ?? 0)}
                   </p>
                   {(b.payment?.depositRequired ?? 0) > 0 && (
                     <span

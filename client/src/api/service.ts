@@ -13,6 +13,11 @@ export interface ServiceItem {
   depositType?: "none" | "percent" | "fixed"; // sinal exigido ao agendar
   depositValue?: number; // % (percent) ou R$ (fixed)
   serviceMode?: "local" | "domicilio" | "ambos"; // modalidade de atendimento
+  kind?: "servico" | "aula";
+  classMode?: "individual" | "turma";
+  capacity?: number;
+  billing?: "por_sessao" | "mensal";
+  monthlyPrice?: number;
   active: boolean;
 }
 

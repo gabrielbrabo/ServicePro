@@ -6,7 +6,10 @@ import {
   EvolutionCid,
 } from "../api/evolution";
 import { recordApi, RecordNote, ClientHistoryItem } from "../api/medicalRecord";
+import { catalogApi, Service } from "../api/catalog";
+import { professionalApi, Professional } from "../api/professional";
 import { searchCid } from "../lib/cid10";
+import { FreeSlotSelect } from "./FreeSlotSelect";
 
 // data local no formato YYYY-MM-DD (para <input type="date">), sem o desvio de
 // fuso que o toISOString() causa perto da meia-noite.
@@ -73,6 +76,10 @@ const emptyForm = (): {
   objective: string;
   assessment: string;
   plan: string;
+  nextReturn: string;
+  returnTime: string;
+  returnService: string;
+  returnProfessional: string;
 } => ({
   date: toDateInput(new Date()),
   bookingId: "",
@@ -80,6 +87,10 @@ const emptyForm = (): {
   objective: "",
   assessment: "",
   plan: "",
+  nextReturn: "",
+  returnTime: "",
+  returnService: "",
+  returnProfessional: "",
 });
 
 // Evolucao clinica SOAP: registro por atendimento. Serve clinica, fisio e
@@ -101,10 +112,13 @@ export function Evolutions({
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [warn, setWarn] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [cids, setCids] = useState<EvolutionCid[]>([]);
   const [cidQuery, setCidQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [pros, setPros] = useState<Professional[]>([]);
 
   useEffect(() => {
     setLoading(true);
@@ -118,6 +132,14 @@ export function Evolutions({
       .history(establishmentId, clientId)
       .then(setHistory)
       .catch(() => setHistory([]));
+    catalogApi
+      .byEstablishment(establishmentId)
+      .then((s) => setServices(s.filter((x) => x.kind !== "aula")))
+      .catch(() => setServices([]));
+    professionalApi
+      .list(establishmentId)
+      .then(setPros)
+      .catch(() => setPros([]));
   }, [establishmentId, clientId]);
 
   // mapa bookingId -> atendimento, para exibir o vinculo no card
@@ -132,6 +154,17 @@ export function Evolutions({
     return "Profissional";
   };
 
+  const openPdf = async () => {
+    try {
+      const blob = await evolutionApi.pdfUrl(establishmentId, clientId);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError("Não foi possível gerar o PDF.");
+    }
+  };
+
   const setField = (k: keyof ReturnType<typeof emptyForm>, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -142,10 +175,12 @@ export function Evolutions({
     setCidQuery("");
     setShowForm(true);
     setError(null);
+    setWarn(null);
   };
 
   const openEdit = (ev: Evolution) => {
     setEditingId(ev._id);
+    setWarn(null);
     setForm({
       date: toDateInput(new Date(ev.date)),
       bookingId: ev.booking || "",
@@ -153,6 +188,12 @@ export function Evolutions({
       objective: ev.objective || "",
       assessment: ev.assessment || "",
       plan: ev.plan || "",
+      nextReturn: ev.nextReturn ? toDateInput(new Date(ev.nextReturn)) : "",
+      returnTime: ev.nextReturn
+        ? new Date(ev.nextReturn).toTimeString().slice(0, 5)
+        : "",
+      returnService: ev.returnService || "",
+      returnProfessional: ev.returnProfessional || "",
     });
     setCids(ev.cids || []);
     setCidQuery("");
@@ -199,8 +240,16 @@ export function Evolutions({
       setError("Preencha ao menos um campo da evolução.");
       return;
     }
+    const wantsReturn = !!form.nextReturn && !!form.returnService;
+    if (wantsReturn && !form.returnTime) {
+      setError(
+        "Escolha um horário livre para o retorno (ou limpe a data/serviço)."
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
+    setWarn(null);
     const payload: EvolutionPayload = {
       subjective: form.subjective.trim(),
       objective: form.objective.trim(),
@@ -209,36 +258,39 @@ export function Evolutions({
       date: form.date || undefined,
       bookingId: form.bookingId || null,
       cids,
+      nextReturn: wantsReturn
+        ? new Date(`${form.nextReturn}T${form.returnTime}`).toISOString()
+        : null,
+      returnService: form.returnService || null,
+      returnProfessional: form.returnProfessional || null,
     };
     try {
-      if (editingId) {
-        const updated = await evolutionApi.update(
-          establishmentId,
-          clientId,
-          editingId,
-          payload
-        );
-        setItems((list) =>
-          list
-            .map((x) => (x._id === editingId ? updated : x))
-            .sort(
-              (a, b) =>
-                new Date(b.date).getTime() - new Date(a.date).getTime()
-            )
-        );
-      } else {
-        const created = await evolutionApi.create(
-          establishmentId,
-          clientId,
-          payload
-        );
-        setItems((list) =>
-          [created, ...list].sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      const saved = editingId
+        ? await evolutionApi.update(
+            establishmentId,
+            clientId,
+            editingId,
+            payload
           )
+        : await evolutionApi.create(establishmentId, clientId, payload);
+      setItems((list) =>
+        (editingId
+          ? list.map((x) => (x._id === editingId ? saved : x))
+          : [saved, ...list]
+        ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      );
+      cancelForm();
+      const info = saved as unknown as {
+        returnUnavailable?: boolean;
+        returnReason?: string;
+      };
+      if (info.returnUnavailable) {
+        setWarn(
+          `Evolução salva, mas o horário do retorno está indisponível na agenda (${
+            info.returnReason || "indisponível"
+          }) — o retorno ficou apenas como lembrete, sem ocupar a agenda.`
         );
       }
-      cancelForm();
     } catch {
       setError("Não foi possível salvar a evolução.");
     } finally {
@@ -267,18 +319,34 @@ export function Evolutions({
           </p>
         </div>
         {!showForm && (
-          <button
-            onClick={openNew}
-            className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600"
-          >
-            + Nova evolução
-          </button>
+          <div className="flex gap-2">
+            {items.length > 0 && (
+              <button
+                onClick={openPdf}
+                className="rounded-lg border border-teal-500 px-4 py-2 text-sm font-semibold text-teal-600 transition hover:bg-teal-500 hover:text-white dark:text-teal-100"
+              >
+                Relatório PDF
+              </button>
+            )}
+            <button
+              onClick={openNew}
+              className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-600"
+            >
+              + Nova evolução
+            </button>
+          </div>
         )}
       </div>
 
       {error && (
         <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
+        </div>
+      )}
+
+      {warn && (
+        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {warn}
         </div>
       )}
 
@@ -301,6 +369,94 @@ export function Evolutions({
                 className="h-11 w-full rounded-xl border border-ink/15 px-3 text-sm outline-none focus:border-teal-500"
               />
             </label>
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3 sm:col-span-2">
+              <span className="mb-2 block text-sm font-semibold text-ink/80">
+                Retorno / recall (opcional)
+              </span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/60">
+                    Serviço
+                  </span>
+                  <select
+                    value={form.returnService}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        returnService: e.target.value,
+                        returnTime: "",
+                      }))
+                    }
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                  >
+                    <option value="">Selecione...</option>
+                    {services.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {pros.length > 0 && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink/60">
+                      Profissional
+                    </span>
+                    <select
+                      value={form.returnProfessional}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          returnProfessional: e.target.value,
+                          returnTime: "",
+                        }))
+                      }
+                      className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                    >
+                      <option value="">Selecione...</option>
+                      {pros.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/60">
+                    Data
+                  </span>
+                  <input
+                    type="date"
+                    value={form.nextReturn}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        nextReturn: e.target.value,
+                        returnTime: "",
+                      }))
+                    }
+                    className="h-10 w-full rounded-lg border border-ink/15 px-2 text-sm outline-none focus:border-teal-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/60">
+                    Horário livre
+                  </span>
+                  <FreeSlotSelect
+                    serviceId={form.returnService}
+                    date={form.nextReturn}
+                    professionalId={form.returnProfessional || null}
+                    value={form.returnTime}
+                    onChange={(v) => setField("returnTime", v)}
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-ink/50">
+                Escolha serviço e data para ver os horários livres. Com data +
+                serviço + horário, o retorno entra na agenda ao salvar.
+              </p>
+            </div>
 
             {history.length > 0 && (
               <label className="block">
@@ -465,6 +621,12 @@ export function Evolutions({
                       {authorName(ev.author)}
                       {linked ? ` · ${linked.serviceTitle}` : ""}
                     </p>
+                    {ev.nextReturn && (
+                      <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-300">
+                        Próximo retorno: {fmtDate(ev.nextReturn)}
+                        {ev.returnBookingId ? " · na agenda" : ""}
+                      </span>
+                    )}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <button

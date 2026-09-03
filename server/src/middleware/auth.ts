@@ -34,3 +34,24 @@ export const protect = async (
     res.status(401).json({ message: "Token invalido ou expirado" });
   }
 };
+
+// Autenticacao OPCIONAL: se houver um token valido, popula req.userId; se nao,
+// segue sem erro. Usado em rotas publicas que tem um comportamento extra para o
+// dono logado (ex.: horarios livres com janela ampliada).
+export const optionalProtect = async (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const header = req.headers.authorization;
+    if (header && header.startsWith("Bearer ")) {
+      const decoded = verifyToken(header.split(" ")[1]);
+      const user = await User.findById(decoded.id).select("_id");
+      if (user) req.userId = decoded.id;
+    }
+  } catch {
+    // token invalido: segue como visitante
+  }
+  next();
+};

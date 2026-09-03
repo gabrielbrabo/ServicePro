@@ -6,6 +6,8 @@ import {
   OrderPart,
   InspectionItem,
   InspectionStatus,
+  MeasureItem,
+  OrderHistoryItem,
 } from "../api/serviceOrder";
 import { formatPrice } from "../lib/time";
 import { ImageUpload } from "./ImageUpload";
@@ -53,6 +55,8 @@ const emptyVehicle = () => ({
   year: "",
   km: "",
   color: "",
+  nextRevisionKm: "",
+  nextRevisionDate: "",
 });
 
 const emptyEquipment = () => ({
@@ -70,6 +74,30 @@ const emptyPest = () => ({
   nextApplication: "",
   technician: "",
 });
+
+const emptyWarranty = () => ({
+  coverage: "",
+  exclusions: "",
+});
+
+const emptyMeasurements = () => ({
+  garment: "",
+  fabric: "",
+  fittingDate: "",
+  items: [] as MeasureItem[],
+  notes: "",
+});
+
+// medidas sugeridas ao abrir a ficha de costura
+const DEFAULT_MEASURES = [
+  "Busto / Tórax",
+  "Cintura",
+  "Quadril",
+  "Ombro",
+  "Comprimento",
+  "Manga",
+  "Perna / Gancho",
+];
 
 // itens sugeridos do checklist automotivo
 const DEFAULT_INSPECTION = [
@@ -112,6 +140,8 @@ const emptyForm = () => ({
   equipment: emptyEquipment(),
   technicalReport: "",
   pestControl: emptyPest(),
+  warranty: emptyWarranty(),
+  measurements: emptyMeasurements(),
   paymentMethod: "dinheiro" as "dinheiro" | "cartao" | "pix" | "outro",
 });
 type FormState = ReturnType<typeof emptyForm>;
@@ -127,11 +157,15 @@ export function OrdemServicoManager({
   showVehicle = false,
   showEquipment = false,
   showPest = false,
+  showWarranty = false,
+  showMeasurements = false,
 }: {
   establishmentId: string;
   showVehicle?: boolean; // categoria automotiva (módulo "veiculo")
   showEquipment?: boolean; // assistência técnica (módulo "equipamento")
   showPest?: boolean; // dedetização (módulo "dedetizacao")
+  showWarranty?: boolean; // refrigeração / elétrica-hidráulica (módulo "garantia")
+  showMeasurements?: boolean; // costura / ajustes (módulo "medidas")
 }) {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +173,10 @@ export function OrdemServicoManager({
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // historico do veiculo (OS anteriores da mesma placa)
+  const [history, setHistory] = useState<OrderHistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -175,9 +213,16 @@ export function OrdemServicoManager({
         status: "na" as InspectionStatus,
         note: "",
       }));
+    if (showMeasurements)
+      f.measurements.items = DEFAULT_MEASURES.map((name) => ({
+        name,
+        value: "",
+      }));
     setForm(f);
     setEditing("new");
     setError("");
+    setHistory([]);
+    setHistoryOpen(false);
   };
   const startEdit = (o: ServiceOrder) => {
     setForm({
@@ -203,6 +248,10 @@ export function OrdemServicoManager({
         year: o.vehicle?.year ? String(o.vehicle.year) : "",
         km: o.vehicle?.km ? String(o.vehicle.km) : "",
         color: o.vehicle?.color ?? "",
+        nextRevisionKm: o.vehicle?.nextRevisionKm
+          ? String(o.vehicle.nextRevisionKm)
+          : "",
+        nextRevisionDate: o.vehicle?.nextRevisionDate ?? "",
       },
       inspection: o.inspection ?? [],
       equipment: {
@@ -220,14 +269,54 @@ export function OrdemServicoManager({
         nextApplication: o.pestControl?.nextApplication ?? "",
         technician: o.pestControl?.technician ?? "",
       },
+      warranty: {
+        coverage: o.warranty?.coverage ?? "",
+        exclusions: o.warranty?.exclusions ?? "",
+      },
+      measurements: {
+        garment: o.measurements?.garment ?? "",
+        fabric: o.measurements?.fabric ?? "",
+        fittingDate: o.measurements?.fittingDate ?? "",
+        items: o.measurements?.items ?? [],
+        notes: o.measurements?.notes ?? "",
+      },
       paymentMethod: o.paymentMethod ?? "dinheiro",
     });
     setEditing(o._id);
     setError("");
+    setHistory([]);
+    setHistoryOpen(false);
+    if (showVehicle && o.vehicle?.plate) loadHistory(o.vehicle.plate);
   };
   const cancel = () => {
     setEditing(null);
     setError("");
+  };
+
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso);
+    return isNaN(d.getTime())
+      ? ""
+      : d.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "2-digit",
+        });
+  };
+  // busca as OS anteriores da mesma placa
+  const loadHistory = (plate: string) => {
+    setHistoryOpen(true);
+    const p = plate.trim();
+    if (!p) {
+      setHistory([]);
+      return;
+    }
+    setHistoryLoading(true);
+    serviceOrderApi
+      .history(establishmentId, p)
+      .then(setHistory)
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
   };
 
   const addPart = () =>
@@ -249,6 +338,29 @@ export function OrdemServicoManager({
     set("equipment", { ...form.equipment, [k]: v });
   const setPest = (k: keyof FormState["pestControl"], v: string) =>
     set("pestControl", { ...form.pestControl, [k]: v });
+  const setWarranty = (k: keyof FormState["warranty"], v: string) =>
+    set("warranty", { ...form.warranty, [k]: v });
+  const setMeasure = (
+    k: "garment" | "fabric" | "fittingDate" | "notes",
+    v: string
+  ) => set("measurements", { ...form.measurements, [k]: v });
+  const addMeasureItem = () =>
+    set("measurements", {
+      ...form.measurements,
+      items: [...form.measurements.items, { name: "", value: "" }],
+    });
+  const updateMeasureItem = (i: number, patch: Partial<MeasureItem>) =>
+    set("measurements", {
+      ...form.measurements,
+      items: form.measurements.items.map((x, idx) =>
+        idx === i ? { ...x, ...patch } : x
+      ),
+    });
+  const removeMeasureItem = (i: number) =>
+    set("measurements", {
+      ...form.measurements,
+      items: form.measurements.items.filter((_, idx) => idx !== i),
+    });
   const addInspection = () =>
     set("inspection", [
       ...form.inspection,
@@ -306,6 +418,8 @@ export function OrdemServicoManager({
         year: Math.max(0, Number(form.vehicle.year) || 0),
         km: Math.max(0, Number(form.vehicle.km) || 0),
         color: form.vehicle.color.trim(),
+        nextRevisionKm: Math.max(0, Number(form.vehicle.nextRevisionKm) || 0),
+        nextRevisionDate: form.vehicle.nextRevisionDate.trim(),
       },
       inspection: form.inspection.filter((i) => i.item.trim()),
       equipment: {
@@ -322,6 +436,19 @@ export function OrdemServicoManager({
         method: form.pestControl.method.trim(),
         nextApplication: form.pestControl.nextApplication.trim(),
         technician: form.pestControl.technician.trim(),
+      },
+      warranty: {
+        coverage: form.warranty.coverage.trim(),
+        exclusions: form.warranty.exclusions.trim(),
+      },
+      measurements: {
+        garment: form.measurements.garment.trim(),
+        fabric: form.measurements.fabric.trim(),
+        fittingDate: form.measurements.fittingDate.trim(),
+        items: form.measurements.items
+          .map((m) => ({ name: m.name.trim(), value: m.value.trim() }))
+          .filter((m) => m.name !== "" || m.value !== ""),
+        notes: form.measurements.notes.trim(),
       },
       paymentMethod: form.paymentMethod,
     };
@@ -366,6 +493,7 @@ export function OrdemServicoManager({
 
   // ---- editor (criar/editar) ----
   if (editing) {
+    const historyList = history.filter((h) => h._id !== editing);
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -495,7 +623,117 @@ export function OrdemServicoManager({
                     className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
                   />
                 </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Próxima revisão (km)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.vehicle.nextRevisionKm}
+                    onChange={(e) =>
+                      setVehicle("nextRevisionKm", e.target.value)
+                    }
+                    placeholder="90000"
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Próxima revisão (data)
+                  </span>
+                  <input
+                    value={form.vehicle.nextRevisionDate}
+                    onChange={(e) =>
+                      setVehicle("nextRevisionDate", e.target.value)
+                    }
+                    placeholder="Ex: 03/2027 ou 6 meses"
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  />
+                </label>
               </div>
+            </div>
+          )}
+
+          {/* Histórico do veículo (mesma placa) */}
+          {showVehicle && (
+            <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-ink/70">
+                  Histórico do veículo
+                </span>
+                <button
+                  type="button"
+                  onClick={() => loadHistory(form.vehicle.plate)}
+                  className="rounded-lg bg-teal-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-teal-600"
+                >
+                  Buscar pela placa
+                </button>
+              </div>
+              {(() => {
+                const nr = historyList.find(
+                  (h) =>
+                    h.vehicle &&
+                    (h.vehicle.nextRevisionKm || h.vehicle.nextRevisionDate)
+                )?.vehicle;
+                if (!nr) return null;
+                const parts = [
+                  nr.nextRevisionKm ? `${nr.nextRevisionKm} km` : "",
+                  nr.nextRevisionDate || "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <p className="mb-2 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Próxima revisão registrada: {parts}
+                  </p>
+                );
+              })()}
+              {!form.vehicle.plate.trim() ? (
+                <p className="text-xs text-ink/40">
+                  Informe a placa acima para ver as OS anteriores deste veículo.
+                </p>
+              ) : !historyOpen ? (
+                <p className="text-xs text-ink/40">
+                  Clique em "Buscar pela placa".
+                </p>
+              ) : historyLoading ? (
+                <p className="text-xs text-ink/50">Carregando...</p>
+              ) : historyList.length === 0 ? (
+                <p className="text-xs text-ink/40">
+                  Nenhuma OS anterior para a placa{" "}
+                  {form.vehicle.plate.toUpperCase()}.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {historyList.map((h) => {
+                    const hm = statusMeta(h.status);
+                    return (
+                      <div
+                        key={h._id}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 text-sm"
+                      >
+                        <span className="min-w-0 truncate text-ink/70">
+                          OS #{h.number} · {fmtDate(h.createdAt)}
+                          {h.title || h.object
+                            ? ` · ${h.title || h.object}`
+                            : ""}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="font-semibold text-teal-600 dark:text-teal-100">
+                            {formatPrice(h.total)}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${hm.cls}`}
+                          >
+                            {hm.label}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -667,6 +905,104 @@ export function OrdemServicoManager({
                   />
                 </label>
               </div>
+            </div>
+          )}
+
+          {/* Ficha de medidas (costura / ajustes) */}
+          {showMeasurements && (
+            <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-ink/70">
+                  Ficha de medidas
+                </span>
+                <button
+                  type="button"
+                  onClick={addMeasureItem}
+                  className="rounded-lg bg-teal-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-teal-600"
+                >
+                  + Medida
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Peça
+                  </span>
+                  <input
+                    value={form.measurements.garment}
+                    onChange={(e) => setMeasure("garment", e.target.value)}
+                    placeholder="Vestido, calça, terno..."
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Tecido
+                  </span>
+                  <input
+                    value={form.measurements.fabric}
+                    onChange={(e) => setMeasure("fabric", e.target.value)}
+                    placeholder="Algodão, linho, alfaiataria..."
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Prova / entrega
+                  </span>
+                  <input
+                    value={form.measurements.fittingDate}
+                    onChange={(e) => setMeasure("fittingDate", e.target.value)}
+                    placeholder="Ex: 20/09 ou 1ª prova dia 15"
+                    className="h-10 w-full rounded-lg border border-ink/15 bg-white px-2 outline-none focus:border-teal-500"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 space-y-2">
+                {form.measurements.items.length === 0 && (
+                  <p className="text-xs text-ink/40">Nenhuma medida.</p>
+                )}
+                {form.measurements.items.map((it, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={it.name}
+                      onChange={(e) =>
+                        updateMeasureItem(i, { name: e.target.value })
+                      }
+                      placeholder="Medida (ex: Cintura)"
+                      className="h-9 min-w-0 flex-1 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                    />
+                    <input
+                      value={it.value}
+                      onChange={(e) =>
+                        updateMeasureItem(i, { value: e.target.value })
+                      }
+                      placeholder="Valor (ex: 72 cm)"
+                      className="h-9 w-32 rounded-lg border border-ink/15 bg-white px-2 text-sm outline-none focus:border-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeMeasureItem(i)}
+                      className="shrink-0 rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
+                      aria-label="Remover medida"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <label className="mt-3 block">
+                <span className="mb-1 block text-xs font-medium text-ink/70">
+                  Observações da costura
+                </span>
+                <textarea
+                  value={form.measurements.notes}
+                  onChange={(e) => setMeasure("notes", e.target.value)}
+                  rows={2}
+                  placeholder="Ajustes pedidos, referências, detalhes do modelo..."
+                  className={area}
+                />
+              </label>
             </div>
           )}
 
@@ -888,6 +1224,45 @@ export function OrdemServicoManager({
               </span>
             </label>
           </div>
+
+          {/* Termo de garantia (refrigeração / elétrica-hidráulica) */}
+          {showWarranty && (
+            <div className="rounded-xl border border-ink/10 bg-sand/40 p-3">
+              <span className="mb-2 block text-sm font-medium text-ink/70">
+                Termo de garantia
+              </span>
+              <span className="mb-3 block text-xs text-ink/40">
+                Use o prazo em "Garantia (dias)" acima. Descreva abaixo o que a
+                garantia cobre e o que a invalida — sai como termo formal no PDF.
+              </span>
+              <div className="grid gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Cobertura
+                  </span>
+                  <textarea
+                    value={form.warranty.coverage}
+                    onChange={(e) => setWarranty("coverage", e.target.value)}
+                    rows={2}
+                    placeholder="Ex: mão de obra e peças substituídas no serviço descrito"
+                    className={area}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink/70">
+                    Exclusões (perda da garantia)
+                  </span>
+                  <textarea
+                    value={form.warranty.exclusions}
+                    onChange={(e) => setWarranty("exclusions", e.target.value)}
+                    rows={2}
+                    placeholder="Ex: mau uso, oscilação/queda de energia, intervenção de terceiros, danos por infiltração"
+                    className={area}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Fotos */}
           <div className="grid gap-4 sm:grid-cols-2">

@@ -161,7 +161,11 @@ export function BookingModal({
     (sum, s) => sum + s.durationMinutes,
     0
   );
-  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const totalPrice = selectedServices.reduce(
+    (sum, s) =>
+      sum + (s.billing === "mensal" ? s.monthlyPrice ?? 0 : s.price),
+    0
+  );
   // sinal exigido (soma por servico); 0 = nenhum servico pede sinal
   const depositForItem = (s: ServiceItem): number => {
     const type = s.depositType || "none";
@@ -658,7 +662,9 @@ export function BookingModal({
                             )}
                             <div className="mt-3 flex items-center justify-between">
                               <span className="font-semibold text-ink">
-                                R$ {s.price.toFixed(2)}
+                                {s.billing === "mensal"
+                                  ? `R$ ${(s.monthlyPrice ?? 0).toFixed(2)}/mês`
+                                  : `R$ ${s.price.toFixed(2)}`}
                               </span>
                               <span className="text-xs text-ink/50">
                                 {s.durationMinutes} min
@@ -697,6 +703,20 @@ export function BookingModal({
                         estabelecimento e abatido do total.
                       </div>
                     )}
+
+                    {selectedServices.length === 1 &&
+                      selectedServices[0].kind === "aula" &&
+                      selectedServices[0].billing === "mensal" && (
+                        <div className="mt-3 rounded-xl border border-teal-300 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+                          <span className="font-semibold">
+                            Plano mensal: R${" "}
+                            {(selectedServices[0].monthlyPrice ?? 0).toFixed(2)}
+                            /mês
+                          </span>
+                          . Você está contratando um plano recorrente — o valor
+                          mensal é cobrado uma vez por mês, não por aula.
+                        </div>
+                      )}
 
                     <button
                       onClick={() =>
