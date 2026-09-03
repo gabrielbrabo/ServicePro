@@ -5,9 +5,11 @@ import { initSocket } from "./socket";
 import { env } from "./config/env";
 import { startReservationJob } from "./jobs/reservationJob";
 import { startReminderJob } from "./jobs/reminderJob";
+import { migrateReviewIndex } from "./utils/reviewIndexMigration";
 
 const start = async (): Promise<void> => {
   await connectDB();
+  await migrateReviewIndex();
 
   const app = createApp();
   const server = http.createServer(app);

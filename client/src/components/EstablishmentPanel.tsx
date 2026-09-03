@@ -4,6 +4,7 @@ import { AgendaTab } from "./AgendaTab";
 import { ServiceManager } from "./ServiceManager";
 import { BookingList } from "./BookingList";
 import { ProfessionalManager } from "./ProfessionalManager";
+import { professionalApi } from "../api/professional";
 import { CashRegister } from "./CashRegister";
 import { ClientsManager } from "./ClientsManager";
 import { Establishment } from "../api/establishment";
@@ -21,6 +22,8 @@ import { EnfermagemManager } from "./EnfermagemManager";
 import { DermatologiaManager } from "./DermatologiaManager";
 import { QuiropraxiaManager } from "./QuiropraxiaManager";
 import { AcupunturaManager } from "./AcupunturaManager";
+import { FidelidadeManager } from "./FidelidadeManager";
+import { QrShareModal } from "./QrShareModal";
 import { AulasManager } from "./AulasManager";
 import { MaintenanceManager } from "./MaintenanceManager";
 import { FotografiaManager } from "./FotografiaManager";
@@ -33,6 +36,7 @@ import { AuditManager } from "./AuditManager";
 import { EstablishmentProfileHeader } from "./EstablishmentProfileHeader";
 import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
+import { useAuth } from "../context/AuthContext";
 import { useCoverageAlerts, useProsWithoutSchedule } from "../lib/coverage";
 import { hasModule } from "../lib/segments";
 import { scheduleApi } from "../api/schedule";
@@ -67,7 +71,19 @@ export function EstablishmentPanel({
     tab
   );
 
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [copiedPersonal, setCopiedPersonal] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false); // QR do estabelecimento
+  const [qrProOpen, setQrProOpen] = useState(false); // QR pessoal (link ?prof=)
+  // quantidade de profissionais agendaveis (define se o link pessoal aparece)
+  const [proCount, setProCount] = useState(0);
+  useEffect(() => {
+    professionalApi
+      .list(establishment._id)
+      .then((l) => setProCount(l.length))
+      .catch(() => setProCount(0));
+  }, [establishment._id]);
 
   // A aba Matriculas so faz sentido quando o estabelecimento tem servico do
   // tipo "aula" (matricula gera aulas recorrentes na agenda). hasAula controla
@@ -156,11 +172,24 @@ export function EstablishmentPanel({
   }, [tab, establishment._id]);
 
   const link = `${window.location.origin}/estabelecimento/${establishment._id}`;
+  // link pessoal do profissional logado (funcionario ou dono-profissional):
+  // abre o perfil do estabelecimento com ele ja pre-selecionado no agendamento.
+  // So faz sentido com equipe (mais de um profissional); com um unico
+  // profissional, o link pessoal e igual ao do estabelecimento -> escondido.
+  const myLink =
+    myProfessionalId && proCount > 1 ? `${link}?prof=${myProfessionalId}` : null;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyPersonal = async () => {
+    if (!myLink) return;
+    await navigator.clipboard.writeText(myLink);
+    setCopiedPersonal(true);
+    setTimeout(() => setCopiedPersonal(false), 2000);
   };
 
   // abas visiveis conforme o papel. funcionario nao ve "equipe".
@@ -187,6 +216,7 @@ export function EstablishmentPanel({
     ["anamnese_link", "Anamnese online"],
     ["ficha", "Ficha do cliente"],
     ["avaliacoes", "Avaliações"],
+    ["fidelidade", "Fidelidade"],
     ["galeria", "Galeria"],
     ["produtos", "Produtos"],
     ["caixa", "Caixa"],
@@ -234,35 +264,60 @@ export function EstablishmentPanel({
         coverOverlay={coverOverlay}
       />
 
-      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-teal-700 p-4 text-white">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-teal-100">
-            Link deste estabelecimento
-          </p>
-          <p className="truncate font-mono text-sm">{link}</p>
-        </div>
-        {/*!isEmployee && (
+      <div className="mt-6 space-y-3 rounded-2xl bg-teal-700 p-4 text-white">
+        {/* Linha 1 — link do estabelecimento */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-teal-100">
+              Link do estabelecimento
+            </p>
+            <p className="truncate font-mono text-sm">{link}</p>
+          </div>
           <button
-            onClick={() => navigate(`/estabelecimento/${establishment._id}/editar`)}
+            onClick={copyLink}
+            className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
+          >
+            {copied ? "Copiado!" : "Copiar link"}
+          </button>
+          <button
+            onClick={() => setQrOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-            title="Editar estabelecimento"
+            title="QR Code do estabelecimento (divulgar, imprimir, compartilhar)"
           >
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path
-                fillRule="evenodd"
-                d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.37-.84-2.95.74-2.11 2.11.6.98.02 2.25-1.1 2.4-1.6.2-1.6 2.6 0 2.98a1.53 1.53 0 01.95 2.29c-.84 1.37.74 2.95 2.11 2.11a1.53 1.53 0 012.29.95c.38 1.56 2.6 1.56 2.98 0a1.53 1.53 0 012.29-.95c1.37.84 2.95-.74 2.11-2.11a1.53 1.53 0 01.95-2.29c1.56-.38 1.56-2.6 0-2.98a1.53 1.53 0 01-.95-2.29c.84-1.37-.74-2.95-2.11-2.11a1.53 1.53 0 01-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z"
-                clipRule="evenodd"
-              />
+              <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
             </svg>
-            Editar
+            QR
           </button>
-        )*/}
-        <button
-          onClick={copyLink}
-          className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
-        >
-          {copied ? "Copiado!" : "Copiar link"}
-        </button>
+        </div>
+
+        {/* Linha 2 — meu link pessoal (profissional logado) */}
+        {myLink && (
+          <div className="flex flex-wrap items-center gap-3 border-t border-white/15 pt-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-teal-100">
+                Meu link pessoal
+              </p>
+              <p className="truncate font-mono text-sm">{myLink}</p>
+            </div>
+            <button
+              onClick={copyPersonal}
+              className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
+            >
+              {copiedPersonal ? "Copiado!" : "Copiar link"}
+            </button>
+            <button
+              onClick={() => setQrProOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+              title="Seu QR pessoal (o cliente agenda já com você selecionado)"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
+              </svg>
+              QR pessoal
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-8 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
@@ -453,6 +508,9 @@ export function EstablishmentPanel({
         {tab === "acupuntura" && (
           <AcupunturaManager establishment={establishment} />
         )}
+        {tab === "fidelidade" && (
+          <FidelidadeManager establishment={establishment} />
+        )}
         {tab === "aulas" && (
           <AulasManager establishmentId={establishment._id} />
         )}
@@ -472,6 +530,24 @@ export function EstablishmentPanel({
           <AuditManager establishmentId={establishment._id} />
         )}
       </div>
+
+      {qrOpen && (
+        <QrShareModal
+          title={establishment.name}
+          subtitle="Aponte a câmera para agendar"
+          url={link}
+          onClose={() => setQrOpen(false)}
+        />
+      )}
+
+      {qrProOpen && myLink && (
+        <QrShareModal
+          title={user?.name || establishment.name}
+          subtitle={`Agende comigo em ${establishment.name}`}
+          url={myLink}
+          onClose={() => setQrProOpen(false)}
+        />
+      )}
     </div>
   );
 }

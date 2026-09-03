@@ -10,6 +10,7 @@ import {
   bookingRescheduledEstablishmentHtml,
   bookingReminderClientHtml,
   bookingReminderEstablishmentHtml,
+  reviewRequestClientHtml,
 } from "../config/email";
 
 // ---------------------------------------------------------------------------
@@ -198,4 +199,23 @@ export const notifyBookingReminderEstablishmentAsync = (args: {
     `Lembrete — ${args.ctx.serviceTitle} às ${args.ctx.whenLabel}`,
     bookingReminderEstablishmentHtml(args.ctx)
   );
+};
+
+// cliente: convite para avaliar o atendimento concluido (link de 1 toque)
+export const notifyReviewRequestClientAsync = (args: {
+  clientEmail: string | null;
+  establishmentName: string;
+  serviceTitle: string;
+  reviewUrl: string;
+}): void => {
+  if (!args.clientEmail) return;
+  void sendEmail({
+    to: args.clientEmail,
+    subject: `Como foi seu ${args.serviceTitle}? Avalie o ${args.establishmentName}`,
+    html: reviewRequestClientHtml({
+      establishmentName: args.establishmentName,
+      serviceTitle: args.serviceTitle,
+      reviewUrl: args.reviewUrl,
+    }),
+  });
 };

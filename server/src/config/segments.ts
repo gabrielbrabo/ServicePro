@@ -107,6 +107,7 @@ const COMMON: ModuleKey[] = [
   "comissoes",
   "avaliacoes",
   "galeria",
+  "fidelidade", // programa de fidelidade (carimbos) comum a todas as areas
 ];
 
 export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
@@ -130,7 +131,6 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
       "formulas",
       "antes_depois",
       "pacotes",
-      "fidelidade",
       "consentimento",
     ],
   },

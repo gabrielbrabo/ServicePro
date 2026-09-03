@@ -4,6 +4,7 @@ import { catalogApi, Service } from "../api/catalog";
 import { inviteApi } from "../api/invite";
 import { ImageUpload } from "./ImageUpload";
 import { computeProsWithoutService } from "../lib/coverage";
+import { QrShareModal } from "./QrShareModal";
 
 export function ProfessionalManager({
   establishmentId,
@@ -32,6 +33,8 @@ export function ProfessionalManager({
 
   // modal de convite
   const [inviting, setInviting] = useState<Professional | null>(null);
+  // modal de link/QR proprio do profissional
+  const [qrPro, setQrPro] = useState<Professional | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -273,6 +276,18 @@ export function ProfessionalManager({
 
                   <button
                     type="button"
+                    onClick={() => setQrPro(p)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/40 px-3 py-1.5 text-sm font-medium text-teal-600 transition hover:bg-teal-500/10"
+                    title="Link e QR Code deste profissional (cliente agenda já com ele selecionado)"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
+                    </svg>
+                    Link e QR
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => toggleActive(p)}
                     className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-sand"
                   >
@@ -302,6 +317,15 @@ export function ProfessionalManager({
           establishmentId={establishmentId}
           professional={inviting}
           onClose={() => setInviting(null)}
+        />
+      )}
+
+      {qrPro && (
+        <QrShareModal
+          title={qrPro.name}
+          subtitle="Agende diretamente com este profissional"
+          url={`${window.location.origin}/estabelecimento/${establishmentId}?prof=${qrPro._id}`}
+          onClose={() => setQrPro(null)}
         />
       )}
     </div>

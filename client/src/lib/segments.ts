@@ -70,6 +70,7 @@ const COMMON: ModuleKey[] = [
   "comissoes",
   "avaliacoes",
   "galeria",
+  "fidelidade",
 ];
 
 export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
@@ -93,7 +94,6 @@ export const SEGMENTS: Record<SegmentKey, SegmentDef> = {
       "formulas",
       "antes_depois",
       "pacotes",
-      "fidelidade",
       "consentimento",
     ],
   },

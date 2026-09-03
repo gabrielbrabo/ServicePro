@@ -36,6 +36,7 @@ export const env = {
     rescheduled:
       process.env.WHATSAPP_TEMPLATE_RESCHEDULED || "agendamento_remarcado",
     reminder: process.env.WHATSAPP_TEMPLATE_REMINDER || "lembrete_agendamento",
+    review: process.env.WHATSAPP_TEMPLATE_REVIEW || "avaliacao_solicitada",
   },
 
   // Assinatura digital (Clicksign) — vazio = desligado (no-op, nada quebra)

@@ -66,11 +66,9 @@ export function FichaBelezaManager({
     "pacotes",
     establishment.category?.slug
   );
-  const canLoyalty = hasModule(
-    establishment.segment,
-    "fidelidade",
-    establishment.category?.slug
-  );
+  // Fidelidade agora tem aba propria no painel (FidelidadeManager), comum a
+  // todas as areas. Desligado aqui para nao duplicar a sub-aba na ficha.
+  const canLoyalty = false;
   const canConsent = hasModule(
     establishment.segment,
     "consentimento",

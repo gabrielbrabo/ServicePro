@@ -5,7 +5,11 @@ import { Schema, model, Document, Types } from "mongoose";
 // recompensa; `rewardsGiven` conta quantas recompensas ja foram resgatadas.
 // `history` registra cada acao para consulta.
 
-export type LoyaltyAction = "carimbo" | "estorno" | "resgate";
+export type LoyaltyAction =
+  | "carimbo"
+  | "estorno"
+  | "resgate"
+  | "conquista"; // atingiu a meta -> recompensa pendente
 
 export interface ILoyaltyEntry {
   _id: Types.ObjectId;
@@ -19,6 +23,7 @@ export interface ILoyaltyCard extends Document {
   client: Types.ObjectId;
   stamps: number;
   rewardsGiven: number;
+  rewardsPending: number; // recompensas conquistadas ainda nao entregues
   history: Types.DocumentArray<ILoyaltyEntry>;
   createdAt: Date;
   updatedAt: Date;
@@ -27,7 +32,7 @@ export interface ILoyaltyCard extends Document {
 const loyaltyEntrySchema = new Schema<ILoyaltyEntry>({
   action: {
     type: String,
-    enum: ["carimbo", "estorno", "resgate"],
+    enum: ["carimbo", "estorno", "resgate", "conquista"],
     required: true,
   },
   date: { type: Date, default: Date.now },
@@ -44,6 +49,7 @@ const loyaltyCardSchema = new Schema<ILoyaltyCard>(
     client: { type: Schema.Types.ObjectId, ref: "User", required: true },
     stamps: { type: Number, default: 0, min: 0 },
     rewardsGiven: { type: Number, default: 0, min: 0 },
+    rewardsPending: { type: Number, default: 0, min: 0 },
     history: { type: [loyaltyEntrySchema], default: [] },
   },
   { timestamps: true }

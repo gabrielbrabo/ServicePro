@@ -69,6 +69,7 @@ export function BookingModal({
   establishment,
   onClose,
   initialServiceId,
+  initialProfessionalId,
 }: {
   establishment: Establishment;
   onClose: () => void;
@@ -76,6 +77,10 @@ export function BookingModal({
   // quando presente, o modal pula a etapa de servico e vai direto
   // para profissional -> horario daquele servico.
   initialServiceId?: string;
+  // profissional pre-selecionado (ex.: link/QR proprio do funcionario).
+  // quando presente e valido, o modal ja entra com ele escolhido e pula a
+  // etapa de escolha de profissional.
+  initialProfessionalId?: string;
 }) {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
@@ -266,6 +271,16 @@ export function BookingModal({
       .list(establishment._id)
       .then((list) => {
         setProfessionals(list);
+        // link/QR de um profissional: ja entra com ele escolhido e pula a
+        // etapa de profissional (mantendo servico -> horario).
+        const pre =
+          initialProfessionalId &&
+          list.find((p) => p._id === initialProfessionalId && p.active);
+        if (pre) {
+          setProfessionalId(pre._id);
+          setStep(serviceLocked ? "slot" : "service");
+          return;
+        }
         // com equipe: comeca escolhendo o profissional.
         // sem equipe: se o servico ja veio travado, vai direto ao horario;
         // senao, escolhe o servico.
@@ -298,7 +313,7 @@ export function BookingModal({
       .catch(() => {
         /* mantém 30 */
       });
-  }, [establishment._id, serviceLocked]);
+  }, [establishment._id, serviceLocked, initialProfessionalId]);
 
   useEffect(() => {
     if (step !== "slot" || selectedIds.length === 0 || !date) return;

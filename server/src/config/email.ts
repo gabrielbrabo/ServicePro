@@ -283,3 +283,25 @@ export const bookingReminderEstablishmentHtml = (
     ${ctaButton(panelUrl, "Abrir painel")}
     `
   );
+
+// cliente: convite para avaliar o atendimento (link de 1 toque, sem login)
+export const reviewRequestClientHtml = (args: {
+  establishmentName: string;
+  serviceTitle: string;
+  reviewUrl: string;
+}): string =>
+  shell(
+    "Como foi seu atendimento?",
+    `
+    <p style="color: #334155; line-height: 1.6;">
+      Sua opini\u00e3o ajuda muito o <strong>${args.establishmentName}</strong> —
+      e leva menos de 10 segundos. \u00c9 s\u00f3 tocar em uma estrela:
+    </p>
+    <div style="background: #f8fafc; border-radius: 12px; padding: 16px 20px; margin: 20px 0;">
+      <p style="color: #334155; line-height: 1.6; margin: 4px 0;">
+        <strong>Servi\u00e7o:</strong> ${args.serviceTitle}
+      </p>
+    </div>
+    ${ctaButton(args.reviewUrl, "\u2b50 Avaliar agora")}
+    `
+  );

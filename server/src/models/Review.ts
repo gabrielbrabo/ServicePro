@@ -1,9 +1,9 @@
 import { Schema, model, Document, Types } from "mongoose";
 
 // Avaliacao de um atendimento CONCLUIDO, feita pelo cliente.
-// Regra: UMA avaliacao por (cliente + servico). Se o cliente ja avaliou
-// "Corte" naquele estabelecimento, nao avalia "Corte" de novo (mesmo em outro
-// agendamento) — reavaliar apenas sobrescreve a nota anterior daquele servico.
+// Regra: UMA avaliacao por ATENDIMENTO (booking). Cada visita concluida pode
+// ter a propria avaliacao — clientes que voltam avaliam de novo, aumentando o
+// total. Reavaliar o MESMO atendimento sobrescreve a nota daquele atendimento.
 // A nota agregada do estabelecimento (ratingAvg/ratingCount) e recalculada no
 // reviewController a cada avaliacao.
 export interface IReview extends Document {
@@ -45,8 +45,8 @@ const reviewSchema = new Schema<IReview>(
   { timestamps: true }
 );
 
-// UMA avaliacao por cliente + servico
-reviewSchema.index({ client: 1, service: 1 }, { unique: true });
+// UMA avaliacao por atendimento (booking)
+reviewSchema.index({ booking: 1 }, { unique: true });
 // listagem/agregacao por estabelecimento
 reviewSchema.index({ establishment: 1, createdAt: -1 });
 

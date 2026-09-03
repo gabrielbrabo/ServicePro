@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { PageContainer } from "../components/NavBar";
 import { establishmentApi, Establishment } from "../api/establishment";
 import { serviceApi, ServiceItem } from "../api/service";
@@ -10,6 +10,9 @@ import { EstablishmentProfileHeader } from "../components/EstablishmentProfileHe
 
 export function EstablishmentPage() {
   const { id = "" } = useParams();
+  // profissional pre-selecionado via link/QR proprio do funcionario (?prof=)
+  const [searchParams] = useSearchParams();
+  const preProfessionalId = searchParams.get("prof") || undefined;
   const [est, setEst] = useState<Establishment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -232,6 +235,7 @@ export function EstablishmentPage() {
         <BookingModal
           establishment={est}
           initialServiceId={bookingServiceId ?? undefined}
+          initialProfessionalId={preProfessionalId}
           onClose={closeBooking}
         />
       )}

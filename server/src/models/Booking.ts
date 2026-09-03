@@ -68,6 +68,9 @@ export interface IBooking extends Document {
   // avaliacao (sistema de estrelas): marca que o cliente ja foi convidado/
   // avaliou este atendimento, para nao pedir avaliacao mais de uma vez.
   reviewed?: boolean;
+  // fidelidade: marca que este atendimento ja carimbou o cartao do cliente
+  // (evita carimbo duplicado se o status "concluido" for reaplicado)
+  loyaltyStamped?: boolean;
   // lembretes agendados (Etapa C)
   // antecedencia escolhida pelo cliente ao agendar, em minutos; null = sem lembrete
   clientReminderMinutes?: number | null;
@@ -197,6 +200,8 @@ const bookingSchema = new Schema<IBooking>(
     completedAt: { type: Date },
     // avaliacao: cliente ja convidado/avaliou este atendimento
     reviewed: { type: Boolean, default: false },
+    // fidelidade: cartao ja carimbado por este atendimento
+    loyaltyStamped: { type: Boolean, default: false },
     // lembretes agendados (Etapa C)
     clientReminderMinutes: { type: Number, default: null },
     clientReminderSentAt: { type: Date },

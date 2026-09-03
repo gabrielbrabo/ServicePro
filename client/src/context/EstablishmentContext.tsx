@@ -24,6 +24,7 @@ export type PanelTab =
   | "caixa"
   | "comissoes"
   | "avaliacoes"
+  | "fidelidade"
   | "prontuario"
   | "ficha"
   | "convenio"

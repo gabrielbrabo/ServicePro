@@ -2,7 +2,6 @@ import { Response } from "express";
 import { Booking } from "../models/Booking";
 import { Service, effectiveDuration, depositFor } from "../models/Service";
 import { Establishment } from "../models/Establishment";
-import { Review } from "../models/Review";
 import { CashSession } from "../models/CashSession";
 import { AuthRequest } from "../middleware/auth";
 import { getIO } from "../socket";
@@ -28,12 +27,17 @@ import {
   notifyBookingCancelledClientAsync,
   notifyBookingRescheduledClientAsync,
   notifyBookingRescheduledEstablishmentAsync,
+  notifyReviewRequestClientAsync,
 } from "../utils/bookingEmails";
 import {
   notifyBookingConfirmedWhatsappAsync,
   notifyBookingCancelledWhatsappAsync,
   notifyBookingRescheduledWhatsappAsync,
+  notifyReviewRequestWhatsappAsync,
 } from "../utils/bookingWhatsapp";
+import { applyLoyaltyOnCompletion } from "./loyaltyController";
+import { env } from "../config/env";
+import { signReviewToken } from "../utils/reviewToken";
 import { Types } from "mongoose";
 
 // busca o nome do profissional (subdoc) de um estabelecimento, se houver.
@@ -735,7 +739,23 @@ export const updateBookingStatus = async (
       booking.clientNotifiedAt = new Date();
     }
 
+    // fidelidade: ao concluir, carimba o cartao do cliente uma unica vez.
+    const stampLoyalty =
+      status === "concluido" &&
+      actedByEstablishment &&
+      !booking.loyaltyStamped;
+    if (stampLoyalty) booking.loyaltyStamped = true;
+
     await booking.save();
+
+    // efeito colateral fire-and-forget (nao bloqueia a resposta nem a derruba)
+    if (stampLoyalty) {
+      void applyLoyaltyOnCompletion(
+        booking.establishment,
+        booking.client,
+        req.userId!
+      );
+    }
 
     if (status === "concluido") {
       const est = await Establishment.findById(booking.establishment).select(
@@ -776,13 +796,10 @@ export const updateBookingStatus = async (
     if (actedByEstablishment) {
       // estabelecimento agiu -> avisa o CLIENTE
       if (status === "concluido") {
-        // conclusao vira convite para avaliar. Regra: uma avaliacao por
-        // SERVICO por cliente -> so pede se ainda nao avaliou esse servico.
-        const alreadyReviewed = await Review.findOne({
-          client: booking.client,
-          service: booking.service,
-        }).select("_id");
-        if (!booking.reviewed && !alreadyReviewed) {
+        // conclusao vira convite para avaliar. Uma avaliacao por ATENDIMENTO:
+        // cada visita concluida pede sua propria avaliacao (booking.reviewed
+        // marca ESTE agendamento como ja avaliado).
+        if (!booking.reviewed) {
           // nome do estabelecimento para a mensagem ("Avalie o Salao X")
           const estForReview = await Establishment.findById(
             booking.establishment
@@ -794,6 +811,24 @@ export const updateBookingStatus = async (
             body: `Como foi seu ${serviceTitle} em ${estName}? Toque para dar sua nota em estrelas.`,
             booking: booking._id,
             establishment: booking.establishment,
+          });
+
+          // convite tambem por e-mail e WhatsApp, com link que abre a
+          // avaliacao em 1 toque (token assinado, sem exigir login)
+          const reviewUrl = `${env.clientUrl}/avaliar/${signReviewToken(
+            String(booking._id)
+          )}`;
+          notifyReviewRequestClientAsync({
+            clientEmail: await userEmail(booking.client),
+            establishmentName: estName,
+            serviceTitle,
+            reviewUrl,
+          });
+          notifyReviewRequestWhatsappAsync({
+            clientId: booking.client,
+            establishmentName: estName,
+            serviceTitle,
+            reviewUrl,
           });
         }
       } else {

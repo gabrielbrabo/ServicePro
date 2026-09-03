@@ -8,6 +8,7 @@ export interface ILoyaltyProgram extends Document {
   goal: number; // quantos carimbos para ganhar a recompensa
   reward: string; // descricao da recompensa (ex.: "1 corte gratis")
   active: boolean;
+  bonusStampOnReview: boolean; // avaliar o atendimento da +1 carimbo
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,8 @@ const loyaltyProgramSchema = new Schema<ILoyaltyProgram>(
     goal: { type: Number, default: 10, min: 1 },
     reward: { type: String, default: "", trim: true },
     active: { type: Boolean, default: true },
+    // incentivo: avaliar o atendimento concede um carimbo bonus
+    bonusStampOnReview: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

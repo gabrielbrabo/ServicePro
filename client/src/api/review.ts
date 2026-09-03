@@ -60,4 +60,24 @@ export const reviewApi = {
         `/reviews/public/${establishmentId}`
       )
       .then((r) => r.data.reviews),
+
+  // avaliacao em 1 toque por link/QR (token assinado, sem login)
+  getByToken: (token: string) =>
+    api
+      .get<{
+        establishmentName: string;
+        serviceTitle: string;
+        professionalName: string | null;
+        canReview: boolean;
+        currentRating: number | null;
+        currentComment: string;
+      }>(`/reviews/link/${token}`)
+      .then((r) => r.data),
+  submitByToken: (token: string, rating: number, comment?: string) =>
+    api
+      .post<{ ok: boolean; ratingAvg: number; ratingCount: number }>(
+        `/reviews/link/${token}`,
+        { rating, comment }
+      )
+      .then((r) => r.data),
 };

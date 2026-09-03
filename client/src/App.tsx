@@ -17,6 +17,7 @@ import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
+import { ReviewPublicPage } from "./pages/ReviewPublicPage";
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -54,6 +55,9 @@ export default function App() {
 
               {/* anamnese publica (paciente preenche por link) */}
               <Route path="/anamnese/:establishmentId" element={<AnamnesePublicPage />} />
+
+              {/* avaliacao em 1 toque por link/QR (sem login) */}
+              <Route path="/avaliar/:token" element={<ReviewPublicPage />} />
 
               <Route path="/convite/:token" element={<InviteAcceptPage />} />
               {/* IMPORTANTE: rotas especificas SEMPRE antes do catch-all "*" */}

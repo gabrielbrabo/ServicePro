@@ -7,7 +7,8 @@ export type NotificationType =
   | "booking_rescheduled"
   | "booking_completed"
   | "review_request"
-  | "review_received";
+  | "review_received"
+  | "loyalty_reward";
 
 export interface AppNotification {
   _id: string;

@@ -66,3 +66,21 @@ export const notifyBookingReminderClientWhatsappAsync = (args: {
   clientId: Types.ObjectId | string;
   ctx: BookingEmailContext;
 }): void => fire(args.clientId, env.whatsappTemplates.reminder, args.ctx);
+
+// cliente: convite para avaliar (template dedicado; params: estab, servico, link)
+export const notifyReviewRequestWhatsappAsync = (args: {
+  clientId: Types.ObjectId | string;
+  establishmentName: string;
+  serviceTitle: string;
+  reviewUrl: string;
+}): void => {
+  if (!whatsappConfigured() || !env.whatsappTemplates.review) return;
+  void clientPhone(args.clientId).then((phone) => {
+    if (phone)
+      void sendWhatsappTemplate(phone, env.whatsappTemplates.review, [
+        args.establishmentName,
+        args.serviceTitle,
+        args.reviewUrl,
+      ]);
+  });
+};
