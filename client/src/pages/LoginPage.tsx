@@ -19,8 +19,9 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const u = await login(email, password);
-      navigate(u.hasEstablishments ? "/painel" : "/buscar");
+      await login(email, password);
+      // "/" decide o destino (painel do dono/funcionario ou busca do cliente)
+      navigate("/");
     } catch (err) {
       const ax = err as AxiosError<{ message: string }>;
       setError(ax.response?.data?.message || "Não foi possível entrar");
@@ -32,7 +33,7 @@ export function LoginPage() {
   return (
     <AuthLayout title="Entrar" subtitle="Bem-vindo de volta ao ServiçoPro.">
       <GoogleLoginButton
-        onSuccess={(u) => navigate(u.hasEstablishments ? "/painel" : "/buscar")}
+        onSuccess={() => navigate("/")}
         onError={(msg) => setError(msg)}
       />
 

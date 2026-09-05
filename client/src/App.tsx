@@ -1,6 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { EstablishmentProvider } from "./context/EstablishmentContext";
+import {
+  EstablishmentProvider,
+  useEstablishments,
+} from "./context/EstablishmentContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -19,10 +22,32 @@ import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
 import { ReviewPublicPage } from "./pages/ReviewPublicPage";
 
+// Para onde mandar um usuario logado: se tem estabelecimento (dono OU
+// funcionario) vai para o painel; senao (cliente) vai para a busca.
+function useHomePath(): string | null {
+  const { user, loading } = useAuth();
+  const { status, establishments } = useEstablishments();
+  if (loading) return null;
+  if (!user) return "/buscar";
+  // aguarda o carregamento de /establishments/mine para nao decidir errado
+  if (status === "idle" || status === "loading") return null;
+  return establishments.length > 0 ? "/painel" : "/buscar";
+}
+
+// rota "/" e catch-all: decide o destino conforme o usuario
+function RootRedirect() {
+  const home = useHomePath();
+  if (!home) return null;
+  return <Navigate to={home} replace />;
+}
+
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const home = useHomePath();
   if (loading) return null;
-  return user ? <Navigate to="/buscar" replace /> : <>{children}</>;
+  if (!user) return <>{children}</>;
+  if (!home) return null;
+  return <Navigate to={home} replace />;
 }
 
 function P({ children }: { children: React.ReactNode }) {
@@ -63,8 +88,8 @@ export default function App() {
               {/* IMPORTANTE: rotas especificas SEMPRE antes do catch-all "*" */}
               <Route path="/verificar-email/:token" element={<VerifyEmailPage />} />
 
-              <Route path="/" element={<Navigate to="/buscar" replace />} />
-              <Route path="*" element={<Navigate to="/buscar" replace />} />
+              <Route path="/" element={<RootRedirect />} />
+              <Route path="*" element={<RootRedirect />} />
             </Routes>
 
             {/* aviso in-app de vaga liberada (lista de espera) — vive em todas as rotas */}

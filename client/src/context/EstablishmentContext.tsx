@@ -84,15 +84,19 @@ export function EstablishmentProvider({ children }: { children: ReactNode }) {
           setStatus("none");
         } else {
           setSelected((prev) => {
-            // 1) mantem o que ja estava selecionado
+            // 1) mantem o que ja estava selecionado nesta sessao
             if (prev) {
               const same = list.find((e) => e._id === prev._id);
               if (same) return same;
             }
-            // 2) senao, tenta o ultimo usado (sobrevive ao reload da pagina)
+            // 2) prioriza estabelecimentos onde o usuario e DONO. Se for dono
+            // de algum, escolhe entre eles; senao (so funcionario) usa a lista
+            // toda. O ultimo usado so e restaurado dentro desse grupo.
+            const owned = list.filter((e) => e.myRole === "owner");
+            const pool = owned.length > 0 ? owned : list;
             const lastId = localStorage.getItem(LAST_KEY);
-            const last = lastId ? list.find((e) => e._id === lastId) : null;
-            return last || list[0];
+            const last = lastId ? pool.find((e) => e._id === lastId) : null;
+            return last || pool[0];
           });
           setStatus("ready");
         }
