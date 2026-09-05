@@ -440,7 +440,10 @@ export function EstablishmentPanel({
           <ProductManager establishmentId={establishment._id} />
         )}
         {tab === "caixa" && (
-          <CashRegister establishmentId={establishment._id} />
+          <CashRegister
+            establishmentId={establishment._id}
+            isOwner={!isEmployee}
+          />
         )}
         {tab === "comissoes" && (
           <CommissionsManager

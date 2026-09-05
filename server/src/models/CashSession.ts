@@ -8,8 +8,15 @@ export interface IReportLine {
   method: "dinheiro" | "cartao" | "pix" | "outro";
   amount: number;
   description: string;
+  clientName: string;
   professionalName: string | null;
   createdAt: Date;
+}
+
+// Contagem por cédula/moeda no fechamento (opcional)
+export interface IDenomination {
+  value: number; // valor da cédula/moeda (ex.: 50, 10, 0.5)
+  qty: number;
 }
 
 // Snapshot completo gravado no fechamento do caixa
@@ -31,7 +38,10 @@ export interface ICashReport {
   countedAmount: number;
   difference: number;
   totalRevenue: number; // soma das entradas (todas as formas)
+  fees: number; // total de taxas de cartão registradas na sessão
+  discounts: number; // total de descontos concedidos na sessão
   movementCount: number;
+  countedBreakdown: IDenomination[]; // contagem de cédulas (se informada)
   lines: IReportLine[];
   generatedAt: Date;
 }
@@ -67,8 +77,17 @@ const reportLineSchema = new Schema<IReportLine>(
     },
     amount: { type: Number, required: true },
     description: { type: String, default: "" },
+    clientName: { type: String, default: "" },
     professionalName: { type: String, default: null },
     createdAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
+const denominationSchema = new Schema<IDenomination>(
+  {
+    value: { type: Number, required: true },
+    qty: { type: Number, required: true, min: 0 },
   },
   { _id: false }
 );
@@ -92,7 +111,10 @@ const cashReportSchema = new Schema<ICashReport>(
     countedAmount: { type: Number, required: true },
     difference: { type: Number, required: true },
     totalRevenue: { type: Number, default: 0 },
+    fees: { type: Number, default: 0 },
+    discounts: { type: Number, default: 0 },
     movementCount: { type: Number, default: 0 },
+    countedBreakdown: { type: [denominationSchema], default: [] },
     lines: { type: [reportLineSchema], default: [] },
     generatedAt: { type: Date, default: Date.now },
   },

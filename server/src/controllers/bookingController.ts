@@ -716,6 +716,21 @@ export const updateBookingStatus = async (
       booking.payment.method = paymentMethod;
       booking.payment.status = "pago";
       booking.completedAt = new Date();
+
+      // desconto / acrescimo aplicados no ato da conclusao. So na PRIMEIRA
+      // conclusao (nao reaplica se o status ja era "concluido"), incidindo
+      // sobre o valor atual (que ja inclui taxa de deslocamento, se houver).
+      if (booking.status !== "concluido") {
+        const disc = Math.max(0, Number(req.body.discount) || 0);
+        const surch = Math.max(0, Number(req.body.surcharge) || 0);
+        if (disc > 0 || surch > 0) {
+          const base = booking.payment.amount || 0;
+          booking.payment.discount = disc;
+          booking.payment.surcharge = surch;
+          booking.payment.amount =
+            Math.round(Math.max(0, base - disc + surch) * 100) / 100;
+        }
+      }
     }
 
     booking.status = status;

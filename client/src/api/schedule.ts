@@ -291,13 +291,16 @@ export const scheduleApi = {
     id: string,
     status: Booking["status"],
     paymentMethod?: "dinheiro" | "cartao" | "pix" | "outro",
-    ownerReminderMinutes?: number
+    ownerReminderMinutes?: number,
+    adjust?: { discount?: number; surcharge?: number }
   ) =>
     api
       .patch<Booking>(`/bookings/${id}/status`, {
         status,
         paymentMethod,
         ownerReminderMinutes,
+        discount: adjust?.discount,
+        surcharge: adjust?.surcharge,
       })
       .then((r) => r.data),
 

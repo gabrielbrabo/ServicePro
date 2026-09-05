@@ -34,6 +34,8 @@ const personName = (v: unknown): string =>
     ? String((v as { name: string }).name)
     : "";
 
+const denomLabel = (v: number) => (v >= 1 ? `R$ ${v}` : `${Math.round(v * 100)}¢`);
+
 export function CashReportModal({
   session,
   establishmentName,
@@ -52,7 +54,6 @@ export function CashReportModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm print:static print:bg-white print:p-0 print:backdrop-blur-none"
       onClick={onClose}
     >
-      {/* estilos de impressão: esconde tudo menos o relatório */}
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -75,7 +76,6 @@ export function CashReportModal({
         className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl print:max-w-none print:shadow-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-4 border-b border-ink/10 p-6">
           <div>
             <h2 className="font-display text-xl font-bold text-ink">
@@ -86,7 +86,9 @@ export function CashReportModal({
             )}
             <p className="mt-1 text-sm text-ink/60">
               Aberto em {fmtDateTime(session.openedAt)}
-              {session.closedAt && <> · Fechado em {fmtDateTime(session.closedAt)}</>}
+              {session.closedAt && (
+                <> · Fechado em {fmtDateTime(session.closedAt)}</>
+              )}
             </p>
             {(personName(session.openedBy) || personName(session.closedBy)) && (
               <p className="text-xs text-ink/50">
@@ -122,7 +124,6 @@ export function CashReportModal({
             </p>
           ) : (
             <div className="space-y-6">
-              {/* Conferência do dinheiro */}
               <section>
                 <h3 className="mb-2 font-display font-bold text-ink">
                   Conferência (dinheiro)
@@ -167,7 +168,27 @@ export function CashReportModal({
                 </div>
               </section>
 
-              {/* Totais por forma de pagamento */}
+              {r.countedBreakdown && r.countedBreakdown.length > 0 && (
+                <section>
+                  <h3 className="mb-2 font-display font-bold text-ink">
+                    Contagem de cédulas
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {r.countedBreakdown.map((d) => (
+                      <div
+                        key={d.value}
+                        className="flex items-center justify-between rounded-xl bg-sand/60 px-3 py-2 text-sm"
+                      >
+                        <span className="text-ink/60">{denomLabel(d.value)}</span>
+                        <span className="font-semibold text-ink">
+                          {d.qty}× = {BRL(d.value * d.qty)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <section>
                 <h3 className="mb-2 font-display font-bold text-ink">
                   Por forma de pagamento
@@ -189,7 +210,6 @@ export function CashReportModal({
                 </div>
               </section>
 
-              {/* Totais por tipo */}
               <section>
                 <h3 className="mb-2 font-display font-bold text-ink">
                   Por tipo de movimento
@@ -214,10 +234,11 @@ export function CashReportModal({
                   <strong className="text-ink">{BRL(r.totalRevenue)}</strong> ·{" "}
                   {r.movementCount} movimento
                   {r.movementCount !== 1 ? "s" : ""}
+                  {r.fees ? ` · taxas de cartão ${BRL(r.fees)}` : ""}
+                  {r.discounts ? ` · descontos ${BRL(r.discounts)}` : ""}
                 </p>
               </section>
 
-              {/* Detalhamento */}
               <section>
                 <h3 className="mb-2 font-display font-bold text-ink">
                   Detalhamento dos movimentos
@@ -233,6 +254,7 @@ export function CashReportModal({
                         <tr className="border-b border-ink/10 text-xs uppercase text-ink/50">
                           <th className="py-2 pr-3">Data/hora</th>
                           <th className="py-2 pr-3">Descrição</th>
+                          <th className="py-2 pr-3">Cliente</th>
                           <th className="py-2 pr-3">Profissional</th>
                           <th className="py-2 pr-3">Tipo</th>
                           <th className="py-2 pr-3">Forma</th>
@@ -241,15 +263,15 @@ export function CashReportModal({
                       </thead>
                       <tbody>
                         {r.lines.map((l, i) => (
-                          <tr
-                            key={i}
-                            className="border-b border-ink/5 align-top"
-                          >
+                          <tr key={i} className="border-b border-ink/5 align-top">
                             <td className="py-2 pr-3 text-ink/70">
                               {fmtDateTime(l.createdAt)}
                             </td>
                             <td className="py-2 pr-3 text-ink">
                               {l.description || TYPE_LABEL[l.type]}
+                            </td>
+                            <td className="py-2 pr-3 text-ink/70">
+                              {l.clientName || "—"}
                             </td>
                             <td className="py-2 pr-3 text-ink/70">
                               {l.professionalName || "—"}

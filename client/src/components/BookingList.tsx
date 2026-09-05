@@ -105,6 +105,8 @@ export function BookingList({
 
   const [completing, setCompleting] = useState<Booking | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("dinheiro");
+  const [discount, setDiscount] = useState("");
+  const [surcharge, setSurcharge] = useState("");
   const [savingComplete, setSavingComplete] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
 
@@ -270,6 +272,8 @@ export function BookingList({
   const startComplete = (b: Booking) => {
     setCompleting(b);
     setMethod("dinheiro");
+    setDiscount("");
+    setSurcharge("");
     setCompleteError(null);
   };
 
@@ -281,7 +285,12 @@ export function BookingList({
       const updated = await scheduleApi.updateStatus(
         completing._id,
         "concluido",
-        method
+        method,
+        undefined,
+        {
+          discount: Math.max(0, Number(discount) || 0),
+          surcharge: Math.max(0, Number(surcharge) || 0),
+        }
       );
       setBookings((b) =>
         b.map((x) => (x._id === completing._id ? updated : x))
@@ -776,6 +785,53 @@ export function BookingList({
                 </button>
               ))}
             </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink/60">
+                  Desconto (R$)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                  placeholder="0,00"
+                  className="h-10 w-full rounded-xl border border-ink/15 px-3 text-sm outline-none focus:border-teal-500"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink/60">
+                  Acréscimo (R$)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={surcharge}
+                  onChange={(e) => setSurcharge(e.target.value)}
+                  placeholder="0,00"
+                  className="h-10 w-full rounded-xl border border-ink/15 px-3 text-sm outline-none focus:border-teal-500"
+                />
+              </label>
+            </div>
+
+            {(Number(discount) > 0 || Number(surcharge) > 0) && (
+              <p className="mt-2 text-sm text-ink/70">
+                Total a receber:{" "}
+                <strong className="text-teal-600">
+                  {formatPrice(
+                    Math.max(
+                      0,
+                      (completing.payment?.amount ?? 0) -
+                        (Number(discount) || 0) +
+                        (Number(surcharge) || 0)
+                    )
+                  )}
+                </strong>
+              </p>
+            )}
 
             {completeError && (
               <p className="mt-3 text-sm font-medium text-red-500">

@@ -95,6 +95,8 @@ export interface IBooking extends Document {
     provider?: string;
     transactionId?: string;
     postedToCash: boolean; // ja virou entrada no caixa?
+    discount?: number; // desconto aplicado ao concluir (R$)
+    surcharge?: number; // acrescimo aplicado ao concluir (R$)
   };
   createdAt: Date;
   updatedAt: Date;
@@ -233,6 +235,8 @@ const bookingSchema = new Schema<IBooking>(
       provider: { type: String },
       transactionId: { type: String },
       postedToCash: { type: Boolean, default: false },
+      discount: { type: Number, default: 0, min: 0 },
+      surcharge: { type: Number, default: 0, min: 0 },
     },
   },
   { timestamps: true }
