@@ -24,6 +24,7 @@ import { QuiropraxiaManager } from "./QuiropraxiaManager";
 import { AcupunturaManager } from "./AcupunturaManager";
 import { FidelidadeManager } from "./FidelidadeManager";
 import { QrShareModal } from "./QrShareModal";
+import { AgendaShareModal } from "./AgendaShareModal";
 import { AulasManager } from "./AulasManager";
 import { MaintenanceManager } from "./MaintenanceManager";
 import { FotografiaManager } from "./FotografiaManager";
@@ -76,6 +77,8 @@ export function EstablishmentPanel({
   const [copiedPersonal, setCopiedPersonal] = useState(false);
   const [qrOpen, setQrOpen] = useState(false); // QR do estabelecimento
   const [qrProOpen, setQrProOpen] = useState(false); // QR pessoal (link ?prof=)
+  const [agendaOpen, setAgendaOpen] = useState(false); // banner da agenda (estab.)
+  const [agendaProOpen, setAgendaProOpen] = useState(false); // banner da agenda (pessoal)
   // quantidade de profissionais agendaveis (define se o link pessoal aparece)
   const [proCount, setProCount] = useState(0);
   useEffect(() => {
@@ -289,6 +292,16 @@ export function EstablishmentPanel({
             </svg>
             QR
           </button>
+          <button
+            onClick={() => setAgendaOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+            title="Gerar banner da agenda para divulgar nas redes sociais"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
+            </svg>
+            Divulgar agenda
+          </button>
         </div>
 
         {/* Linha 2 — meu link pessoal (profissional logado) */}
@@ -315,6 +328,16 @@ export function EstablishmentPanel({
                 <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
               </svg>
               QR pessoal
+            </button>
+            <button
+              onClick={() => setAgendaProOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
+              title="Gerar banner da sua agenda para divulgar nas redes sociais"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
+              </svg>
+              Divulgar agenda
             </button>
           </div>
         )}
@@ -549,6 +572,24 @@ export function EstablishmentPanel({
           subtitle={`Agende comigo em ${establishment.name}`}
           url={myLink}
           onClose={() => setQrProOpen(false)}
+        />
+      )}
+
+      {agendaOpen && (
+        <AgendaShareModal
+          establishmentId={establishment._id}
+          establishmentName={establishment.name}
+          onClose={() => setAgendaOpen(false)}
+        />
+      )}
+
+      {agendaProOpen && myLink && myProfessionalId && (
+        <AgendaShareModal
+          establishmentId={establishment._id}
+          establishmentName={establishment.name}
+          professionalName={user?.name || null}
+          professionalId={myProfessionalId}
+          onClose={() => setAgendaProOpen(false)}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import { inviteApi } from "../api/invite";
 import { ImageUpload } from "./ImageUpload";
 import { computeProsWithoutService } from "../lib/coverage";
 import { QrShareModal } from "./QrShareModal";
+import { AgendaShareModal } from "./AgendaShareModal";
 
 export function ProfessionalManager({
   establishmentId,
@@ -35,6 +36,8 @@ export function ProfessionalManager({
   const [inviting, setInviting] = useState<Professional | null>(null);
   // modal de link/QR proprio do profissional
   const [qrPro, setQrPro] = useState<Professional | null>(null);
+  // modal de divulgacao da agenda do profissional (banner)
+  const [agendaPro, setAgendaPro] = useState<Professional | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -288,6 +291,18 @@ export function ProfessionalManager({
 
                   <button
                     type="button"
+                    onClick={() => setAgendaPro(p)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500/40 px-3 py-1.5 text-sm font-medium text-teal-600 transition hover:bg-teal-500/10"
+                    title="Gerar banner da agenda deste profissional para divulgar"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
+                    </svg>
+                    Agenda
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => toggleActive(p)}
                     className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-sand"
                   >
@@ -326,6 +341,16 @@ export function ProfessionalManager({
           subtitle="Agende diretamente com este profissional"
           url={`${window.location.origin}/estabelecimento/${establishmentId}?prof=${qrPro._id}`}
           onClose={() => setQrPro(null)}
+        />
+      )}
+
+      {agendaPro && (
+        <AgendaShareModal
+          establishmentId={establishmentId}
+          establishmentName={agendaPro.name}
+          professionalName={agendaPro.name}
+          professionalId={agendaPro._id}
+          onClose={() => setAgendaPro(null)}
         />
       )}
     </div>

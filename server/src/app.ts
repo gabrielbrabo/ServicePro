@@ -54,6 +54,7 @@ import photoJobRoutes from "./routes/photoJobRoutes";
 import constructionProjectRoutes from "./routes/constructionProjectRoutes";
 import clinicalRecordRoutes from "./routes/clinicalRecordRoutes";
 import anamneseRoutes, { publicAnamneseRoutes } from "./routes/anamneseRoutes";
+import { publicAgendaRoutes } from "./routes/publicAgendaRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -123,6 +124,7 @@ export const createApp = (): Application => {
   app.use("/api/clinical-records", clinicalRecordRoutes);
   app.use("/api/public/anamnese", publicAnamneseRoutes);
   app.use("/api/anamnese", anamneseRoutes);
+  app.use("/api/public/agenda", publicAgendaRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -20,6 +20,7 @@ import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
+import { AgendaPublicPage } from "./pages/AgendaPublicPage";
 import { ReviewPublicPage } from "./pages/ReviewPublicPage";
 
 // Para onde mandar um usuario logado: se tem estabelecimento (dono OU
@@ -80,6 +81,9 @@ export default function App() {
 
               {/* anamnese publica (paciente preenche por link) */}
               <Route path="/anamnese/:establishmentId" element={<AnamnesePublicPage />} />
+
+              {/* agenda publica de divulgacao (banner + botao de agendar) */}
+              <Route path="/agenda/:establishmentId" element={<AgendaPublicPage />} />
 
               {/* avaliacao em 1 toque por link/QR (sem login) */}
               <Route path="/avaliar/:token" element={<ReviewPublicPage />} />
