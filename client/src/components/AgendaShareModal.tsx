@@ -228,8 +228,8 @@ function drawBanner(
 
   // mes (pequeno, acima dos horarios, a esquerda)
   if (!emptyMsg) {
-    ctx.fillStyle = C.faint;
-    ctx.font = "700 22px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = C.teal600;
+    ctx.font = "800 24px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.fillText(monthTxt.toUpperCase(), listX, cardTop + cpad + 20);
@@ -414,9 +414,9 @@ export function AgendaShareModal({
       cls: "bg-[#1877F2] text-white hover:brightness-95",
     },
     {
-      label: "Telegram",
-      href: `https://t.me/share/url?url=${enc(url)}&text=${enc(shareText)}`,
-      cls: "bg-[#229ED9] text-white hover:brightness-95",
+      label: "Instagram",
+      href: "#",
+      cls: "bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#4f5bd5] text-white hover:brightness-95",
     },
   ];
 
@@ -589,17 +589,27 @@ export function AgendaShareModal({
             Compartilhar o link
           </p>
           <div className="flex flex-wrap gap-2">
-            {networks.map((n) => (
-              <a
-                key={n.label}
-                href={n.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${n.cls}`}
-              >
-                {n.label}
-              </a>
-            ))}
+            {networks.map((n) =>
+              n.label === "Instagram" ? (
+                <button
+                  key={n.label}
+                  onClick={nativeShare}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${n.cls}`}
+                >
+                  {n.label}
+                </button>
+              ) : (
+                <a
+                  key={n.label}
+                  href={n.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${n.cls}`}
+                >
+                  {n.label}
+                </a>
+              )
+            )}
           </div>
         </div>
 
