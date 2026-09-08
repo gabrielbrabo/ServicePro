@@ -267,83 +267,104 @@ export function EstablishmentPanel({
         coverOverlay={coverOverlay}
       />
 
-      <div className="mt-6 space-y-3 rounded-2xl bg-teal-700 p-4 text-white">
-        {/* Linha 1 — link do estabelecimento */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-teal-100">
+      {/* Bloco compacto de links — 1 linha por link (rótulo + ações em ícone),
+          para não roubar espaço vertical e não quebrar no mobile. As URLs
+          longas saíram (já vêm no Copiar/QR). */}
+      <div className="mt-3 rounded-xl bg-teal-700 px-3 py-2 text-white">
+        {/* Link do estabelecimento */}
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <svg
+              className="h-4 w-4 shrink-0 text-teal-200"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M8.5 5.5a3.5 3.5 0 000 5h1.5a1 1 0 100-2H8.5a1.5 1.5 0 010-3H10a1 1 0 100-2H8.5zm3 0a1 1 0 100 2H13a1.5 1.5 0 010 3h-1.5a1 1 0 100 2H13a3.5 3.5 0 000-7h-1.5z" />
+            </svg>
+            <p className="truncate text-sm font-medium text-teal-50">
               Link do estabelecimento
             </p>
-            <p className="truncate font-mono text-sm">{link}</p>
           </div>
-          <button
-            onClick={copyLink}
-            className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
-          >
-            {copied ? "Copiado!" : "Copiar link"}
-          </button>
-          <button
-            onClick={() => setQrOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-            title="QR Code do estabelecimento (divulgar, imprimir, compartilhar)"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
-            </svg>
-            QR
-          </button>
-          <button
-            onClick={() => setAgendaOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-            title="Gerar banner da agenda para divulgar nas redes sociais"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
-            </svg>
-            Divulgar agenda
-          </button>
-        </div>
-
-        {/* Linha 2 — meu link pessoal (profissional logado) */}
-        {myLink && (
-          <div className="flex flex-wrap items-center gap-3 border-t border-white/15 pt-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-teal-100">
-                Meu link pessoal
-              </p>
-              <p className="truncate font-mono text-sm">{myLink}</p>
-            </div>
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
-              onClick={copyPersonal}
-              className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
+              onClick={copyLink}
+              className="inline-flex h-8 items-center rounded-lg bg-amber-400 px-3 text-sm font-semibold text-ink transition hover:bg-amber-500"
             >
-              {copiedPersonal ? "Copiado!" : "Copiar link"}
+              {copied ? "Copiado!" : "Copiar"}
             </button>
             <button
-              onClick={() => setQrProOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-              title="Seu QR pessoal (o cliente agenda já com você selecionado)"
+              onClick={() => setQrOpen(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white transition hover:bg-white/25"
+              title="QR Code do estabelecimento (divulgar, imprimir, compartilhar)"
+              aria-label="QR Code do estabelecimento"
             >
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
               </svg>
-              QR pessoal
             </button>
             <button
-              onClick={() => setAgendaProOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/25"
-              title="Gerar banner da sua agenda para divulgar nas redes sociais"
+              onClick={() => setAgendaOpen(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white transition hover:bg-white/25"
+              title="Divulgar agenda do estabelecimento (banner p/ redes sociais)"
+              aria-label="Divulgar agenda do estabelecimento"
             >
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
               </svg>
-              Divulgar agenda
             </button>
+          </div>
+        </div>
+
+        {/* Meu link pessoal (profissional logado) */}
+        {myLink && (
+          <div className="mt-0.0 flex items-center gap-2 border-t border-white/15 pt-1.5">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <svg
+                className="h-4 w-4 shrink-0 text-teal-200"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M10 8a3 3 0 100-6 3 3 0 000 6zm-6 9a6 6 0 1112 0H4z" />
+              </svg>
+              <p className="truncate text-sm font-medium text-teal-50">
+                Meu link pessoal
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={copyPersonal}
+                className="inline-flex h-8 items-center rounded-lg bg-amber-400 px-3 text-sm font-semibold text-ink transition hover:bg-amber-500"
+              >
+                {copiedPersonal ? "Copiado!" : "Copiar"}
+              </button>
+              <button
+                onClick={() => setQrProOpen(true)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white transition hover:bg-white/25"
+                title="Seu QR pessoal (o cliente agenda já com você selecionado)"
+                aria-label="Seu QR pessoal"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M3 3h5v5H3V3zm2 2v1h1V5H5zM3 12h5v5H3v-5zm2 2v1h1v-1H5zM12 3h5v5h-5V3zm2 2v1h1V5h-1zM12 12h2v2h-2v-2zm3 0h2v2h-2v-2zm-3 3h2v2h-2v-2zm3 0h2v2h-2v-2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setAgendaProOpen(true)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white transition hover:bg-white/25"
+                title="Divulgar sua agenda (banner p/ redes sociais)"
+                aria-label="Divulgar sua agenda"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v7H4V8z" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
+      <div className="mt-4 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
         {tabs.map(([key, label]) => (
           <button
             key={key}
