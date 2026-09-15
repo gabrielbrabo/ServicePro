@@ -55,6 +55,13 @@ export function EstablishmentForm({
   const [saving, setSaving] = useState(false);
   // negócio já criado (para retentar o pagamento sem duplicar o cadastro)
   const [createdEst, setCreatedEst] = useState<Establishment | null>(null);
+  // PIX gerado após assinar (mostrado na hora, antes de entrar no painel)
+  const [pixAfter, setPixAfter] = useState<{
+    image: string | null;
+    code: string | null;
+    url: string | null;
+  } | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
 
   const inputClass =
     "h-12 w-full rounded-xl border border-ink/15 bg-white px-4 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20";
@@ -227,8 +234,19 @@ export function EstablishmentForm({
             : undefined,
       });
 
-      // PIX: o QR aparece no painel (aba "Minha assinatura"). Cartão: já cobrado.
-      // Não abrimos a fatura (podia exibir boleto em vez do PIX).
+      // PIX: mostra o QR/copia-e-cola AQUI mesmo, na hora. Cartão: já cobrado,
+      // entra direto no painel.
+      if (
+        method === "pix" &&
+        (res.pixQrImage || res.pixCopiaECola || res.checkoutUrl)
+      ) {
+        setPixAfter({
+          image: res.pixQrImage || null,
+          code: res.pixCopiaECola || null,
+          url: res.checkoutUrl || null,
+        });
+        return;
+      }
       onCreated(est);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })
@@ -242,6 +260,27 @@ export function EstablishmentForm({
       setSaving(false);
     }
   };
+
+  // PIX pendente: verifica sozinho e entra no painel quando o pagamento cair
+  // (sem depender do clique). Cartão nem chega aqui — já entra direto.
+  useEffect(() => {
+    if (!pixAfter || !createdEst) return;
+    let n = 0;
+    const id = setInterval(async () => {
+      n += 1;
+      try {
+        const s = await subscriptionApi.refresh(createdEst._id);
+        if (s.status === "active" || s.status === "trialing") {
+          clearInterval(id);
+          onCreated(createdEst);
+        }
+      } catch {
+        /* ignora e tenta de novo */
+      }
+      if (n >= 75) clearInterval(id); // para depois de ~5min
+    }, 4000);
+    return () => clearInterval(id);
+  }, [pixAfter, createdEst, onCreated]);
 
   // indicador de etapas
   const StepDots = () => (
@@ -269,6 +308,81 @@ export function EstablishmentForm({
       ))}
     </div>
   );
+
+  // Tela do PIX após assinar: mostra o QR e o copia-e-cola na hora.
+  if (pixAfter) {
+    return (
+      <div className="space-y-4 text-center">
+        <div>
+          <h3 className="font-display text-lg font-bold text-ink">
+            Pague a assinatura com PIX
+          </h3>
+          <p className="mt-1 text-sm text-ink/60">
+            Assim que o pagamento cair, sua assinatura é liberada
+            automaticamente.
+          </p>
+        </div>
+
+        {pixAfter.image && (
+          <img
+            src={pixAfter.image}
+            alt="QR Code PIX"
+            className="mx-auto h-60 w-60 rounded-lg border border-ink/10 bg-white p-2"
+          />
+        )}
+
+        {pixAfter.code && (
+          <div className="space-y-2">
+            <p className="break-all rounded-lg bg-sand/60 px-3 py-2 text-left text-xs text-ink/70">
+              {pixAfter.code}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(pixAfter.code as string)
+                  .then(() => {
+                    setCopiedPix(true);
+                    setTimeout(() => setCopiedPix(false), 2000);
+                  })
+                  .catch(() => {});
+              }}
+              className="w-full rounded-lg bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-600"
+            >
+              {copiedPix ? "Código copiado!" : "Copiar código PIX"}
+            </button>
+          </div>
+        )}
+
+        {!pixAfter.image && !pixAfter.code && pixAfter.url && (
+          <a
+            href={pixAfter.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex rounded-lg bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-600"
+          >
+            Abrir a cobrança
+          </a>
+        )}
+
+        <div className="flex items-center justify-center gap-2 text-sm font-medium text-amber-600">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          Aguardando a confirmação do pagamento…
+        </div>
+
+        <button
+          type="button"
+          onClick={() => createdEst && onCreated(createdEst)}
+          className="w-full rounded-lg border border-ink/15 px-5 py-2.5 text-sm font-medium text-ink/70 transition hover:bg-sand"
+        >
+          Ir para o painel
+        </button>
+        <p className="text-xs text-ink/40">
+          Assim que o pagamento cair, entra no painel automaticamente.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4">
