@@ -96,6 +96,44 @@ export const getMySubscription = async (
   }
 };
 
+// GET /api/subscriptions/:establishmentId/pix  (dono)
+// Devolve o QR/copia-e-cola do PIX da cobranca pendente da assinatura, para o
+// painel mostrar mesmo quando a assinatura foi criada no cadastro.
+export const getSubscriptionPixCode = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est || !owned) {
+      res.status(403).json({ message: "Sem permissao" });
+      return;
+    }
+    const sub = await Subscription.findOne({ establishment: est._id });
+    if (!sub?.providerSubscriptionId) {
+      res.json({ pixQrImage: null, pixCopiaECola: null, checkoutUrl: null });
+      return;
+    }
+    const provider = getPaymentProvider();
+    if (!provider.getSubscriptionPix) {
+      res.json({ pixQrImage: null, pixCopiaECola: null, checkoutUrl: null });
+      return;
+    }
+    const pix = await provider.getSubscriptionPix(sub.providerSubscriptionId);
+    res.json({
+      pixQrImage: pix.image,
+      pixCopiaECola: pix.payload,
+      checkoutUrl: pix.checkoutUrl,
+    });
+  } catch (err) {
+    console.error("getSubscriptionPixCode:", err);
+    res.json({ pixQrImage: null, pixCopiaECola: null, checkoutUrl: null });
+  }
+};
+
 // POST /api/subscriptions/:establishmentId  (dono)
 // body: { planId, billingCycle?, method, cardToken?, cpfCnpj?, phone? }
 export const subscribe = async (
@@ -239,7 +277,12 @@ export const subscribe = async (
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    res.json({ subscription: sub, checkoutUrl: result.checkoutUrl ?? null });
+    res.json({
+      subscription: sub,
+      checkoutUrl: result.checkoutUrl ?? null,
+      pixQrImage: result.pixQrImage ?? null,
+      pixCopiaECola: result.pixCopiaECola ?? null,
+    });
   } catch (err) {
     console.error("subscribe:", err);
     res.status(500).json({ message: "Erro ao criar assinatura" });

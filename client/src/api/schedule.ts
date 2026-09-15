@@ -156,6 +156,8 @@ export interface PayResult {
   paymentId?: string;
   paid?: boolean; // cartao: confirmado na hora
   alreadyPaid?: boolean;
+  pixQrImage?: string | null; // QR do PIX (data URI)
+  pixCopiaECola?: string | null; // codigo copia-e-cola do PIX
 }
 
 export const scheduleApi = {

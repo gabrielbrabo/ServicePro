@@ -67,10 +67,12 @@ export const subscriptionApi = {
 
   subscribe: (establishmentId: string, payload: SubscribePayload) =>
     api
-      .post<{ subscription: Subscription; checkoutUrl: string | null }>(
-        `${base}/${establishmentId}`,
-        payload
-      )
+      .post<{
+        subscription: Subscription;
+        checkoutUrl: string | null;
+        pixQrImage?: string | null;
+        pixCopiaECola?: string | null;
+      }>(`${base}/${establishmentId}`, payload)
       .then((r) => r.data),
 
   cancel: (establishmentId: string) =>
@@ -90,6 +92,16 @@ export const subscriptionApi = {
     api
       .post<{ subscription: Subscription }>(`${base}/${establishmentId}/refresh`)
       .then((r) => r.data.subscription),
+
+  // QR/copia-e-cola do PIX da cobranca pendente (mostrar no painel)
+  pix: (establishmentId: string) =>
+    api
+      .get<{
+        pixQrImage: string | null;
+        pixCopiaECola: string | null;
+        checkoutUrl: string | null;
+      }>(`${base}/${establishmentId}/pix`)
+      .then((r) => r.data),
 
   // status leve (dono ou membro) — usado pelo paywall do painel
   status: (establishmentId: string) =>

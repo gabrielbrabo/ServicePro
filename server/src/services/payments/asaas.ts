@@ -75,6 +75,23 @@ const billingTypeMap: Record<string, string> = {
   boleto: "BOLETO",
 };
 
+// busca o QR Code PIX (imagem base64 + copia-e-cola) de uma cobranca. Assim o
+// app mostra o PIX de verdade, em vez de abrir a fatura (que pode exibir boleto).
+async function pixQr(
+  paymentId: string
+): Promise<{ image: string | null; payload: string | null }> {
+  try {
+    const q = await api(`/payments/${paymentId}/pixQrCode`, "GET");
+    const encoded = q.encodedImage as string | undefined;
+    return {
+      image: encoded ? `data:image/png;base64,${encoded}` : null,
+      payload: (q.payload as string) || null,
+    };
+  } catch {
+    return { image: null, payload: null };
+  }
+}
+
 export const asaasProvider: PaymentProvider = {
   name: "asaas",
 
@@ -196,10 +213,14 @@ export const asaasProvider: PaymentProvider = {
     const s = String(pay.status || "");
     const confirmed =
       s === "CONFIRMED" || s === "RECEIVED" || s === "RECEIVED_IN_CASH";
+    // PIX: busca o QR/copia-e-cola para exibir no app (nao usa a fatura/boleto)
+    const qr = isCard ? { image: null, payload: null } : await pixQr(String(pay.id ?? ""));
     return {
       paymentId: String(pay.id ?? ""),
       checkoutUrl: (pay.invoiceUrl as string) || null,
       status: confirmed ? ("confirmed" as const) : ("pending" as const),
+      pixQrImage: qr.image,
+      pixCopiaECola: qr.payload,
     };
   },
 
@@ -274,15 +295,25 @@ export const asaasProvider: PaymentProvider = {
       };
     }
 
-    // PIX/boleto: fica pendente ate pagar; buscamos o link (QR/boleto).
+    // PIX/boleto: fica pendente ate pagar; buscamos a cobranca gerada.
     let checkoutUrl: string | null = null;
+    let pixQrImage: string | null = null;
+    let pixCopiaECola: string | null = null;
     try {
       const pays = await api(
         `/subscriptions/${subscriptionId}/payments`,
         "GET"
       );
-      const first = (pays.data as { invoiceUrl?: string }[] | undefined)?.[0];
+      const first = (
+        pays.data as { id?: string; invoiceUrl?: string }[] | undefined
+      )?.[0];
       checkoutUrl = first?.invoiceUrl || null;
+      // PIX: pega o QR/copia-e-cola pra mostrar no app (evita a tela de boleto)
+      if (input.method === "pix" && first?.id) {
+        const qr = await pixQr(String(first.id));
+        pixQrImage = qr.image;
+        pixCopiaECola = qr.payload;
+      }
     } catch {
       // sem link agora; o webhook/refresh confirma o pagamento depois
     }
@@ -292,7 +323,36 @@ export const asaasProvider: PaymentProvider = {
       status: "past_due", // aguardando 1o pagamento; webhook/refresh -> active
       currentPeriodEnd: end,
       checkoutUrl,
+      pixQrImage,
+      pixCopiaECola,
     };
+  },
+
+  // QR/copia-e-cola do PIX da cobranca pendente da assinatura
+  async getSubscriptionPix(subscriptionId: string) {
+    try {
+      const pays = await api(
+        `/subscriptions/${subscriptionId}/payments`,
+        "GET"
+      );
+      const list =
+        (pays.data as
+          | { id?: string; status?: string; invoiceUrl?: string }[]
+          | undefined) || [];
+      // pega a cobranca ainda em aberto (pendente/atrasada)
+      const pend =
+        list.find((p) => p.status === "PENDING" || p.status === "OVERDUE") ||
+        list[0];
+      if (!pend?.id) return { image: null, payload: null, checkoutUrl: null };
+      const qr = await pixQr(String(pend.id));
+      return {
+        image: qr.image,
+        payload: qr.payload,
+        checkoutUrl: pend.invoiceUrl || null,
+      };
+    } catch {
+      return { image: null, payload: null, checkoutUrl: null };
+    }
   },
 
   // Cancela no FIM do periodo (endDate) mantendo o acesso ate la; sem data,

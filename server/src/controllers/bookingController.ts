@@ -2505,7 +2505,12 @@ export const payBookingDeposit = async (
       return;
     }
 
-    res.json({ checkoutUrl: charge.checkoutUrl, paymentId: charge.paymentId });
+    res.json({
+      checkoutUrl: charge.checkoutUrl,
+      paymentId: charge.paymentId,
+      pixQrImage: charge.pixQrImage ?? null,
+      pixCopiaECola: charge.pixCopiaECola ?? null,
+    });
   } catch (err: unknown) {
     const msg =
       (err as { message?: string })?.message || "Erro ao gerar o pagamento do sinal";
@@ -2644,7 +2649,12 @@ export const payBookingService = async (
       return;
     }
 
-    res.json({ checkoutUrl: charge.checkoutUrl, paymentId: charge.paymentId });
+    res.json({
+      checkoutUrl: charge.checkoutUrl,
+      paymentId: charge.paymentId,
+      pixQrImage: charge.pixQrImage ?? null,
+      pixCopiaECola: charge.pixCopiaECola ?? null,
+    });
   } catch (err: unknown) {
     const msg =
       (err as { message?: string })?.message ||

@@ -7,6 +7,7 @@ import {
   reactivateSubscription,
   refreshStatus,
   getStatus,
+  getSubscriptionPixCode,
   paymentsWebhook,
 } from "../controllers/subscriptionController";
 import { protect } from "../middleware/auth";
@@ -21,6 +22,7 @@ router.get("/:establishmentId/status", protect, getStatus);
 
 // assinatura por estabelecimento (somente o dono)
 router.get("/:establishmentId", protect, getMySubscription);
+router.get("/:establishmentId/pix", protect, getSubscriptionPixCode);
 router.post("/:establishmentId", protect, subscribe);
 router.post("/:establishmentId/cancel", protect, cancelSubscription);
 router.post("/:establishmentId/reactivate", protect, reactivateSubscription);

@@ -47,6 +47,9 @@ export function SubscriptionManager({
   const [email, setEmail] = useState(user?.email || "");
   const [submitting, setSubmitting] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [pixImage, setPixImage] = useState<string | null>(null);
+  const [pixCode, setPixCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   // dados do cartao (só quando method === "cartao")
   const [cardHolder, setCardHolder] = useState("");
@@ -75,6 +78,21 @@ export function SubscriptionManager({
   }, [establishment._id]);
 
   useEffect(load, [load]);
+
+  // assinatura pendente (PIX) sem QR local (ex.: criada no cadastro): busca o
+  // QR/copia-e-cola para exibir aqui no painel.
+  useEffect(() => {
+    if (sub?.status !== "past_due") return;
+    if (pixImage || pixCode) return;
+    subscriptionApi
+      .pix(establishment._id)
+      .then((p) => {
+        setPixImage(p.pixQrImage);
+        setPixCode(p.pixCopiaECola);
+        if (p.checkoutUrl) setCheckoutUrl(p.checkoutUrl);
+      })
+      .catch(() => {});
+  }, [sub?.status, pixImage, pixCode, establishment._id]);
 
   // PIX: enquanto o pagamento estiver pendente, verifica sozinho (sem clicar).
   // Assim que o cliente paga, o Asaas confirma e a tela libera automaticamente.
@@ -159,7 +177,9 @@ export function SubscriptionManager({
       const res = await subscriptionApi.subscribe(establishment._id, payload);
       setSub(res.subscription);
       setCheckoutUrl(res.checkoutUrl);
-      if (res.checkoutUrl) window.open(res.checkoutUrl, "_blank", "noopener");
+      setPixImage(res.pixQrImage || null);
+      setPixCode(res.pixCopiaECola || null);
+      // nao abre a fatura (pode mostrar boleto); o PIX aparece aqui mesmo
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { message?: string } } })?.response?.data
@@ -331,7 +351,44 @@ export function SubscriptionManager({
               Assinatura criada — assim que o pagamento cair, libera
               automaticamente (estamos verificando).
             </p>
-            {checkoutUrl && (
+            {/* QR Code do PIX */}
+            {pixImage && (
+              <div className="flex flex-col items-center gap-2">
+                <img
+                  src={pixImage}
+                  alt="QR Code PIX"
+                  className="h-56 w-56 rounded-lg border border-ink/10 bg-white p-2"
+                />
+                <p className="text-xs text-ink/50">
+                  Escaneie o QR no app do seu banco
+                </p>
+              </div>
+            )}
+            {/* PIX copia e cola */}
+            {pixCode && (
+              <div className="space-y-2">
+                <p className="break-all rounded-lg bg-sand/60 px-3 py-2 text-xs text-ink/70">
+                  {pixCode}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard
+                      ?.writeText(pixCode)
+                      .then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      })
+                      .catch(() => {});
+                  }}
+                  className="rounded-lg bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-600"
+                >
+                  {copied ? "Código copiado!" : "Copiar código PIX"}
+                </button>
+              </div>
+            )}
+            {/* fallback: sem QR (ex.: boleto), abre a cobranca */}
+            {!pixImage && !pixCode && checkoutUrl && (
               <a
                 href={checkoutUrl}
                 target="_blank"

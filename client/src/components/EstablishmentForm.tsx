@@ -227,8 +227,8 @@ export function EstablishmentForm({
             : undefined,
       });
 
-      // PIX/boleto: abre a fatura pra pagar. Cartão: já foi cobrado.
-      if (res.checkoutUrl) window.open(res.checkoutUrl, "_blank", "noopener");
+      // PIX: o QR aparece no painel (aba "Minha assinatura"). Cartão: já cobrado.
+      // Não abrimos a fatura (podia exibir boleto em vez do PIX).
       onCreated(est);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })

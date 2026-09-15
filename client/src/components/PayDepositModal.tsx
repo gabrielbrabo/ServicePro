@@ -43,6 +43,9 @@ export function PayDepositModal({
   const [waiting, setWaiting] = useState(false);
   const [paid, setPaid] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [pixImage, setPixImage] = useState<string | null>(null);
+  const [pixCode, setPixCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const maskCpf = (v: string) =>
@@ -168,8 +171,9 @@ export function PayDepositModal({
         return;
       }
       setCheckoutUrl(res.checkoutUrl || null);
+      setPixImage(res.pixQrImage || null);
+      setPixCode(res.pixCopiaECola || null);
       setWaiting(true);
-      if (res.checkoutUrl) window.open(res.checkoutUrl, "_blank", "noopener");
       startPoll();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response
@@ -240,14 +244,53 @@ export function PayDepositModal({
                 <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
                 Aguardando a confirmação do PIX…
               </div>
-              {checkoutUrl && (
+
+              {/* QR Code do PIX (escaneie no app do banco) */}
+              {pixImage && (
+                <div className="flex flex-col items-center gap-2">
+                  <img
+                    src={pixImage}
+                    alt="QR Code PIX"
+                    className="h-56 w-56 rounded-lg border border-ink/10 bg-white p-2"
+                  />
+                  <p className="text-xs text-ink/50">
+                    Escaneie o QR no app do seu banco
+                  </p>
+                </div>
+              )}
+
+              {/* PIX copia e cola */}
+              {pixCode && (
+                <div className="space-y-2">
+                  <p className="break-all rounded-lg bg-sand/60 px-3 py-2 text-xs text-ink/70">
+                    {pixCode}
+                  </p>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard
+                        ?.writeText(pixCode)
+                        .then(() => {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        })
+                        .catch(() => {});
+                    }}
+                    className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-600"
+                  >
+                    {copied ? "Código copiado!" : "Copiar código PIX"}
+                  </button>
+                </div>
+              )}
+
+              {/* fallback: sem QR, abre a fatura do Asaas */}
+              {!pixImage && !pixCode && checkoutUrl && (
                 <a
                   href={checkoutUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block rounded-lg bg-teal-500 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-teal-600"
                 >
-                  Abrir o PIX de novo
+                  Abrir a cobrança
                 </a>
               )}
               <button

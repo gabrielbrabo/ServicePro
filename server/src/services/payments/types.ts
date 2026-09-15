@@ -102,6 +102,9 @@ export interface SubscriptionResult {
   currentPeriodEnd: Date | null;
   // link de pagamento/checkout quando o gateway exige (ex.: PIX/boleto)
   checkoutUrl?: string | null;
+  // PIX: imagem do QR (data URI) e copia-e-cola, para exibir no app
+  pixQrImage?: string | null;
+  pixCopiaECola?: string | null;
   // cartao salvo (quando pago no cartao)
   cardLast4?: string;
   cardBrand?: string;
@@ -146,6 +149,8 @@ export interface PaymentProvider {
     paymentId: string;
     checkoutUrl: string | null;
     status: "confirmed" | "pending";
+    pixQrImage?: string | null;
+    pixCopiaECola?: string | null;
   }>;
   // consulta o status de UMA cobranca avulsa direto no gateway (fallback quando
   // o webhook nao chega — ex.: testar sem URL publica). "confirmed" = pago.
@@ -156,6 +161,13 @@ export interface PaymentProvider {
   createSubscription(
     input: CreateSubscriptionInput
   ): Promise<SubscriptionResult>;
+  // QR/copia-e-cola do PIX da cobranca pendente de uma assinatura (para exibir
+  // no painel quando a assinatura foi criada em outra tela). Opcional.
+  getSubscriptionPix?(subscriptionId: string): Promise<{
+    image: string | null;
+    payload: string | null;
+    checkoutUrl: string | null;
+  }>;
   // cancela no fim do periodo (endDate) ou de vez (sem data)
   cancelSubscription(subscriptionId: string, endDate?: Date): Promise<void>;
   // reativa uma assinatura cancelada, com a proxima cobranca em nextDueDate
