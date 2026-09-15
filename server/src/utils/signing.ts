@@ -162,7 +162,7 @@ export async function requestSignature(
     data: {
       type: "notifications",
       attributes: {
-        message: "Voce recebeu um documento do ServicePro para assinar.",
+        message: "Voce recebeu um documento do ServiçosPro para assinar.",
       },
     },
   });

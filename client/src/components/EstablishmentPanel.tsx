@@ -35,6 +35,8 @@ import { CommissionsManager } from "./CommissionsManager";
 import { ConvenioManager } from "./ConvenioManager";
 import { AuditManager } from "./AuditManager";
 import { EstablishmentProfileHeader } from "./EstablishmentProfileHeader";
+import { SubscriptionManager } from "./SubscriptionManager";
+import { ReceivablesManager } from "./ReceivablesManager";
 import { useEstablishments, PanelTab } from "../context/EstablishmentContext";
 import { useNotifications } from "../context/NotificationContext";
 import { useAuth } from "../context/AuthContext";
@@ -42,6 +44,7 @@ import { useCoverageAlerts, useProsWithoutSchedule } from "../lib/coverage";
 import { hasModule } from "../lib/segments";
 import { scheduleApi } from "../api/schedule";
 import { catalogApi } from "../api/catalog";
+import { subscriptionApi } from "../api/subscription";
 
 export function EstablishmentPanel({
   establishment,
@@ -174,6 +177,39 @@ export function EstablishmentPanel({
     return () => timers.forEach((id) => clearTimeout(id));
   }, [tab, establishment._id]);
 
+  // paywall: bloqueia o painel enquanto a assinatura nao estiver ativa
+  const [gate, setGate] = useState<{
+    blocked: boolean;
+    isOwner: boolean;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    let id: number | undefined;
+    const check = () =>
+      subscriptionApi
+        .status(establishment._id)
+        .then((s) => {
+          if (!active) return;
+          const blocked = s.paymentsEnabled && !s.entitled;
+          setGate({ blocked, isOwner: s.isOwner });
+          // destravou (pagou) -> para de verificar
+          if (!blocked && id) {
+            clearInterval(id);
+            id = undefined;
+          }
+        })
+        .catch(() => {
+          if (active) setGate({ blocked: false, isOwner: !isEmployee });
+        });
+    check();
+    // enquanto bloqueado, reconsulta sozinho (PIX confirma e libera na hora)
+    id = window.setInterval(check, 6000);
+    return () => {
+      active = false;
+      if (id) clearInterval(id);
+    };
+  }, [establishment._id, tab, isEmployee]);
+
   const link = `${window.location.origin}/estabelecimento/${establishment._id}`;
   // link pessoal do profissional logado (funcionario ou dono-profissional):
   // abre o perfil do estabelecimento com ele ja pre-selecionado no agendamento.
@@ -200,7 +236,7 @@ export function EstablishmentPanel({
     ["servicos", "Serviços"],
     ["equipe", "Equipe"],
     ["agenda", "Expediente"],
-    ["recebidos", "Agendamentos"],
+    ["recebidos", "Agenda"],
     ["ordem_servico", "Ordens de serviço"],
     ["personal", "Alunos"],
     ["nutricao", "Nutrição"],
@@ -227,13 +263,17 @@ export function EstablishmentPanel({
     ["convenio", "Convênios"],
     ["esterilizacao", "Esterilização"],
     ["auditoria", "Auditoria"],
+    ["assinatura", "Minha assinatura"],
+    ["recebimentos", "Recebimentos"],
   ];
 
   // mostra apenas as abas cujo modulo pertence a AREA do estabelecimento
   // (estabelecimentos antigos sem segment caem no padrao = beleza).
   const tabs = allTabs
     .filter(([key]) =>
-      key === "matriculas"
+      key === "assinatura" || key === "recebimentos"
+        ? !isEmployee // assinatura e recebimentos: so o dono ve/gerencia
+        : key === "matriculas"
         ? establishment.segment === "geral" && hasAula // so com servico "aula"
         : hasModule(establishment.segment, key, establishment.category?.slug)
     )
@@ -242,6 +282,16 @@ export function EstablishmentPanel({
     .filter(
       ([key]) => !(isEmployee && (key === "equipe" || key === "auditoria"))
     );
+
+  // Assinatura inativa: painel trava, deixando so "Agendamentos" (ver os
+  // existentes) e "Minha assinatura" (renovar). Lembretes/e-mails seguem.
+  const ALLOWED_WHEN_BLOCKED = new Set<PanelTab>(["recebidos", "assinatura"]);
+  const visibleTabs = gate?.blocked
+    ? tabs.filter(([key]) => ALLOWED_WHEN_BLOCKED.has(key))
+    : tabs;
+  useEffect(() => {
+    if (gate?.blocked && !ALLOWED_WHEN_BLOCKED.has(tab)) setTab("recebidos");
+  }, [gate?.blocked, tab, setTab]);
 
   return (
     <div>
@@ -253,7 +303,7 @@ export function EstablishmentPanel({
         categoryName={establishment.category?.name}
         city={establishment.address?.city}
         state={establishment.address?.state}
-        description={establishment.description}
+        //description={establishment.description}
         initialPhoto={establishment.photo}
         initialCovers={establishment.coverPhotos}
         ratingAvg={establishment.ratingAvg}
@@ -364,8 +414,30 @@ export function EstablishmentPanel({
         )}
       </div>
 
+      {/* Assinatura inativa: NAO esconde nada — so avisa. O estabelecimento
+          para de receber novos agendamentos (bloqueado no backend), mas o dono
+          continua vendo os agendamentos ja feitos. */}
+      {gate?.blocked && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-4">
+          <p className="text-sm font-medium text-amber-800">
+            {gate.isOwner
+              ? "Assinatura inativa. O painel está bloqueado — você ainda vê seus agendamentos e continua recebendo os lembretes de horário. Renove para liberar tudo e voltar a receber novos agendamentos."
+              : "A assinatura deste estabelecimento está inativa — o painel está bloqueado e novos agendamentos estão pausados. Fale com o dono."}
+          </p>
+          {gate.isOwner && (
+            <button
+              type="button"
+              onClick={() => setTab("assinatura")}
+              className="shrink-0 rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-amber-500"
+            >
+              Renovar assinatura
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
-        {tabs.map(([key, label]) => (
+        {visibleTabs.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -575,6 +647,12 @@ export function EstablishmentPanel({
         )}
         {tab === "auditoria" && !isEmployee && (
           <AuditManager establishmentId={establishment._id} />
+        )}
+        {tab === "assinatura" && !isEmployee && (
+          <SubscriptionManager establishment={establishment} />
+        )}
+        {tab === "recebimentos" && !isEmployee && (
+          <ReceivablesManager establishment={establishment} />
         )}
       </div>
 

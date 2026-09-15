@@ -55,6 +55,9 @@ import constructionProjectRoutes from "./routes/constructionProjectRoutes";
 import clinicalRecordRoutes from "./routes/clinicalRecordRoutes";
 import anamneseRoutes, { publicAnamneseRoutes } from "./routes/anamneseRoutes";
 import { publicAgendaRoutes } from "./routes/publicAgendaRoutes";
+import subscriptionRoutes, {
+  paymentsWebhook,
+} from "./routes/subscriptionRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -125,6 +128,11 @@ export const createApp = (): Application => {
   app.use("/api/public/anamnese", publicAnamneseRoutes);
   app.use("/api/anamnese", anamneseRoutes);
   app.use("/api/public/agenda", publicAgendaRoutes);
+
+  // Assinatura do SaaS + webhook do gateway (o webhook NAO usa protect;
+  // e validado pelo proprio adapter do gateway).
+  app.use("/api/subscriptions", subscriptionRoutes);
+  app.post("/api/webhooks/payments", paymentsWebhook);
 
   app.use(notFound);
   app.use(errorHandler);

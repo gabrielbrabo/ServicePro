@@ -14,6 +14,10 @@ import {
   declineReservation,
   markDeposit,
   extendBooking,
+  payBookingDeposit,
+  getDepositStatus,
+  payBookingService,
+  getServiceStatus,
 } from "../controllers/bookingController";
 import { protect } from "../middleware/auth";
 
@@ -33,6 +37,13 @@ router.patch("/:id/reschedule", protect, rescheduleBooking);
 router.patch("/:id/accept-reservation", protect, acceptReservation);
 router.patch("/:id/decline-reservation", protect, declineReservation);
 router.patch("/:id/deposit", protect, markDeposit);
+// cliente paga o sinal online (PIX com split para o estabelecimento)
+router.post("/:id/pay-deposit", protect, payBookingDeposit);
+// consulta/confirma o sinal direto no gateway (poll sem webhook)
+router.get("/:id/deposit-status", protect, getDepositStatus);
+// cliente paga o serviço concluido pelo app (PIX ou cartao, com split)
+router.post("/:id/pay-service", protect, payBookingService);
+router.get("/:id/service-status", protect, getServiceStatus);
 router.patch("/:id/extend", protect, extendBooking);
 router.patch("/:id/attendance", protect, markAttendance);
 

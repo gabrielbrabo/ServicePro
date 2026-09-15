@@ -1,6 +1,6 @@
 import { env } from "../config/env";
 
-// Cliente do WhatsApp via Meta Cloud API (numero unico do ServicePro).
+// Cliente do WhatsApp via Meta Cloud API (numero unico do ServiçosPro).
 // Credenciais no .env. Tudo fire-and-forget e falha silenciosa: um WhatsApp
 // que nao sai jamais pode derrubar a resposta HTTP do agendamento.
 

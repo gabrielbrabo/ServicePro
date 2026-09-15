@@ -8,7 +8,9 @@ export type NotificationType =
   | "booking_completed"
   | "review_request" // convite para o cliente avaliar o atendimento
   | "review_received" // avisa o estabelecimento que recebeu uma avaliacao
-  | "loyalty_reward"; // cliente completou a meta do programa de fidelidade
+  | "loyalty_reward" // cliente completou a meta do programa de fidelidade
+  | "payment_pending" // serviço concluido aguardando pagamento pelo app
+  | "payment_received"; // cliente pagou (sinal ou serviço) pelo app
 
 // Notificacao in-app. Uma linha por destinatario: se um agendamento precisa
 // avisar dono E funcionario, sao dois documentos.
@@ -38,6 +40,8 @@ const notificationSchema = new Schema<INotification>(
         "review_request",
         "review_received",
         "loyalty_reward",
+        "payment_pending",
+        "payment_received",
       ],
       required: true,
     },

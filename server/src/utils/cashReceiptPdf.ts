@@ -157,7 +157,7 @@ export function generateCashReceiptPdf(input: ReceiptInput): Promise<Buffer> {
       doc.moveDown(1.2);
       doc.font("Helvetica").fontSize(7.5).fillColor("#888888");
       doc.text(
-        "Documento sem valor fiscal. Gerado por ServicePro.",
+        "Documento sem valor fiscal. Gerado por ServiçosPro.",
         left,
         doc.y,
         { width, align: "center" }

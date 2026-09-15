@@ -201,6 +201,95 @@ export const notifyBookingReminderEstablishmentAsync = (args: {
   );
 };
 
+// HTML simples e responsivo para o aviso de pagamento pendente
+const paymentPendingHtml = (
+  ctx: BookingEmailContext,
+  amountLabel: string,
+  toClient: boolean
+): string => {
+  const intro = toClient
+    ? `Seu atendimento <strong>${ctx.serviceTitle}</strong> em <strong>${ctx.establishmentName}</strong> foi concluído. Falta o pagamento de <strong>${amountLabel}</strong>, que você pode fazer pelo app (PIX ou cartão).`
+    : `O atendimento <strong>${ctx.serviceTitle}</strong> foi concluído e está aguardando o pagamento de <strong>${amountLabel}</strong> pelo cliente (pelo app).`;
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
+    <h2 style="color:#0f766e;margin:0 0 12px">Pagamento pendente</h2>
+    <p style="font-size:15px;line-height:1.5;margin:0 0 12px">${intro}</p>
+    <p style="font-size:13px;color:#6b7280;margin:0">ServiçosPro</p>
+  </div>`;
+};
+
+// HTML do aviso de pagamento recebido (sinal ou serviço)
+const paymentReceivedHtml = (
+  ctx: BookingEmailContext,
+  amountLabel: string,
+  kind: string,
+  toClient: boolean
+): string => {
+  const line = toClient
+    ? `Recebemos o pagamento do seu ${kind} (<strong>${amountLabel}</strong>) referente a <strong>${ctx.serviceTitle}</strong> em <strong>${ctx.establishmentName}</strong>. Obrigado!`
+    : `O cliente pagou o ${kind} (<strong>${amountLabel}</strong>) de <strong>${ctx.serviceTitle}</strong> pelo app.`;
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
+    <h2 style="color:#0f766e;margin:0 0 12px">Pagamento recebido</h2>
+    <p style="font-size:15px;line-height:1.5;margin:0 0 12px">${line}</p>
+    <p style="font-size:13px;color:#6b7280;margin:0">ServiçosPro</p>
+  </div>`;
+};
+
+// pagamento recebido — avisa o cliente
+export const notifyPaymentReceivedClientAsync = (args: {
+  clientEmail: string | null;
+  ctx: BookingEmailContext;
+  amountLabel: string;
+  kind: string; // "sinal" | "pagamento"
+}): void => {
+  if (!args.clientEmail) return;
+  void sendEmail({
+    to: args.clientEmail,
+    subject: `Pagamento recebido — ${args.ctx.establishmentName}`,
+    html: paymentReceivedHtml(args.ctx, args.amountLabel, args.kind, true),
+  });
+};
+
+// pagamento recebido — avisa dono + funcionario
+export const notifyPaymentReceivedEstablishmentAsync = (args: {
+  establishmentEmails: string[];
+  ctx: BookingEmailContext;
+  amountLabel: string;
+  kind: string;
+}): void => {
+  sendManyAsync(
+    args.establishmentEmails,
+    `Pagamento recebido — ${args.ctx.serviceTitle}`,
+    paymentReceivedHtml(args.ctx, args.amountLabel, args.kind, false)
+  );
+};
+
+// serviço concluido aguardando pagamento pelo app — avisa o cliente
+export const notifyServicePaymentPendingClientAsync = (args: {
+  clientEmail: string | null;
+  ctx: BookingEmailContext;
+  amountLabel: string;
+}): void => {
+  if (!args.clientEmail) return;
+  void sendEmail({
+    to: args.clientEmail,
+    subject: `Pagamento pendente — ${args.ctx.establishmentName}`,
+    html: paymentPendingHtml(args.ctx, args.amountLabel, true),
+  });
+};
+
+// serviço concluido aguardando pagamento pelo app — avisa dono + funcionario
+export const notifyServicePaymentPendingEstablishmentAsync = (args: {
+  establishmentEmails: string[];
+  ctx: BookingEmailContext;
+  amountLabel: string;
+}): void => {
+  sendManyAsync(
+    args.establishmentEmails,
+    `Pagamento pendente — ${args.ctx.serviceTitle}`,
+    paymentPendingHtml(args.ctx, args.amountLabel, false)
+  );
+};
+
 // cliente: convite para avaliar o atendimento concluido (link de 1 toque)
 export const notifyReviewRequestClientAsync = (args: {
   clientEmail: string | null;

@@ -67,6 +67,11 @@ export interface IEstablishment extends Document {
   // exibirem a nota sem consultar a colecao de reviews.
   ratingAvg: number; // media das estrelas (0 quando nao ha avaliacoes)
   ratingCount: number; // total de avaliacoes
+  // Recebimentos (Fluxo 2): subconta Asaas para receber pagamentos do cliente
+  // via split. Vazio = ainda nao configurou (nao recebe pagamentos pelo app).
+  asaasAccountId: string;
+  asaasWalletId: string;
+  receivablesActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -163,6 +168,10 @@ const establishmentSchema = new Schema<IEstablishment>(
     // nota agregada do sistema de avaliacao
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
     ratingCount: { type: Number, default: 0, min: 0 },
+    // recebimentos (subconta Asaas p/ split)
+    asaasAccountId: { type: String, default: "" },
+    asaasWalletId: { type: String, default: "" },
+    receivablesActive: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

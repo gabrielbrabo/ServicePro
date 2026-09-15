@@ -68,7 +68,7 @@ export const inviteEmailHtml = (args: {
     <p style="color: #334155; line-height: 1.6;">
       Olá, ${professionalName}! O estabelecimento
       <strong>${establishmentName}</strong> convidou você para acessar a
-      própria agenda no ServiçoPro.
+      própria agenda no ServiçosPro.
     </p>
     <p style="color: #334155; line-height: 1.6;">
       Clique no botão abaixo para criar sua senha e começar:
@@ -101,7 +101,7 @@ export const verifyEmailHtml = (args: {
   <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
     <h2 style="color: #0f766e; margin-bottom: 8px;">Confirme seu e-mail</h2>
     <p style="color: #334155; line-height: 1.6;">
-      Olá, ${name}! Falta pouco para concluir seu cadastro no ServiçoPro.
+      Olá, ${name}! Falta pouco para concluir seu cadastro no ServiçosPro.
     </p>
     <p style="color: #334155; line-height: 1.6;">
       Confirme seu e-mail para receber lembretes de agendamento e avisos
@@ -182,7 +182,7 @@ const shell = (heading: string, inner: string): string => `
     <h2 style="color: #0f766e; margin-bottom: 8px;">${heading}</h2>
     ${inner}
     <p style="color: #94a3b8; font-size: 13px; margin-top: 24px;">
-      Você recebeu este e-mail porque tem uma conta no ServiçoPro.
+      Você recebeu este e-mail porque tem uma conta no ServiçosPro.
     </p>
   </div>`;
 

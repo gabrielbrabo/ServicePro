@@ -43,7 +43,7 @@ const sendVerificationEmail = async (user: {
 
     await sendEmail({
       to: user.email,
-      subject: "Confirme seu e-mail — ServicePro",
+      subject: "Confirme seu e-mail — ServiçosPro",
       html: verifyEmailHtml({ name: user.name, verifyUrl }),
     });
   } catch (err) {

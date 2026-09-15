@@ -98,6 +98,9 @@ export interface Booking {
     depositRequired?: number; // sinal exigido no ato (0 = sem sinal)
     depositPaid?: boolean; // sinal ja recebido?
     depositMethod?: string;
+    depositPaidOnline?: boolean; // sinal pago pelo app (PIX) vs manual
+    depositPaymentId?: string; // id da cobranca do sinal no gateway
+    servicePaymentId?: string; // id da cobranca do serviço (pago pelo app)
   };
   clientReminderMinutes?: number | null;
   ownerReminderMinutes?: number | null;
@@ -129,6 +132,30 @@ export interface WaitlistEntry {
   notifiedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// dados do cartao para pagamento pelo app
+export interface CardPayload {
+  holderName: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  ccv: string;
+}
+
+// payload de um pagamento do cliente (sinal ou serviço)
+export interface PayPayload {
+  cpf: string;
+  method: "pix" | "cartao";
+  card?: CardPayload;
+  holder?: { postalCode: string; addressNumber: string; phone: string };
+}
+
+export interface PayResult {
+  checkoutUrl?: string | null;
+  paymentId?: string;
+  paid?: boolean; // cartao: confirmado na hora
+  alreadyPaid?: boolean;
 }
 
 export const scheduleApi = {
@@ -290,7 +317,7 @@ export const scheduleApi = {
   updateStatus: (
     id: string,
     status: Booking["status"],
-    paymentMethod?: "dinheiro" | "cartao" | "pix" | "outro",
+    paymentMethod?: "dinheiro" | "cartao" | "pix" | "outro" | "app",
     ownerReminderMinutes?: number,
     adjust?: { discount?: number; surcharge?: number }
   ) =>
@@ -317,6 +344,34 @@ export const scheduleApi = {
   ) =>
     api
       .patch<Booking>(`/bookings/${id}/deposit`, { paid, method })
+      .then((r) => r.data),
+
+  // cliente paga o sinal pelo app (PIX ou cartao), split para o estabelecimento.
+  // PIX devolve o link/QR (checkoutUrl) e confirma no poll/webhook; cartao cobra
+  // na hora e devolve { paid: true }.
+  payDeposit: (id: string, payload: PayPayload) =>
+    api
+      .post<PayResult>(`/bookings/${id}/pay-deposit`, payload)
+      .then((r) => r.data),
+
+  // consulta se o sinal ja foi confirmado (confirma direto no gateway se o
+  // webhook nao chegou). Usado no poll enquanto o cliente aguarda o PIX.
+  depositStatus: (id: string) =>
+    api
+      .get<{ depositPaid: boolean }>(`/bookings/${id}/deposit-status`)
+      .then((r) => r.data),
+
+  // cliente paga o SERVIÇO concluido pelo app (saldo = total - sinal). PIX ou
+  // cartao, split para o estabelecimento.
+  payService: (id: string, payload: PayPayload) =>
+    api
+      .post<PayResult>(`/bookings/${id}/pay-service`, payload)
+      .then((r) => r.data),
+
+  // consulta se o serviço ja foi pago (confirma direto no gateway se preciso)
+  serviceStatus: (id: string) =>
+    api
+      .get<{ paid: boolean }>(`/bookings/${id}/service-status`)
       .then((r) => r.data),
 
   // adiciona tempo extra ao atendimento (imprevistos); ocupa a agenda

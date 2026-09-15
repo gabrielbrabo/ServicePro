@@ -1,7 +1,7 @@
 {
   "name": "servicepro-server",
   "version": "1.0.0",
-  "description": "Backend do ServicePro - app de anuncio e agendamento de servicos",
+  "description": "Backend do ServiçosPro - app de anuncio e agendamento de servicos",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec ts-node src/server.ts",

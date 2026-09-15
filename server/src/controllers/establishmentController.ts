@@ -8,6 +8,9 @@ import { geocodeAddress } from "../utils/geocode";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
 import { buildSearchRegex } from "../utils/searchText";
 import { isSegment, DEFAULT_SEGMENT } from "../config/segments";
+import { isEstablishmentActive } from "../utils/subscriptionActive";
+import { getPaymentProvider } from "../services/payments";
+import { paymentsConfigured } from "../config/env";
 
 // POST /api/establishments  (protegido)
 export const createEstablishment = async (
@@ -334,7 +337,180 @@ export const getEstablishment = async (
     res.status(404).json({ message: "Estabelecimento nao encontrado" });
     return;
   }
-  res.json(establishment);
+  // recebe agendamentos? (assinatura ativa). Vira falso quando a assinatura
+  // vence, para a pagina publica mostrar "indisponivel para agendamento".
+  const bookingEnabled = await isEstablishmentActive(
+    establishment._id.toString()
+  );
+  res.json({ ...establishment.toObject(), bookingEnabled });
+};
+
+// GET /api/establishments/:id/receivables  (dono)
+// Situacao da subconta de recebimentos (Fluxo 2).
+export const getReceivables = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const est = await Establishment.findById(req.params.id).select(
+      "owner receivablesActive asaasWalletId"
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (est.owner.toString() !== req.userId) {
+      res.status(403).json({ message: "Apenas o dono acessa" });
+      return;
+    }
+
+    const configured = !!est.receivablesActive && !!est.asaasWalletId;
+
+    // conta de recebimento ja configurada em OUTRO estabelecimento do dono?
+    // (mesma pessoa/CPF-CNPJ -> pode reaproveitar a mesma subconta Asaas)
+    let reusableFrom: string | null = null;
+    if (!configured) {
+      const other = await Establishment.findOne({
+        owner: est.owner,
+        receivablesActive: true,
+        asaasWalletId: { $ne: "" },
+        _id: { $ne: est._id },
+      }).select("name");
+      reusableFrom = other?.name || null;
+    }
+
+    res.json({
+      configured,
+      paymentsEnabled: paymentsConfigured(),
+      reusableFrom, // nome do outro estabelecimento (null = nada a reaproveitar)
+    });
+  } catch (err) {
+    console.error("getReceivables:", err);
+    res.status(500).json({ message: "Erro ao consultar recebimentos" });
+  }
+};
+
+// POST /api/establishments/:id/receivables  (dono)
+// Cria a subconta Asaas do estabelecimento para receber pagamentos do cliente.
+// body: { cpfCnpj, incomeValue, postalCode, mobilePhone, email, birthDate?, companyType? }
+export const setupReceivables = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const est = await Establishment.findById(req.params.id);
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (est.owner.toString() !== req.userId) {
+      res.status(403).json({ message: "Apenas o dono pode configurar" });
+      return;
+    }
+    if (est.receivablesActive && est.asaasWalletId) {
+      res.json({ configured: true, walletId: est.asaasWalletId });
+      return;
+    }
+
+    // reaproveitar a conta ja configurada em outro estabelecimento do dono
+    // (mesma pessoa) — nao cria subconta nova no Asaas
+    if ((req.body as { reuse?: boolean }).reuse) {
+      const other = await Establishment.findOne({
+        owner: est.owner,
+        receivablesActive: true,
+        asaasWalletId: { $ne: "" },
+        _id: { $ne: est._id },
+      }).select("asaasWalletId asaasAccountId");
+      if (!other) {
+        res
+          .status(400)
+          .json({ message: "Nenhuma conta de recebimento para reaproveitar" });
+        return;
+      }
+      est.asaasAccountId = other.asaasAccountId;
+      est.asaasWalletId = other.asaasWalletId;
+      est.receivablesActive = true;
+      await est.save();
+      res.json({ configured: true, walletId: est.asaasWalletId, reused: true });
+      return;
+    }
+
+    // dev / sem gateway: marca como configurado (carteira ficticia)
+    if (!paymentsConfigured()) {
+      est.asaasAccountId = "dev";
+      est.asaasWalletId = "dev-wallet";
+      est.receivablesActive = true;
+      await est.save();
+      res.json({ configured: true });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    if (!provider.createSubaccount) {
+      res.status(400).json({ message: "Gateway nao suporta subconta" });
+      return;
+    }
+
+    const { cpfCnpj, incomeValue, postalCode, mobilePhone, email, birthDate, companyType } =
+      req.body as {
+        cpfCnpj?: string;
+        incomeValue?: number | string;
+        postalCode?: string;
+        mobilePhone?: string;
+        email?: string;
+        birthDate?: string;
+        companyType?: string;
+      };
+
+    if (!cpfCnpj || !postalCode || !mobilePhone || !email || !incomeValue) {
+      res
+        .status(400)
+        .json({ message: "Preencha CPF/CNPJ, e-mail, celular, CEP e faturamento." });
+      return;
+    }
+
+    const cpfDigits = String(cpfCnpj).replace(/\D/g, "");
+
+    // ja existe subconta com esse CPF/CNPJ no Asaas (dono ja tem conta)?
+    // reaproveita — evita o erro "documento/e-mail ja em uso".
+    if (provider.findSubaccount) {
+      const existing = await provider.findSubaccount(cpfDigits);
+      if (existing?.walletId) {
+        est.asaasAccountId = existing.accountId;
+        est.asaasWalletId = existing.walletId;
+        est.receivablesActive = true;
+        await est.save();
+        res.json({ configured: true, walletId: est.asaasWalletId, reused: true });
+        return;
+      }
+    }
+
+    const acc = await provider.createSubaccount({
+      name: est.name,
+      email: String(email).trim(),
+      cpfCnpj: cpfDigits,
+      mobilePhone: String(mobilePhone).replace(/\D/g, ""),
+      incomeValue: Number(incomeValue),
+      address: est.address.street,
+      addressNumber: est.address.number,
+      province: est.address.neighborhood,
+      postalCode: String(postalCode).replace(/\D/g, ""),
+      birthDate: birthDate || undefined,
+      companyType: companyType || undefined,
+    });
+
+    est.asaasAccountId = acc.accountId;
+    est.asaasWalletId = acc.walletId;
+    est.receivablesActive = !!acc.walletId;
+    await est.save();
+
+    res.json({ configured: est.receivablesActive, walletId: est.asaasWalletId });
+  } catch (err: unknown) {
+    const msg =
+      (err as { message?: string })?.message || "Erro ao configurar recebimentos";
+    console.error("setupReceivables:", err);
+    res.status(400).json({ message: msg });
+  }
 };
 
 // PUT /api/establishments/:id  (protegido, so o dono)

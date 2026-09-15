@@ -124,7 +124,7 @@ export function AuthLayout({
         </div>
 
         <p className="relative z-10 text-sm text-teal-100/70">
-          © {new Date().getFullYear()} ServiçoPro
+          © {new Date().getFullYear()} ServiçosPro
         </p>
 
         {/* ornamento de fundo */}

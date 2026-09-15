@@ -6,6 +6,8 @@ import {
   searchEstablishments,
   getEstablishment,
   updateEstablishment,
+  getReceivables,
+  setupReceivables,
 } from "../controllers/establishmentController";
 import {
   getPhotos,
@@ -31,6 +33,8 @@ router.get("/:establishmentId/invites", protect, listInvites);
 router.get("/mine", protect, myEstablishments);
 router.get("/search", searchEstablishments);
 router.get("/", listEstablishments);
+router.get("/:id/receivables", protect, getReceivables);
+router.post("/:id/receivables", protect, setupReceivables);
 router.get("/:id", getEstablishment);
 router.post("/", protect, createEstablishment);
 router.put("/:id", protect, updateEstablishment);

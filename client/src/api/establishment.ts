@@ -52,6 +52,9 @@ export interface Establishment {
   // preenchidos por /establishments/mine — indicam o papel do user logado
   myRole?: "owner" | "professional";
   myProfessionalId?: string | null;
+  // recebe agendamentos? (false quando a assinatura esta inativa) — vem do
+  // GET publico /establishments/:id
+  bookingEnabled?: boolean;
 }
 
 export interface EstablishmentSearchResult {

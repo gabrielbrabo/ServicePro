@@ -8,6 +8,7 @@ import {
 import { professionalApi, Professional } from "../api/professional";
 import { formatPrice } from "../lib/time";
 import { computeServicesWithoutPro } from "../lib/coverage";
+import { APP_PAYMENT_MIN_LABEL } from "../lib/payments";
 
 // converte {proId: "40"} -> [{ professional, durationMinutes }], ignorando vazios
 function durationsToPayload(
@@ -620,8 +621,9 @@ export function ServiceManager({
               Sinal / pré-pagamento (opcional)
             </span>
             <p className="mb-2 text-xs text-ink/50">
-              Exige um valor adiantado ao agendar, para reduzir faltas. O
-              recebimento é registrado manualmente na agenda.
+              Exige um valor adiantado ao agendar, para reduzir faltas. Com os
+              recebimentos ativos, o cliente paga o sinal pelo app; senão, é
+              combinado por fora.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
@@ -661,6 +663,11 @@ export function ServiceManager({
                 </label>
               )}
             </div>
+            <p className="mt-2 text-[11px] text-ink/45">
+              Pagamentos e sinais pelo app valem para valores a partir de{" "}
+              {APP_PAYMENT_MIN_LABEL}. Abaixo disso, o cliente paga
+              presencialmente.
+            </p>
           </div>
 
           {/* Atendimento a domicílio */}

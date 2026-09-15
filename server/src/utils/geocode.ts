@@ -32,7 +32,7 @@ interface GeoResult {
       const resp = await fetch(url, {
         headers: {
           // o Nominatim exige identificar a aplicacao
-          "User-Agent": "ServicePro/1.0 (contato@servicepro.app)",
+          "User-Agent": "ServiçosPro/1.0 (contato@servicepro.app)",
           "Accept-Language": "pt-BR",
         },
       });

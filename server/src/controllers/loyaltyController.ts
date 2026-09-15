@@ -171,7 +171,7 @@ const loyaltyRewardEmailHtml = (args: {
       pendência do cliente.
     </p>
     <p style="color: #94a3b8; font-size: 13px; margin-top: 24px;">
-      Você recebeu este e-mail porque tem uma conta no ServiçoPro.
+      Você recebeu este e-mail porque tem uma conta no ServiçosPro.
     </p>
   </div>`;
 

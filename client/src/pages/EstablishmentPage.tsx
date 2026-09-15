@@ -49,6 +49,7 @@ export function EstablishmentPage() {
 
   // abre o modal; se receber um serviceId, o modal ja entra naquele servico
   const openBooking = (serviceId?: string) => {
+    if (est?.bookingEnabled === false) return; // assinatura inativa
     setBookingServiceId(serviceId ?? null);
     setBookingOpen(true);
   };
@@ -89,6 +90,9 @@ export function EstablishmentPage() {
     );
   }
 
+  // estabelecimento recebe agendamentos? (false = assinatura inativa)
+  const bookable = est.bookingEnabled !== false;
+
   // endereco completo (linha separada abaixo da cidade/estado)
   const addressLine = est.address
     ? [
@@ -126,13 +130,28 @@ export function EstablishmentPage() {
         ratingAvg={est.ratingAvg}
         ratingCount={est.ratingCount}
       >
-        <button
-          onClick={() => openBooking()}
-          className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-teal-500 px-8 font-semibold text-white shadow-sm transition hover:bg-teal-600 sm:w-auto"
-        >
-          Agendar horário
-        </button>
+        {bookable ? (
+          <button
+            onClick={() => openBooking()}
+            className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-teal-500 px-8 font-semibold text-white shadow-sm transition hover:bg-teal-600 sm:w-auto"
+          >
+            Agendar horário
+          </button>
+        ) : (
+          <button
+            disabled
+            className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center rounded-xl bg-ink/10 px-8 font-semibold text-ink/40 sm:w-auto"
+          >
+            Indisponível para agendamento
+          </button>
+        )}
       </EstablishmentProfileHeader>
+
+      {!bookable && (
+        <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm font-medium text-amber-800">
+          Este estabelecimento não está aceitando agendamentos no momento.
+        </div>
+      )}
 
       {/* Serviços — carrossel de 2 linhas; clicar leva ao agendamento do serviço */}
       {loadingServices ? (
@@ -213,9 +232,11 @@ export function EstablishmentPage() {
                           ? `R$ ${(s.monthlyPrice ?? 0).toFixed(2)}/mês`
                           : `R$ ${s.price.toFixed(2)}`}
                       </p>
-                      <span className="mt-1 inline-block text-xs font-semibold text-amber-500 group-hover:underline">
-                        Agendar →
-                      </span>
+                      {bookable && (
+                        <span className="mt-1 inline-block text-xs font-semibold text-amber-500 group-hover:underline">
+                          Agendar →
+                        </span>
+                      )}
                     </div>
                   </button>
                 ))}

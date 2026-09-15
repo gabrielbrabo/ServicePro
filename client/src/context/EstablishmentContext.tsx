@@ -44,7 +44,9 @@ export type PanelTab =
   | "manutencao"
   | "foto"
   | "obra"
-  | "matriculas";
+  | "matriculas"
+  | "assinatura"
+  | "recebimentos";
 
 const LAST_KEY = "servicepro:lastEstablishmentId";
 

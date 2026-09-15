@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { scheduleApi } from "../api/schedule";
+import { scheduleApi, Booking } from "../api/schedule";
+import { PayDepositModal } from "./PayDepositModal";
 import { serviceApi, ServiceItem } from "../api/service";
 import { professionalApi, Professional } from "../api/professional";
 import { Establishment } from "../api/establishment";
@@ -92,6 +93,9 @@ export function BookingModal({
   const [maxFutureDays, setMaxFutureDays] = useState(30);
 
   const [step, setStep] = useState<Step>("service");
+  // agendamento recem-criado com sinal a pagar + modal de pagamento do sinal
+  const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
+  const [payOpen, setPayOpen] = useState(false);
   // combo: varios servicos selecionados. serviceId (primeiro) fica derivado
   // para compatibilidade com o resto do fluxo (recorrencia, lista de espera).
   const [selectedIds, setSelectedIds] = useState<string[]>(
@@ -435,7 +439,7 @@ export function BookingModal({
           skipped: res.skipped,
         });
       } else {
-        await scheduleApi.createBooking({
+        const created = await scheduleApi.createBooking({
           serviceIds: selectedIds,
           scheduledAt: selectedSlot,
           notes: notes.trim() || undefined,
@@ -448,6 +452,15 @@ export function BookingModal({
               ? { lat: homeCoords.lat, lng: homeCoords.lon }
               : undefined,
         });
+        // exige sinal e ainda nao pago -> abre o pagamento do sinal na hora,
+        // para o cliente nao ficar perdido sem saber onde pagar
+        if (
+          (created.payment?.depositRequired ?? 0) > 0 &&
+          !created.payment?.depositPaid
+        ) {
+          setCreatedBooking(created);
+          setPayOpen(true);
+        }
       }
       setShowReminder(false);
       setDone(true);
@@ -548,6 +561,25 @@ export function BookingModal({
             <p className="mt-1 text-sm text-ink/60">
               Você receberá a confirmação do estabelecimento em breve.
             </p>
+
+            {/* sinal pendente: reabre o pagamento (fica visivel se o cliente
+                fechou o modal para pagar por fora) */}
+            {createdBooking &&
+              (createdBooking.payment?.depositRequired ?? 0) > 0 &&
+              !createdBooking.payment?.depositPaid && (
+                <div className="mt-5 rounded-xl bg-amber-400/10 p-4">
+                  <p className="text-sm font-medium text-amber-800">
+                    Este serviço pede um sinal. Você pode pagar agora pelo app
+                    ou combinar o pagamento no estabelecimento.
+                  </p>
+                  <button
+                    onClick={() => setPayOpen(true)}
+                    className="mt-3 inline-flex h-10 items-center justify-center rounded-lg bg-amber-500 px-4 text-sm font-semibold text-white transition hover:bg-amber-600"
+                  >
+                    Pagar sinal pelo app
+                  </button>
+                </div>
+              )}
 
             {/* datas que não puderam ser criadas */}
             {recurringResult && recurringResult.skippedCount > 0 && (
@@ -1134,6 +1166,13 @@ export function BookingModal({
               ? `Confirmar ${repetitions} agendamentos`
               : "Confirmar agendamento"
           }
+        />
+      )}
+      {payOpen && createdBooking && (
+        <PayDepositModal
+          booking={createdBooking}
+          onClose={() => setPayOpen(false)}
+          onPaid={(updated) => setCreatedBooking(updated)}
         />
       )}
     </div>

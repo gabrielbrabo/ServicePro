@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { Booking } from "../models/Booking";
+import { Booking, IBooking } from "../models/Booking";
 import { Service, effectiveDuration, depositFor } from "../models/Service";
 import { Establishment } from "../models/Establishment";
 import { CashSession } from "../models/CashSession";
@@ -15,7 +15,11 @@ import {
 } from "../utils/busySegments";
 import { geocodeAddress } from "../utils/geocode";
 import { estimateTravel, travelFee as calcTravelFee } from "../utils/travel";
-import { postBookingToCash } from "../utils/cashPosting";
+import {
+  postBookingToCash,
+  postDepositToCash,
+  postDepositIfSessionOpen,
+} from "../utils/cashPosting";
 import { autoReserveSlot } from "../utils/autoReserve";
 import { notifyManyAsync, establishmentRecipients } from "../utils/notify";
 import {
@@ -28,6 +32,10 @@ import {
   notifyBookingRescheduledClientAsync,
   notifyBookingRescheduledEstablishmentAsync,
   notifyReviewRequestClientAsync,
+  notifyServicePaymentPendingClientAsync,
+  notifyServicePaymentPendingEstablishmentAsync,
+  notifyPaymentReceivedClientAsync,
+  notifyPaymentReceivedEstablishmentAsync,
 } from "../utils/bookingEmails";
 import {
   notifyBookingConfirmedWhatsappAsync,
@@ -38,6 +46,10 @@ import {
 import { applyLoyaltyOnCompletion } from "./loyaltyController";
 import { env } from "../config/env";
 import { signReviewToken } from "../utils/reviewToken";
+import { isEstablishmentActive } from "../utils/subscriptionActive";
+import { getPaymentProvider } from "../services/payments";
+import { meetsAppPaymentMin } from "../config/payments";
+import { User } from "../models/User";
 import { Types } from "mongoose";
 
 // busca o nome do profissional (subdoc) de um estabelecimento, se houver.
@@ -202,6 +214,15 @@ export const createBooking = async (
     const establishment = await Establishment.findById(service.establishment);
     if (!establishment) {
       res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+
+    // assinatura inativa -> estabelecimento nao recebe novos agendamentos
+    if (!(await isEstablishmentActive(establishment._id.toString()))) {
+      res.status(403).json({
+        message:
+          "Este estabelecimento não está recebendo agendamentos no momento.",
+      });
       return;
     }
 
@@ -707,20 +728,33 @@ export const updateBookingStatus = async (
     const wasActive = BUSY_STATUSES.includes(booking.status);
 
     if (status === "concluido") {
-      if (!VALID_METHODS.includes(paymentMethod)) {
-        res
-          .status(400)
-          .json({ message: "Informe a forma de pagamento para concluir" });
-        return;
+      // se o cliente JA pagou pelo app antes da conclusao, nao mexe na forma/
+      // status de pagamento (mantem pago) e ignora a forma escolhida agora.
+      const alreadyPaid = booking.payment.status === "pago";
+      // "app": conclui sem receber agora; o cliente paga o serviço pelo app e o
+      // caixa e lancado quando o pagamento confirma.
+      const payByApp = paymentMethod === "app";
+      if (!alreadyPaid) {
+        if (!payByApp && !VALID_METHODS.includes(paymentMethod)) {
+          res
+            .status(400)
+            .json({ message: "Informe a forma de pagamento para concluir" });
+          return;
+        }
+        if (payByApp) {
+          booking.payment.method = ""; // definido quando o cliente pagar
+          booking.payment.status = "pendente";
+        } else {
+          booking.payment.method = paymentMethod;
+          booking.payment.status = "pago";
+        }
       }
-      booking.payment.method = paymentMethod;
-      booking.payment.status = "pago";
       booking.completedAt = new Date();
 
       // desconto / acrescimo aplicados no ato da conclusao. So na PRIMEIRA
-      // conclusao (nao reaplica se o status ja era "concluido"), incidindo
-      // sobre o valor atual (que ja inclui taxa de deslocamento, se houver).
-      if (booking.status !== "concluido") {
+      // conclusao (nao reaplica se o status ja era "concluido") e nao mexe se o
+      // cliente ja pagou (o valor cobrado nao pode mudar depois de pago).
+      if (booking.status !== "concluido" && !alreadyPaid) {
         const disc = Math.max(0, Number(req.body.discount) || 0);
         const surch = Math.max(0, Number(req.body.surcharge) || 0);
         if (disc > 0 || surch > 0) {
@@ -783,6 +817,9 @@ export const updateBookingStatus = async (
           status: "aberto",
         });
         if (openSession) {
+          // lanca o sinal (se pago e ainda nao lancado) e depois o saldo.
+          // postBookingToCash desconta o sinal ja lancado, sem duplicar.
+          await postDepositToCash(booking, openSession._id, req.userId!);
           await postBookingToCash(booking, openSession._id, req.userId!);
         }
       }
@@ -875,6 +912,64 @@ export const updateBookingStatus = async (
         booking: booking._id,
         establishment: booking.establishment,
       });
+    }
+
+    // serviço concluido "pra pagar pelo app": avisa AMBAS as partes (in-app +
+    // e-mail). Se o saldo ja foi coberto pelo sinal, marca pago (nada pendente).
+    if (status === "concluido" && booking.payment.status === "pendente") {
+      const balance =
+        (booking.payment.amount || 0) -
+        (booking.payment.depositPaid ? booking.payment.depositRequired || 0 : 0);
+      if (balance <= 0) {
+        await finalizeServicePaid(
+          booking,
+          (booking.payment.depositMethod as "pix" | "cartao") || "pix"
+        );
+      } else {
+        const amountLabel = `R$ ${balance.toFixed(2).replace(".", ",")}`;
+        const estName = (
+          await Establishment.findById(booking.establishment).select("name")
+        )?.name || "o estabelecimento";
+        const estRecipients = await establishmentRecipients(
+          booking.establishment,
+          booking.professional
+        );
+        notifyManyAsync([booking.client], {
+          type: "payment_pending",
+          title: "Pagamento pendente",
+          body: `Pague ${amountLabel} do seu ${serviceTitle} pelo app.`,
+          booking: booking._id,
+          establishment: booking.establishment,
+        });
+        notifyManyAsync(estRecipients, {
+          type: "payment_pending",
+          title: "Pagamento pendente",
+          body: `${serviceTitle} concluído — aguardando o cliente pagar ${amountLabel} pelo app.`,
+          booking: booking._id,
+          establishment: booking.establishment,
+        });
+        // e-mails para ambas as partes
+        const [clientMailP, estMailsP] = await Promise.all([
+          userEmail(booking.client),
+          establishmentEmailRecipients(booking.establishment, booking.professional),
+        ]);
+        const ctxP = {
+          serviceTitle,
+          establishmentName: estName,
+          whenLabel: when,
+          professionalName: null,
+        };
+        notifyServicePaymentPendingClientAsync({
+          clientEmail: clientMailP,
+          ctx: ctxP,
+          amountLabel,
+        });
+        notifyServicePaymentPendingEstablishmentAsync({
+          establishmentEmails: estMailsP,
+          ctx: ctxP,
+          amountLabel,
+        });
+      }
     }
 
     // ---- e-mails (Etapa B) ----
@@ -1343,6 +1438,15 @@ export const createRecurringBookings = async (
       return;
     }
 
+    // assinatura inativa -> estabelecimento nao recebe novos agendamentos
+    if (!(await isEstablishmentActive(establishment._id.toString()))) {
+      res.status(403).json({
+        message:
+          "Este estabelecimento não está recebendo agendamentos no momento.",
+      });
+      return;
+    }
+
     const prof = parseProfessional(professionalId);
     const activePros = establishment.professionals.filter((p) => p.active);
 
@@ -1527,6 +1631,15 @@ export const createStudentEnrollment = async (
     });
     if (!est) {
       res.status(403).json({ message: "Sem permissao neste estabelecimento" });
+      return;
+    }
+
+    // assinatura inativa -> nao gera novas matriculas/agendamentos
+    if (!(await isEstablishmentActive(establishmentId))) {
+      res.status(403).json({
+        message:
+          "Este estabelecimento não está recebendo agendamentos no momento.",
+      });
       return;
     }
 
@@ -1973,6 +2086,15 @@ export const markDeposit = async (
       : "";
     await booking.save();
 
+    // lanca o sinal no caixa (se houver sessao aberta). Nao derruba a resposta.
+    if (paid) {
+      try {
+        await postDepositIfSessionOpen(booking, req.userId!);
+      } catch (e) {
+        console.error("markDeposit -> caixa:", e);
+      }
+    }
+
     // tempo real: cliente + lado do estabelecimento
     const estSide = await establishmentRecipients(
       booking.establishment,
@@ -2080,5 +2202,573 @@ export const extendBooking = async (
   } catch (err) {
     console.error("extendBooking:", err);
     res.status(500).json({ message: "Erro ao adicionar tempo extra" });
+  }
+};
+// ---- pagamentos do cliente pelo app (sinal e serviço) ----
+
+type PayBody = {
+  cpf?: string;
+  method?: string; // "pix" | "cartao"
+  card?: {
+    holderName?: string;
+    number?: string;
+    expiryMonth?: string;
+    expiryYear?: string;
+    ccv?: string;
+  };
+  holder?: { postalCode?: string; addressNumber?: string; phone?: string };
+};
+
+const onlyDigits = (v?: string) => String(v || "").replace(/\D/g, "");
+
+// valida os campos do cartao (retorna mensagem de erro ou null)
+function validateCardBody(body: PayBody): string | null {
+  const c = body.card || {};
+  if (onlyDigits(c.number).length < 13) return "Numero do cartao invalido";
+  if (!c.expiryMonth || !c.expiryYear) return "Validade do cartao invalida";
+  if (!c.ccv) return "CVV do cartao invalido";
+  if (!c.holderName) return "Informe o nome impresso no cartao";
+  const h = body.holder || {};
+  if (onlyDigits(h.postalCode).length < 8) return "Informe o CEP do titular";
+  if (!h.addressNumber) return "Informe o numero do endereco do titular";
+  if (onlyDigits(h.phone).length < 10) return "Informe o telefone do titular";
+  return null;
+}
+
+// monta os campos de cartao para a cobranca (createCharge)
+function buildCardFields(
+  body: PayBody,
+  req: AuthRequest,
+  client: { name?: string; email?: string } | null,
+  cpf: string
+) {
+  const card = body.card || {};
+  const holder = body.holder || {};
+  const fwd = req.headers["x-forwarded-for"];
+  const remoteIp =
+    (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    undefined;
+  return {
+    card: {
+      holderName: String(card.holderName || client?.name || ""),
+      number: onlyDigits(card.number),
+      expiryMonth: String(card.expiryMonth || ""),
+      expiryYear: String(card.expiryYear || ""),
+      ccv: String(card.ccv || ""),
+    },
+    holderInfo: {
+      name: client?.name || "Cliente",
+      email: client?.email || "",
+      cpfCnpj: cpf,
+      postalCode: onlyDigits(holder.postalCode),
+      addressNumber: String(holder.addressNumber || ""),
+      phone: onlyDigits(holder.phone),
+    },
+    remoteIp,
+  };
+}
+
+// avisa cliente + estabelecimento que o agendamento mudou (tempo real)
+async function emitBookingUpdated(booking: IBooking): Promise<void> {
+  const estSide = await establishmentRecipients(
+    booking.establishment,
+    booking.professional
+  );
+  const io = getIO();
+  for (const uid of new Set([booking.client.toString(), ...estSide])) {
+    io.to(`user:${uid}`).emit("booking:updated", booking);
+  }
+}
+
+// avisa AMBAS as partes que o cliente pagou (in-app + e-mail). kind = "sinal"
+// ou "pagamento". valueCents = valor pago (centavos). Fire-and-forget.
+async function notifyPaymentReceived(
+  booking: IBooking,
+  kind: string,
+  value: number
+): Promise<void> {
+  try {
+    const [svc, est, estRecipients] = await Promise.all([
+      Service.findById(booking.service).select("title"),
+      Establishment.findById(booking.establishment).select("name"),
+      establishmentRecipients(booking.establishment, booking.professional),
+    ]);
+    const serviceTitle = svc?.title || "Agendamento";
+    const estName = est?.name || "o estabelecimento";
+    const amountLabel = `R$ ${value.toFixed(2).replace(".", ",")}`;
+    const capitalized = kind.charAt(0).toUpperCase() + kind.slice(1);
+
+    notifyManyAsync([booking.client], {
+      type: "payment_received",
+      title: `${capitalized} pago`,
+      body: `Seu ${kind} de ${amountLabel} (${serviceTitle}) foi confirmado.`,
+      booking: booking._id,
+      establishment: booking.establishment,
+    });
+    notifyManyAsync(estRecipients, {
+      type: "payment_received",
+      title: `${capitalized} recebido`,
+      body: `O cliente pagou ${amountLabel} de ${serviceTitle} pelo app.`,
+      booking: booking._id,
+      establishment: booking.establishment,
+    });
+
+    const [clientMail, estMails] = await Promise.all([
+      userEmail(booking.client),
+      establishmentEmailRecipients(booking.establishment, booking.professional),
+    ]);
+    const ctx = {
+      serviceTitle,
+      establishmentName: estName,
+      whenLabel: formatWhen(booking.scheduledAt),
+      professionalName: null,
+    };
+    notifyPaymentReceivedClientAsync({ clientEmail: clientMail, ctx, amountLabel, kind });
+    notifyPaymentReceivedEstablishmentAsync({
+      establishmentEmails: estMails,
+      ctx,
+      amountLabel,
+      kind,
+    });
+  } catch (e) {
+    console.error("notifyPaymentReceived:", e);
+  }
+}
+
+// marca o SINAL como recebido (pago pelo app) e lanca no caixa + avisa em
+// tempo real. Usado no cartao (confirma na hora) e no webhook.
+export async function finalizeDepositPaid(
+  booking: IBooking,
+  method: "pix" | "cartao"
+): Promise<void> {
+  booking.payment.depositPaid = true;
+  booking.payment.depositPaidAt = new Date();
+  booking.payment.depositPaidOnline = true;
+  booking.payment.depositMethod = method;
+  await booking.save();
+  try {
+    await postDepositIfSessionOpen(booking, booking.owner);
+  } catch (e) {
+    console.error("finalizeDepositPaid -> caixa:", e);
+  }
+  await emitBookingUpdated(booking);
+  await notifyPaymentReceived(booking, "sinal", booking.payment.depositRequired || 0);
+}
+
+// marca o SERVIÇO como pago (pelo app) e lanca o saldo no caixa (garantindo o
+// sinal antes, sem duplicar) + avisa em tempo real.
+export async function finalizeServicePaid(
+  booking: IBooking,
+  method: "pix" | "cartao"
+): Promise<void> {
+  booking.payment.method = method;
+  booking.payment.status = "pago";
+  await booking.save();
+  try {
+    const est = await Establishment.findById(booking.establishment).select(
+      "cashAutoEntry"
+    );
+    if (est?.cashAutoEntry !== false) {
+      const openSession = await CashSession.findOne({
+        establishment: booking.establishment,
+        status: "aberto",
+      });
+      if (openSession) {
+        // garante o sinal lancado e depois o saldo (postBookingToCash desconta
+        // o sinal ja lancado, sem duplicar)
+        await postDepositToCash(booking, openSession._id, booking.owner);
+        await postBookingToCash(booking, openSession._id, booking.owner);
+      }
+    }
+  } catch (e) {
+    console.error("finalizeServicePaid -> caixa:", e);
+  }
+  await emitBookingUpdated(booking);
+  // valor pago agora = saldo (total - sinal ja pago)
+  const paidValue =
+    (booking.payment.amount || 0) -
+    (booking.payment.depositPaid ? booking.payment.depositRequired || 0 : 0);
+  await notifyPaymentReceived(booking, "pagamento", paidValue > 0 ? paidValue : booking.payment.amount || 0);
+}
+
+// POST /api/bookings/:id/pay-deposit  (cliente do agendamento)
+// Gera a cobranca do SINAL (PIX ou cartao), com split 100% para a subconta do
+// estabelecimento. PIX: marca recebido pelo webhook/consulta. Cartao: cobra na
+// hora e ja marca recebido.
+export const payBookingDeposit = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+    if (!booking.client || booking.client.toString() !== req.userId) {
+      res.status(403).json({ message: "Apenas o cliente do agendamento" });
+      return;
+    }
+    if (booking.payment.depositPaid) {
+      res.json({ alreadyPaid: true });
+      return;
+    }
+
+    // evita cobrar 2x: reaproveita/confirma a cobranca do sinal ja existente
+    if (booking.payment.depositPaymentId) {
+      const prov = getPaymentProvider();
+      if (prov.getChargeStatus) {
+        try {
+          const st = await prov.getChargeStatus(booking.payment.depositPaymentId);
+          if (st.status === "confirmed") {
+            await finalizeDepositPaid(booking, "pix");
+            res.json({ paid: true });
+            return;
+          }
+          if (st.status === "pending" && st.checkoutUrl) {
+            res.json({
+              checkoutUrl: st.checkoutUrl,
+              paymentId: booking.payment.depositPaymentId,
+            });
+            return;
+          }
+        } catch (e) {
+          console.error("payBookingDeposit reuse:", e);
+        }
+      }
+    }
+
+    const depositCents = Math.round((booking.payment.depositRequired || 0) * 100);
+    if (!(depositCents > 0)) {
+      res.status(400).json({ message: "Este agendamento nao tem sinal" });
+      return;
+    }
+    if (!meetsAppPaymentMin(depositCents)) {
+      res.status(400).json({
+        message: "Valor do sinal abaixo do minimo para pagamento pelo app",
+      });
+      return;
+    }
+
+    const est = await Establishment.findById(booking.establishment).select(
+      "receivablesActive asaasWalletId"
+    );
+    if (!est?.receivablesActive || !est.asaasWalletId) {
+      res
+        .status(400)
+        .json({ message: "O estabelecimento ainda nao configurou recebimentos" });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    if (!provider.createCharge) {
+      res.status(400).json({ message: "Pagamento pelo app indisponivel" });
+      return;
+    }
+
+    const body = req.body as PayBody;
+    const method = body.method === "cartao" ? "cartao" : "pix";
+    const cpf = onlyDigits(body.cpf);
+    if (cpf.length < 11) {
+      res.status(400).json({ message: "Informe um CPF valido para o pagamento" });
+      return;
+    }
+    if (method === "cartao") {
+      const cardErr = validateCardBody(body);
+      if (cardErr) {
+        res.status(400).json({ message: cardErr });
+        return;
+      }
+    }
+
+    const client = await User.findById(booking.client).select("name email");
+    const charge = await provider.createCharge({
+      billingType: method,
+      customerName: client?.name || "Cliente",
+      customerEmail: client?.email || "",
+      customerCpfCnpj: cpf,
+      valueCents: depositCents,
+      description: "Sinal de agendamento - ServiçosPro",
+      externalReference: `booking:${booking._id}`,
+      splitWalletId: est.asaasWalletId,
+      ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
+    });
+
+    booking.payment.depositPaymentId = charge.paymentId;
+    await booking.save();
+
+    // cartao: capturado na hora -> ja marca o sinal recebido + caixa
+    if (charge.status === "confirmed") {
+      await finalizeDepositPaid(booking, "cartao");
+      res.json({ paid: true });
+      return;
+    }
+
+    res.json({ checkoutUrl: charge.checkoutUrl, paymentId: charge.paymentId });
+  } catch (err: unknown) {
+    const msg =
+      (err as { message?: string })?.message || "Erro ao gerar o pagamento do sinal";
+    console.error("payBookingDeposit:", err);
+    res.status(400).json({ message: msg });
+  }
+};
+
+// POST /api/bookings/:id/pay-service  (cliente do agendamento)
+// Paga o SALDO do serviço (total - sinal ja pago) pelo app, PIX ou cartao, com
+// split 100% para o estabelecimento. Disponivel apos a conclusao do serviço.
+export const payBookingService = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+    if (!booking.client || booking.client.toString() !== req.userId) {
+      res.status(403).json({ message: "Apenas o cliente do agendamento" });
+      return;
+    }
+    // o cliente pode pagar antes da conclusao; so bloqueia cancelado/reserva
+    if (booking.status === "cancelado" || booking.status === "reservado") {
+      res
+        .status(400)
+        .json({ message: "Este agendamento nao pode ser pago" });
+      return;
+    }
+    if (booking.payment.status === "pago") {
+      res.json({ alreadyPaid: true });
+      return;
+    }
+
+    // evita cobrar 2x: se ja existe uma cobranca deste serviço, confirma (se ja
+    // foi paga) ou reaproveita o link atual em vez de gerar outra.
+    if (booking.payment.servicePaymentId) {
+      const prov = getPaymentProvider();
+      if (prov.getChargeStatus) {
+        try {
+          const st = await prov.getChargeStatus(booking.payment.servicePaymentId);
+          if (st.status === "confirmed") {
+            await finalizeServicePaid(booking, "pix");
+            res.json({ paid: true });
+            return;
+          }
+          if (st.status === "pending" && st.checkoutUrl) {
+            res.json({
+              checkoutUrl: st.checkoutUrl,
+              paymentId: booking.payment.servicePaymentId,
+            });
+            return;
+          }
+        } catch (e) {
+          console.error("payBookingService reuse:", e);
+        }
+      }
+    }
+
+    // saldo devido = total - sinal ja pago
+    const depositPaidValue = booking.payment.depositPaid
+      ? booking.payment.depositRequired || 0
+      : 0;
+    const balanceCents = Math.round(
+      ((booking.payment.amount || 0) - depositPaidValue) * 100
+    );
+    if (!(balanceCents > 0)) {
+      // ja coberto pelo sinal -> marca pago
+      await finalizeServicePaid(
+        booking,
+        (booking.payment.depositMethod as "pix" | "cartao") || "pix"
+      );
+      res.json({ paid: true });
+      return;
+    }
+    if (!meetsAppPaymentMin(balanceCents)) {
+      res.status(400).json({
+        message: "Valor abaixo do minimo para pagamento pelo app",
+      });
+      return;
+    }
+
+    const est = await Establishment.findById(booking.establishment).select(
+      "receivablesActive asaasWalletId"
+    );
+    if (!est?.receivablesActive || !est.asaasWalletId) {
+      res
+        .status(400)
+        .json({ message: "O estabelecimento ainda nao configurou recebimentos" });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    if (!provider.createCharge) {
+      res.status(400).json({ message: "Pagamento pelo app indisponivel" });
+      return;
+    }
+
+    const body = req.body as PayBody;
+    const method = body.method === "cartao" ? "cartao" : "pix";
+    const cpf = onlyDigits(body.cpf);
+    if (cpf.length < 11) {
+      res.status(400).json({ message: "Informe um CPF valido para o pagamento" });
+      return;
+    }
+    if (method === "cartao") {
+      const cardErr = validateCardBody(body);
+      if (cardErr) {
+        res.status(400).json({ message: cardErr });
+        return;
+      }
+    }
+
+    const client = await User.findById(booking.client).select("name email");
+    const charge = await provider.createCharge({
+      billingType: method,
+      customerName: client?.name || "Cliente",
+      customerEmail: client?.email || "",
+      customerCpfCnpj: cpf,
+      valueCents: balanceCents,
+      description: "Pagamento de serviço - ServiçosPro",
+      externalReference: `booking-service:${booking._id}`,
+      splitWalletId: est.asaasWalletId,
+      ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
+    });
+
+    booking.payment.servicePaymentId = charge.paymentId;
+    await booking.save();
+
+    if (charge.status === "confirmed") {
+      await finalizeServicePaid(booking, "cartao");
+      res.json({ paid: true });
+      return;
+    }
+
+    res.json({ checkoutUrl: charge.checkoutUrl, paymentId: charge.paymentId });
+  } catch (err: unknown) {
+    const msg =
+      (err as { message?: string })?.message ||
+      "Erro ao gerar o pagamento do serviço";
+    console.error("payBookingService:", err);
+    res.status(400).json({ message: msg });
+  }
+};
+
+// GET /api/bookings/:id/service-status  (cliente OU estabelecimento)
+// Consulta/confirma o pagamento do serviço direto no gateway (poll sem webhook).
+export const getServiceStatus = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+
+    const isClient = booking.client?.toString() === req.userId;
+    const isOwner = booking.owner?.toString() === req.userId;
+    let isAssignedProfessional = false;
+    if (!isClient && !isOwner && booking.professional) {
+      const estProf = await Establishment.findById(
+        booking.establishment
+      ).select("professionals");
+      const prof = estProf?.professionals.id(booking.professional);
+      isAssignedProfessional =
+        !!prof &&
+        !!prof.linkedUser &&
+        prof.linkedUser.toString() === req.userId;
+    }
+    if (!isClient && !isOwner && !isAssignedProfessional) {
+      res.status(403).json({ message: "Sem permissao" });
+      return;
+    }
+
+    if (booking.payment.status === "pago") {
+      res.json({ paid: true });
+      return;
+    }
+
+    const paymentId = booking.payment.servicePaymentId;
+    if (paymentId) {
+      const provider = getPaymentProvider();
+      if (provider.getChargeStatus) {
+        const st = await provider.getChargeStatus(paymentId);
+        if (st.status === "confirmed") {
+          await finalizeServicePaid(booking, "pix");
+          res.json({ paid: true });
+          return;
+        }
+      }
+    }
+
+    res.json({ paid: false });
+  } catch (err: unknown) {
+    const msg =
+      (err as { message?: string })?.message || "Erro ao consultar o pagamento";
+    console.error("getServiceStatus:", err);
+    res.status(400).json({ message: msg });
+  }
+};
+
+// GET /api/bookings/:id/deposit-status  (cliente OU estabelecimento)
+// Consulta o status do sinal. Se ainda nao consta pago mas ha uma cobranca no
+// gateway, confirma direto no Asaas (fallback quando o webhook nao chega) e
+// marca o sinal como recebido. Assim funciona mesmo sem URL publica de webhook.
+export const getDepositStatus = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      res.status(404).json({ message: "Agendamento nao encontrado" });
+      return;
+    }
+
+    // quem pode consultar: o cliente, o dono, ou o profissional do agendamento
+    const isClient = booking.client?.toString() === req.userId;
+    const isOwner = booking.owner?.toString() === req.userId;
+    let isAssignedProfessional = false;
+    if (!isClient && !isOwner && booking.professional) {
+      const estProf = await Establishment.findById(
+        booking.establishment
+      ).select("professionals");
+      const prof = estProf?.professionals.id(booking.professional);
+      isAssignedProfessional =
+        !!prof &&
+        !!prof.linkedUser &&
+        prof.linkedUser.toString() === req.userId;
+    }
+    if (!isClient && !isOwner && !isAssignedProfessional) {
+      res.status(403).json({ message: "Sem permissao" });
+      return;
+    }
+
+    if (booking.payment.depositPaid) {
+      res.json({ depositPaid: true });
+      return;
+    }
+
+    const paymentId = booking.payment.depositPaymentId;
+    if (paymentId) {
+      const provider = getPaymentProvider();
+      if (provider.getChargeStatus) {
+        const st = await provider.getChargeStatus(paymentId);
+        if (st.status === "confirmed") {
+          await finalizeDepositPaid(booking, "pix");
+          res.json({ depositPaid: true });
+          return;
+        }
+      }
+    }
+
+    res.json({ depositPaid: false });
+  } catch (err: unknown) {
+    const msg =
+      (err as { message?: string })?.message || "Erro ao consultar o sinal";
+    console.error("getDepositStatus:", err);
+    res.status(400).json({ message: msg });
   }
 };

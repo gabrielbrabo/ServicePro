@@ -92,6 +92,10 @@ export interface IBooking extends Document {
     depositPaid: boolean; // sinal ja recebido?
     depositPaidAt?: Date;
     depositMethod?: PaymentMethod;
+    depositPaidOnline?: boolean; // sinal pago pelo app (Asaas) vs manual
+    depositPaymentId?: string; // id da cobranca do sinal no gateway
+    depositPostedToCash?: boolean; // sinal ja lancado no caixa (evita duplicar)
+    servicePaymentId?: string; // id da cobranca do serviço (pago pelo app)
     provider?: string;
     transactionId?: string;
     postedToCash: boolean; // ja virou entrada no caixa?
@@ -232,6 +236,10 @@ const bookingSchema = new Schema<IBooking>(
         enum: ["dinheiro", "cartao", "pix", "outro", ""],
         default: "",
       },
+      depositPaidOnline: { type: Boolean, default: false },
+      depositPaymentId: { type: String, default: "" },
+      depositPostedToCash: { type: Boolean, default: false },
+      servicePaymentId: { type: String, default: "" },
       provider: { type: String },
       transactionId: { type: String },
       postedToCash: { type: Boolean, default: false },

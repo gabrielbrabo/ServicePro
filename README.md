@@ -1,4 +1,4 @@
-# ServicePro — Backend
+# ServiçosPro — Backend
 
 API em tempo real para anúncio e agendamento de serviços.
 Stack: **Node.js + TypeScript + Express + MongoDB (Mongoose) + Socket.IO + JWT**
@@ -35,6 +35,14 @@ Edite o `.env`:
 - `MONGO_URI` — sua conexão do Mongo (local ou Atlas)
 - `JWT_SECRET` — troque por uma string longa e aleatória
 - `CLIENT_URL` — a URL do seu frontend (padrão Vite: `http://localhost:5173`)
+
+Gateway de pagamento / assinatura (Asaas) — deixe vazio para rodar em modo
+no-op (dev: nada bloqueia). Para ativar:
+
+- `PAYMENTS_PROVIDER` — `asaas` (vazio = desligado)
+- `ASAAS_API_KEY` — chave `$aact_...` (Sandbox: `sandbox.asaas.com` → Integrações → Chave de API)
+- `ASAAS_BASE_URL` — `https://api-sandbox.asaas.com/v3` (produção: `https://api.asaas.com/v3`)
+- `PAYMENTS_WEBHOOK_SECRET` — texto que você inventa e repete no webhook do Asaas
 
 ### 4. Popular categorias iniciais (opcional)
 
@@ -160,7 +168,7 @@ socket.on("chat:message", (msg) => { /* ... */ });
 - **Pagamento:** o modelo `Booking` já tem o campo `payment` preparado. Para processar de verdade, integre **Stripe** ou **Mercado Pago** — não construa processamento de cartão do zero.
 - **Conta única:** qualquer usuário pode anunciar (virar prestador) e agendar (virar cliente). Não há papéis fixos.
 
-# ServicePro — Contexto do Projeto
+# ServiçosPro — Contexto do Projeto
 
 > **Leia este arquivo antes de escrever qualquer código.**
 > Ele descreve o estado atual da arquitetura, os padrões estabelecidos e as
@@ -672,7 +680,7 @@ em `EstablishmentCard`, busca, perfil (`EstablishmentProfileHeader`) e no
 configuração da conta na Meta (fora do código) para começar a enviar.
 
 ### O que já está feito (código)
-- Integração via **Meta Cloud API**, número único do ServicePro.
+- Integração via **Meta Cloud API**, número único do ServiçosPro.
 - `utils/whatsapp.ts` (cliente Cloud API, envio de template, fire-and-forget),
   `utils/bookingWhatsapp.ts` (disparos por evento).
 - Gatilhos ligados nos MESMOS pontos do e-mail: **confirmação** e
@@ -857,4 +865,91 @@ da OS** (`utils/serviceOrderPdf.ts`). Arquivos: `models/ServiceOrder.ts`,
 > Pendência sugerida: seed/migração para gravar `segment` nas categorias antigas de
 > Saúde (hoje o front cai no mapa por slug em `CATEGORY_SEGMENT` quando o campo do banco
 > está vazio).
+
+## 31. Assinatura e gateway de pagamento (Asaas)
+
+Cada **estabelecimento** assina o ServiçosPro. O **plano é a própria área**
+(não há "Essencial/Saúde"): o preço vem de `SEGMENTS[...].priceMonthly` em
+`config/segments.ts` — Serviços gerais e Beleza **R$ 69/mês**, Saúde
+**R$ 159/mês**; **anual = 10× a mensalidade** (2 meses grátis).
+
+### Arquitetura (gateway-agnóstica)
+
+Toda a parte específica do gateway fica atrás de uma interface, num único
+adapter — trocar/adicionar gateway não mexe no resto:
+
+- `services/payments/types.ts` — contrato `PaymentProvider`
+- `services/payments/noop.ts` — modo dev (sem gateway configurado, tudo "active", nada bloqueia)
+- `services/payments/asaas.ts` — adapter do Asaas
+- `services/payments/index.ts` — fábrica (`getPaymentProvider()` escolhe por `PAYMENTS_PROVIDER`)
+- `config/plans.ts` — planos derivados de `SEGMENTS` (id = segmento; preço em centavos)
+- `models/Subscription.ts` — 1 assinatura por estabelecimento
+- `middleware/requireActiveSubscription.ts` — guard opcional para rotas pagas
+- `utils/subscriptionActive.ts` — `isEstablishmentActive(estId)` (usado no bloqueio de agendamentos)
+
+`Subscription`: `status` (`none | trialing | active | past_due | canceled`),
+`planId` (= segmento), `billingCycle`, `priceCents`, `provider*Id`,
+`currentPeriodEnd`, `cancelAtPeriodEnd`, `cardLast4`/`cardBrand`, idempotência
+via `lastEventId`.
+
+### Fluxo de cobrança
+
+- **Cadastro em 3 etapas** (`EstablishmentForm`): 1) área → 2) plano
+  (mensal/anual) + método (PIX/Cartão) + CPF/CNPJ + e-mail → 3) dados do
+  negócio. Ao finalizar, cria o estabelecimento **e** a assinatura.
+- **Cartão**: formulário no app (número, validade, CVV, titular + CEP, nº,
+  telefone — exigidos pela operadora); o Asaas cobra na hora → assinatura
+  **ativa imediatamente** e o cartão fica **salvo** (tokenizado) para a
+  recorrência mensal. ⚠️ os dados do cartão passam pelo backend → escopo PCI.
+- **PIX**: gera a fatura (link do Asaas); a tela **verifica sozinha**
+  (auto-poll) e libera assim que o pagamento cai.
+- **Fonte da verdade** é o **webhook** (`POST /api/webhooks/payments`, validado
+  pelo header `asaas-access-token` = `PAYMENTS_WEBHOOK_SECRET`, idempotente).
+  O `app.ts` guarda o `rawBody` no `express.json`. Em dev/sem webhook público,
+  o endpoint `refresh` (auto-poll) consulta o Asaas direto e supre o webhook.
+
+### Cancelamento e reativação (sem desperdício)
+
+- **Cancelar** não deleta: usa `endDate` no Asaas (para de renovar) e o cliente
+  **mantém acesso até o fim do período já pago**. Pede confirmação na UI.
+- **Reativar** volta a renovar **sem cobrar de novo** (novo `nextDueDate` = fim
+  do período atual).
+- **Anti-dupla-assinatura**: o backend recusa (409) assinar de novo se já há
+  assinatura ativa; se estiver cancelada-mas-vigente, orienta usar **Reativar**.
+
+### Quando a assinatura vence (não renova)
+
+- **Painel bloqueado**, deixando acessível **só a aba Agendamentos** (ver os
+  existentes) e **Minha assinatura** (renovar) — `EstablishmentPanel` filtra as
+  abas e força `recebidos` (`ALLOWED_WHEN_BLOCKED`).
+- **Notificações e e-mails de lembrete de horário continuam** (não são
+  bloqueados) — o dono segue avisado dos horários.
+- **Novos agendamentos bloqueados** no backend (`createBooking`,
+  `createRecurringBookings`, `createStudentEnrollment` → 403 via
+  `isEstablishmentActive`).
+- **Link público** mostra "Indisponível para agendamento": `getEstablishment`
+  retorna `bookingEnabled`; `EstablishmentPage` desabilita o botão e avisa.
+
+### Endpoints
+
+- `GET  /api/subscriptions/plans` — catálogo de planos (por área)
+- `GET  /api/subscriptions/:est` — assinatura (dono)
+- `GET  /api/subscriptions/:est/status` — status leve (dono ou membro; usado no paywall)
+- `POST /api/subscriptions/:est` — assinar (planId = segmento; PIX/cartão)
+- `POST /api/subscriptions/:est/cancel` — cancelar (no fim do período)
+- `POST /api/subscriptions/:est/reactivate` — reativar (sem cobrar de novo)
+- `POST /api/subscriptions/:est/refresh` — consulta status no gateway (fallback do webhook)
+- `POST /api/webhooks/payments` — webhook do Asaas (sem auth de usuário)
+
+### Testes no sandbox
+
+- **Cartão aprovado**: qualquer cartão fictício válido (ex.: `4111 1111 1111 1111`),
+  validade futura, CVV `123`. **Recusado**: `5184 0197 4037 3151`.
+- **PIX**: no painel do Asaas (Cobranças), "Confirmar recebimento em dinheiro"
+  para simular o pagamento; em produção o banco confirma sozinho.
+
+> Pendências: configurar o **webhook do Asaas** apontando para o backend em
+> produção (Render) para o PIX ficar instantâneo sem auto-poll; marcar
+> "indisponível" também na **busca** (`SearchPage`, hoje só na página do
+> estabelecimento); cartão parcelado/outras bandeiras; rodar `tsc --noEmit`.
 

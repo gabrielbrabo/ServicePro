@@ -7,6 +7,7 @@ import { ReminderModal } from "./ReminderModal";
 import { Avatar } from "./Avatar";
 import { EstablishmentAvatar } from "./EstablishmentAvatar";
 import { BookingDetailModal } from "./BookingDetailModal";
+import { PayDepositModal } from "./PayDepositModal";
 import { useNotifications } from "../context/NotificationContext";
 
 // titulo do agendamento: no combo, junta os servicos ("Corte + Barba");
@@ -52,7 +53,7 @@ const STATUS_RANK: Record<Booking["status"], number> = {
   cancelado: 2,
 };
 
-type PaymentMethod = "dinheiro" | "cartao" | "pix" | "outro";
+type PaymentMethod = "dinheiro" | "cartao" | "pix" | "outro" | "app";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "dinheiro", label: "Dinheiro" },
@@ -102,6 +103,10 @@ export function BookingList({
   const [rescheduling, setRescheduling] = useState<Booking | null>(null);
   // modal de detalhes (abre ao clicar no card)
   const [detail, setDetail] = useState<Booking | null>(null);
+  // modal do cliente para pagar o sinal pelo app (PIX)
+  const [payingDeposit, setPayingDeposit] = useState<Booking | null>(null);
+  // modal do cliente para pagar o serviço concluido pelo app
+  const [payingService, setPayingService] = useState<Booking | null>(null);
 
   const [completing, setCompleting] = useState<Booking | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("dinheiro");
@@ -184,12 +189,32 @@ export function BookingList({
   // separa as reservas aguardando resposta (só fazem sentido para o cliente)
   const reservations = bookings.filter((b) => b.status === "reservado");
 
-  // regulares: ativos primeiro, depois concluidos, por ultimo cancelados;
-  // dentro de cada bloco, data do mais novo ao mais antigo
+  // concluido, com pagamento ainda pendente (pra pagar pelo app)
+  const isPendingPay = (b: Booking) =>
+    b.status === "concluido" &&
+    b.payment?.status !== "pago" &&
+    (b.payment?.amount ?? 0) > 0;
+
+  // prioridade na lista. Cliente: pendentes de pagamento PRIMEIRO, depois a
+  // ordem normal. Estabelecimento: novos/ativos primeiro, depois os concluidos
+  // aguardando pagamento, depois concluidos pagos e por fim cancelados.
+  const rankFor = (b: Booking): number => {
+    if (role === "client") {
+      if (isPendingPay(b)) return -1;
+      return STATUS_RANK[b.status];
+    }
+    if (b.status === "pendente" || b.status === "confirmado") return 0;
+    if (isPendingPay(b)) return 1;
+    if (b.status === "concluido") return 2;
+    return 3; // cancelado
+  };
+
+  // regulares: ordenados pela prioridade acima; dentro de cada bloco, data do
+  // mais novo ao mais antigo
   const regular = bookings
     .filter((b) => b.status !== "reservado")
     .sort((a, b) => {
-      const rank = STATUS_RANK[a.status] - STATUS_RANK[b.status];
+      const rank = rankFor(a) - rankFor(b);
       if (rank !== 0) return rank;
       return (
         new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
@@ -270,11 +295,33 @@ export function BookingList({
   };
 
   const startComplete = (b: Booking) => {
+    // ja pago pelo app (valor ja pode ter entrado no caixa): conclui direto,
+    // sem pedir forma de pagamento — evita lancar em duplicidade no caixa.
+    if (b.payment?.status === "pago") {
+      void concludeAlreadyPaid(b);
+      return;
+    }
     setCompleting(b);
     setMethod("dinheiro");
     setDiscount("");
     setSurcharge("");
     setCompleteError(null);
+  };
+
+  // conclui um atendimento ja pago pelo app (mantem "pago pelo app")
+  const concludeAlreadyPaid = async (b: Booking) => {
+    try {
+      const updated = await scheduleApi.updateStatus(b._id, "concluido", "app");
+      setBookings((list) => list.map((x) => (x._id === b._id ? updated : x)));
+      refreshBadges();
+    } catch {
+      // se falhar, cai no fluxo normal com o modal
+      setCompleting(b);
+      setMethod("dinheiro");
+      setDiscount("");
+      setSurcharge("");
+      setCompleteError("Não foi possível concluir. Tente novamente.");
+    }
   };
 
   const confirmComplete = async () => {
@@ -592,6 +639,12 @@ export function BookingList({
                       {b.payment?.depositPaid ? "recebido" : "pendente"}
                     </span>
                   )}
+                  {isPendingPay(b) && (
+                    <span className="mt-1 ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      Pagamento pendente
+                    </span>
+                  )}
                   {b.atHome && (
                     <div className="mt-1 rounded-lg bg-teal-500/10 px-2.5 py-1.5 text-xs text-ink/70">
                       <p className="font-medium text-teal-600 dark:text-teal-100">
@@ -628,7 +681,8 @@ export function BookingList({
               >
                 {role === "provider" &&
                   (b.payment?.depositRequired ?? 0) > 0 &&
-                  b.status !== "cancelado" && (
+                  b.status !== "cancelado" &&
+                  b.status !== "concluido" && (
                     <button
                       onClick={() => toggleDeposit(b)}
                       className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
@@ -640,6 +694,32 @@ export function BookingList({
                       {b.payment?.depositPaid
                         ? "Estornar sinal"
                         : "Marcar sinal"}
+                    </button>
+                  )}
+                {/* cliente paga o sinal pelo app (PIX/cartao com split) */}
+                {role === "client" &&
+                  (b.payment?.depositRequired ?? 0) > 0 &&
+                  !b.payment?.depositPaid &&
+                  b.status !== "cancelado" &&
+                  b.status !== "concluido" && (
+                    <button
+                      onClick={() => setPayingDeposit(b)}
+                      className="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-600"
+                    >
+                      Pagar sinal
+                    </button>
+                  )}
+                {/* cliente paga o serviço pelo app (PIX/cartao) — pode pagar
+                    antes mesmo da conclusao */}
+                {role === "client" &&
+                  (b.status === "confirmado" || b.status === "concluido") &&
+                  b.payment?.status !== "pago" &&
+                  (b.payment?.amount ?? 0) > 0 && (
+                    <button
+                      onClick={() => setPayingService(b)}
+                      className="rounded-lg bg-teal-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-600"
+                    >
+                      Pagar serviço
                     </button>
                   )}
                 {role === "provider" && b.status === "pendente" && (
@@ -736,6 +816,34 @@ export function BookingList({
         />
       )}
 
+      {payingDeposit && (
+        <PayDepositModal
+          booking={payingDeposit}
+          mode="deposit"
+          onClose={() => setPayingDeposit(null)}
+          onPaid={(updated) => {
+            setBookings((list) =>
+              list.map((x) => (x._id === updated._id ? updated : x))
+            );
+            refreshBadges();
+          }}
+        />
+      )}
+
+      {payingService && (
+        <PayDepositModal
+          booking={payingService}
+          mode="service"
+          onClose={() => setPayingService(null)}
+          onPaid={(updated) => {
+            setBookings((list) =>
+              list.map((x) => (x._id === updated._id ? updated : x))
+            );
+            refreshBadges();
+          }}
+        />
+      )}
+
       {/* Modal: antecedencia do lembrete do estabelecimento ao confirmar */}
       {confirming && (
         <ReminderModal
@@ -768,6 +876,12 @@ export function BookingList({
               {formatPrice(completing.payment?.amount ?? 0)}
             </p>
 
+            {completing.payment?.status === "pago" && (
+              <p className="mt-4 rounded-lg bg-teal-500/10 px-3 py-2 text-sm text-teal-700">
+                Este atendimento já foi pago pelo cliente pelo app. É só
+                concluir.
+              </p>
+            )}
             <p className="mt-4 mb-2 text-sm font-medium text-ink/70">
               Forma de pagamento
             </p>
@@ -785,6 +899,22 @@ export function BookingList({
                 </button>
               ))}
             </div>
+            {/* concluir sem receber agora: o cliente paga pelo app depois */}
+            <button
+              onClick={() => setMethod("app")}
+              className={`mt-2 w-full rounded-xl border px-4 py-2.5 text-sm font-medium transition ${method === "app"
+                ? "border-teal-500 bg-teal-500 text-white"
+                : "border-ink/15 bg-white text-ink/70 hover:border-teal-500"
+                }`}
+            >
+              Cliente vai pagar pelo app
+            </button>
+            {method === "app" && (
+              <p className="mt-2 rounded-lg bg-teal-500/10 px-3 py-2 text-xs text-ink/70">
+                O atendimento é concluído sem receber agora. O cliente paga pelo
+                app (PIX ou cartão) e o valor entra no caixa quando confirmar.
+              </p>
+            )}
 
             <div className="mt-4 grid grid-cols-2 gap-2">
               <label className="block">
