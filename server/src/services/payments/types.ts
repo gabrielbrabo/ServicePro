@@ -40,6 +40,9 @@ export interface CreateChargeInput {
   description: string;
   externalReference: string; // ex.: "booking:<id>" | "booking-service:<id>"
   splitWalletId: string;
+  // se informada, cria a cobranca DIRETO na subconta do estabelecimento (sem
+  // split, empresa fora do fluxo). Sem ela, usa split na conta principal.
+  subaccountApiKey?: string;
   // dados do cartao (billingType === "cartao"); cobra na hora
   card?: {
     holderName: string;
@@ -133,7 +136,7 @@ export interface PaymentProvider {
   // walletId usado no split das cobrancas do cliente.
   createSubaccount?(
     input: CreateSubaccountInput
-  ): Promise<{ accountId: string; walletId: string }>;
+  ): Promise<{ accountId: string; walletId: string; apiKey: string }>;
   // procura subconta existente pelo CPF/CNPJ (reaproveitar em vez de recriar)
   findSubaccount?(
     cpfCnpj: string
@@ -154,7 +157,11 @@ export interface PaymentProvider {
   }>;
   // consulta o status de UMA cobranca avulsa direto no gateway (fallback quando
   // o webhook nao chega — ex.: testar sem URL publica). "confirmed" = pago.
-  getChargeStatus?(paymentId: string): Promise<{
+  // apiKey: quando a cobranca foi criada na subconta, consulta com a chave dela
+  getChargeStatus?(
+    paymentId: string,
+    apiKey?: string
+  ): Promise<{
     status: "confirmed" | "pending" | "canceled";
     checkoutUrl?: string | null; // link/QR atual (reaproveitar cobranca PIX)
   }>;

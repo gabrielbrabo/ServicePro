@@ -16,7 +16,11 @@ export const noopProvider: PaymentProvider = {
   name: "noop",
 
   async createSubaccount(_input: CreateSubaccountInput) {
-    return { accountId: "noop-account", walletId: "noop-wallet" };
+    return {
+      accountId: "noop-account",
+      walletId: "noop-wallet",
+      apiKey: "noop-key",
+    };
   },
 
   async findSubaccount(_cpfCnpj: string) {
@@ -43,7 +47,7 @@ export const noopProvider: PaymentProvider = {
     };
   },
 
-  async getChargeStatus(_paymentId: string) {
+  async getChargeStatus(_paymentId: string, _apiKey?: string) {
     // dev: considera pago na hora para nao travar o fluxo local
     return { status: "confirmed" as const, checkoutUrl: null };
   },

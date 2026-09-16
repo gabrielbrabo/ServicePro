@@ -420,7 +420,7 @@ export const setupReceivables = async (
         receivablesActive: true,
         asaasWalletId: { $ne: "" },
         _id: { $ne: est._id },
-      }).select("asaasWalletId asaasAccountId");
+      }).select("asaasWalletId asaasAccountId asaasApiKey");
       if (!other) {
         res
           .status(400)
@@ -429,6 +429,7 @@ export const setupReceivables = async (
       }
       est.asaasAccountId = other.asaasAccountId;
       est.asaasWalletId = other.asaasWalletId;
+      est.asaasApiKey = other.asaasApiKey; // reaproveita a chave da subconta
       est.receivablesActive = true;
       await est.save();
       res.json({ configured: true, walletId: est.asaasWalletId, reused: true });
@@ -501,6 +502,7 @@ export const setupReceivables = async (
 
     est.asaasAccountId = acc.accountId;
     est.asaasWalletId = acc.walletId;
+    est.asaasApiKey = acc.apiKey; // chave da subconta (cobra direto nela)
     est.receivablesActive = !!acc.walletId;
     await est.save();
 

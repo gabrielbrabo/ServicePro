@@ -2415,12 +2415,22 @@ export const payBookingDeposit = async (
       return;
     }
 
+    // conta de recebimento do estabelecimento (subconta). A cobranca vai DIRETO
+    // nela (empresa fora do fluxo) — subKey e a chave dessa subconta.
+    const est = await Establishment.findById(booking.establishment).select(
+      "receivablesActive asaasWalletId asaasApiKey"
+    );
+    const subKey = est?.asaasApiKey || undefined;
+
     // evita cobrar 2x: reaproveita/confirma a cobranca do sinal ja existente
     if (booking.payment.depositPaymentId) {
       const prov = getPaymentProvider();
       if (prov.getChargeStatus) {
         try {
-          const st = await prov.getChargeStatus(booking.payment.depositPaymentId);
+          const st = await prov.getChargeStatus(
+            booking.payment.depositPaymentId,
+            subKey
+          );
           if (st.status === "confirmed") {
             await finalizeDepositPaid(booking, "pix");
             res.json({ paid: true });
@@ -2451,9 +2461,6 @@ export const payBookingDeposit = async (
       return;
     }
 
-    const est = await Establishment.findById(booking.establishment).select(
-      "receivablesActive asaasWalletId"
-    );
     if (!est?.receivablesActive || !est.asaasWalletId) {
       res
         .status(400)
@@ -2492,6 +2499,7 @@ export const payBookingDeposit = async (
       description: "Sinal de agendamento - ServiçosPro",
       externalReference: `booking:${booking._id}`,
       splitWalletId: est.asaasWalletId,
+      subaccountApiKey: subKey,
       ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
     });
 
@@ -2548,13 +2556,22 @@ export const payBookingService = async (
       return;
     }
 
+    // conta de recebimento (subconta): a cobranca vai direto nela (empresa fora)
+    const est = await Establishment.findById(booking.establishment).select(
+      "receivablesActive asaasWalletId asaasApiKey"
+    );
+    const subKey = est?.asaasApiKey || undefined;
+
     // evita cobrar 2x: se ja existe uma cobranca deste serviço, confirma (se ja
     // foi paga) ou reaproveita o link atual em vez de gerar outra.
     if (booking.payment.servicePaymentId) {
       const prov = getPaymentProvider();
       if (prov.getChargeStatus) {
         try {
-          const st = await prov.getChargeStatus(booking.payment.servicePaymentId);
+          const st = await prov.getChargeStatus(
+            booking.payment.servicePaymentId,
+            subKey
+          );
           if (st.status === "confirmed") {
             await finalizeServicePaid(booking, "pix");
             res.json({ paid: true });
@@ -2596,9 +2613,6 @@ export const payBookingService = async (
       return;
     }
 
-    const est = await Establishment.findById(booking.establishment).select(
-      "receivablesActive asaasWalletId"
-    );
     if (!est?.receivablesActive || !est.asaasWalletId) {
       res
         .status(400)
@@ -2637,6 +2651,7 @@ export const payBookingService = async (
       description: "Pagamento de serviço - ServiçosPro",
       externalReference: `booking-service:${booking._id}`,
       splitWalletId: est.asaasWalletId,
+      subaccountApiKey: subKey,
       ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
     });
 
@@ -2704,7 +2719,13 @@ export const getServiceStatus = async (
     if (paymentId) {
       const provider = getPaymentProvider();
       if (provider.getChargeStatus) {
-        const st = await provider.getChargeStatus(paymentId);
+        const subKey =
+          (
+            await Establishment.findById(booking.establishment).select(
+              "asaasApiKey"
+            )
+          )?.asaasApiKey || undefined;
+        const st = await provider.getChargeStatus(paymentId, subKey);
         if (st.status === "confirmed") {
           await finalizeServicePaid(booking, "pix");
           res.json({ paid: true });
@@ -2765,7 +2786,13 @@ export const getDepositStatus = async (
     if (paymentId) {
       const provider = getPaymentProvider();
       if (provider.getChargeStatus) {
-        const st = await provider.getChargeStatus(paymentId);
+        const subKey =
+          (
+            await Establishment.findById(booking.establishment).select(
+              "asaasApiKey"
+            )
+          )?.asaasApiKey || undefined;
+        const st = await provider.getChargeStatus(paymentId, subKey);
         if (st.status === "confirmed") {
           await finalizeDepositPaid(booking, "pix");
           res.json({ depositPaid: true });

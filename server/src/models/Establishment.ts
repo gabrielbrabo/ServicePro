@@ -71,6 +71,7 @@ export interface IEstablishment extends Document {
   // via split. Vazio = ainda nao configurou (nao recebe pagamentos pelo app).
   asaasAccountId: string;
   asaasWalletId: string;
+  asaasApiKey: string; // chave da subconta: cobra direto nela (empresa fora)
   receivablesActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -171,6 +172,7 @@ const establishmentSchema = new Schema<IEstablishment>(
     // recebimentos (subconta Asaas p/ split)
     asaasAccountId: { type: String, default: "" },
     asaasWalletId: { type: String, default: "" },
+    asaasApiKey: { type: String, default: "" },
     receivablesActive: { type: Boolean, default: false },
   },
   { timestamps: true }

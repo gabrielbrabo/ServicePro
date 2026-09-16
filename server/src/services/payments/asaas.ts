@@ -48,13 +48,16 @@ function periodEnd(cycle: "mensal" | "anual"): Date {
 async function api(
   path: string,
   method: "GET" | "POST" | "PUT" | "DELETE",
-  body?: unknown
+  body?: unknown,
+  apiKeyOverride?: string
 ): Promise<Record<string, unknown>> {
   const res = await doFetch(`${env.payments.asaas.baseUrl}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      access_token: env.payments.asaas.apiKey,
+      // com override, opera na SUBCONTA (cobranca do cliente); sem, na conta
+      // principal (assinaturas da plataforma)
+      access_token: apiKeyOverride || env.payments.asaas.apiKey,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -78,10 +81,11 @@ const billingTypeMap: Record<string, string> = {
 // busca o QR Code PIX (imagem base64 + copia-e-cola) de uma cobranca. Assim o
 // app mostra o PIX de verdade, em vez de abrir a fatura (que pode exibir boleto).
 async function pixQr(
-  paymentId: string
+  paymentId: string,
+  apiKey?: string
 ): Promise<{ image: string | null; payload: string | null }> {
   try {
-    const q = await api(`/payments/${paymentId}/pixQrCode`, "GET");
+    const q = await api(`/payments/${paymentId}/pixQrCode`, "GET", undefined, apiKey);
     const encoded = q.encodedImage as string | undefined;
     return {
       image: encoded ? `data:image/png;base64,${encoded}` : null,
@@ -130,6 +134,9 @@ export const asaasProvider: PaymentProvider = {
     return {
       accountId: String(data.id ?? ""),
       walletId: String(data.walletId ?? ""),
+      // chave de API da subconta — o Asaas so devolve UMA vez, na criacao.
+      // Guardamos para cobrar direto na subconta depois.
+      apiKey: String(data.apiKey ?? ""),
     };
   },
 
@@ -170,15 +177,23 @@ export const asaasProvider: PaymentProvider = {
     };
   },
 
-  // cobranca avulsa do cliente (sinal ou serviço) com split 100%. PIX ou cartao.
+  // cobranca avulsa do cliente (sinal ou serviço). PIX ou cartao.
+  // Se vier subaccountApiKey, cria DIRETO na subconta do estabelecimento (sem
+  // split, empresa fora). Senao, cai no split 100% na conta principal (legado).
   async createCharge(input: CreateChargeInput) {
+    const sub = input.subaccountApiKey || undefined;
     const email = (input.customerEmail || "").trim();
     const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    const c = await api("/customers", "POST", {
-      name: input.customerName,
-      cpfCnpj: input.customerCpfCnpj,
-      ...(validEmail ? { email } : {}),
-    });
+    const c = await api(
+      "/customers",
+      "POST",
+      {
+        name: input.customerName,
+        cpfCnpj: input.customerCpfCnpj,
+        ...(validEmail ? { email } : {}),
+      },
+      sub
+    );
 
     const isCard = input.billingType === "cartao";
     const body: Record<string, unknown> = {
@@ -188,8 +203,11 @@ export const asaasProvider: PaymentProvider = {
       dueDate: today(),
       description: input.description,
       externalReference: input.externalReference,
-      split: [{ walletId: input.splitWalletId, percentualValue: 100 }],
     };
+    // split só quando NÃO é direto na subconta (modelo legado na conta principal)
+    if (!sub) {
+      body.split = [{ walletId: input.splitWalletId, percentualValue: 100 }];
+    }
     if (isCard && input.card && input.holderInfo) {
       body.creditCard = {
         holderName: input.card.holderName,
@@ -209,12 +227,14 @@ export const asaasProvider: PaymentProvider = {
       if (input.remoteIp) body.remoteIp = input.remoteIp;
     }
 
-    const pay = await api("/payments", "POST", body);
+    const pay = await api("/payments", "POST", body, sub);
     const s = String(pay.status || "");
     const confirmed =
       s === "CONFIRMED" || s === "RECEIVED" || s === "RECEIVED_IN_CASH";
     // PIX: busca o QR/copia-e-cola para exibir no app (nao usa a fatura/boleto)
-    const qr = isCard ? { image: null, payload: null } : await pixQr(String(pay.id ?? ""));
+    const qr = isCard
+      ? { image: null, payload: null }
+      : await pixQr(String(pay.id ?? ""), sub);
     return {
       paymentId: String(pay.id ?? ""),
       checkoutUrl: (pay.invoiceUrl as string) || null,
@@ -224,9 +244,10 @@ export const asaasProvider: PaymentProvider = {
     };
   },
 
-  // consulta o status de uma cobranca avulsa (sinal/serviço) direto no Asaas
-  async getChargeStatus(paymentId: string) {
-    const p = await api(`/payments/${paymentId}`, "GET");
+  // consulta o status de uma cobranca avulsa (sinal/serviço) direto no Asaas.
+  // apiKey: quando a cobranca esta na subconta, consulta com a chave dela.
+  async getChargeStatus(paymentId: string, apiKey?: string) {
+    const p = await api(`/payments/${paymentId}`, "GET", undefined, apiKey);
     const s = String(p.status || "");
     const checkoutUrl = (p.invoiceUrl as string) || null;
     if (s === "CONFIRMED" || s === "RECEIVED" || s === "RECEIVED_IN_CASH") {
