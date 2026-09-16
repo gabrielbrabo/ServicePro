@@ -428,3 +428,27 @@ export const googleAuth = async (
     res.status(401).json({ message: "Falha na autenticacao com o Google" });
   }
 };
+
+// GET /api/auth/saved-card  (protegido) — cartao salvo do cliente (sem o token)
+export const getSavedCard = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const user = await User.findById(req.userId).select("savedCard");
+  const card = user?.savedCard;
+  if (!card?.token) {
+    res.json({ savedCard: null });
+    return;
+  }
+  // NUNCA devolve o token; so o final e a bandeira para exibir
+  res.json({ savedCard: { last4: card.last4, brand: card.brand } });
+};
+
+// DELETE /api/auth/saved-card  (protegido) — remove o cartao salvo
+export const deleteSavedCard = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  await User.updateOne({ _id: req.userId }, { $unset: { savedCard: "" } });
+  res.json({ removed: true });
+};

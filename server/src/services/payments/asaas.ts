@@ -187,23 +187,29 @@ export const asaasProvider: PaymentProvider = {
     const sub = input.subaccountApiKey || undefined;
     const email = (input.customerEmail || "").trim();
     const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    const c = await api(
-      "/customers",
-      "POST",
-      {
-        name: input.customerName,
-        cpfCnpj: input.customerCpfCnpj,
-        ...(validEmail ? { email } : {}),
-        // desliga as notificacoes do Asaas (o app ja notifica) -> sem taxa de
-        // mensageria, que era o que descontava da conta
-        notificationDisabled: true,
-      },
-      sub
-    );
+
+    // reusa o cliente ja salvo (cartao salvo) ou cria um novo
+    let customerId = input.customerId || "";
+    if (!customerId) {
+      const c = await api(
+        "/customers",
+        "POST",
+        {
+          name: input.customerName,
+          cpfCnpj: input.customerCpfCnpj,
+          ...(validEmail ? { email } : {}),
+          // desliga as notificacoes do Asaas (o app ja notifica) -> sem taxa
+          // de mensageria, que era o que descontava da conta
+          notificationDisabled: true,
+        },
+        sub
+      );
+      customerId = String(c.id);
+    }
 
     const isCard = input.billingType === "cartao";
     const body: Record<string, unknown> = {
-      customer: String(c.id),
+      customer: customerId,
       billingType: isCard ? "CREDIT_CARD" : "PIX",
       value: cents(input.valueCents),
       dueDate: today(),
@@ -214,22 +220,27 @@ export const asaasProvider: PaymentProvider = {
     if (!sub) {
       body.split = [{ walletId: input.splitWalletId, percentualValue: 100 }];
     }
-    if (isCard && input.card && input.holderInfo) {
-      body.creditCard = {
-        holderName: input.card.holderName,
-        number: input.card.number,
-        expiryMonth: input.card.expiryMonth,
-        expiryYear: input.card.expiryYear,
-        ccv: input.card.ccv,
-      };
-      body.creditCardHolderInfo = {
-        name: input.holderInfo.name,
-        email: input.holderInfo.email,
-        cpfCnpj: input.holderInfo.cpfCnpj,
-        postalCode: input.holderInfo.postalCode,
-        addressNumber: input.holderInfo.addressNumber,
-        phone: input.holderInfo.phone,
-      };
+    if (isCard) {
+      if (input.cardToken) {
+        // cartao salvo: cobra pelo token, sem pedir os dados de novo
+        body.creditCardToken = input.cardToken;
+      } else if (input.card && input.holderInfo) {
+        body.creditCard = {
+          holderName: input.card.holderName,
+          number: input.card.number,
+          expiryMonth: input.card.expiryMonth,
+          expiryYear: input.card.expiryYear,
+          ccv: input.card.ccv,
+        };
+        body.creditCardHolderInfo = {
+          name: input.holderInfo.name,
+          email: input.holderInfo.email,
+          cpfCnpj: input.holderInfo.cpfCnpj,
+          postalCode: input.holderInfo.postalCode,
+          addressNumber: input.holderInfo.addressNumber,
+          phone: input.holderInfo.phone,
+        };
+      }
       if (input.remoteIp) body.remoteIp = input.remoteIp;
     }
 
@@ -241,12 +252,20 @@ export const asaasProvider: PaymentProvider = {
     const qr = isCard
       ? { image: null, payload: null }
       : await pixQr(String(pay.id ?? ""), sub);
+    // cartao: token/final/bandeira para salvar e reusar depois
+    const cc = pay.creditCard as
+      | { creditCardToken?: string; creditCardNumber?: string; creditCardBrand?: string }
+      | undefined;
     return {
       paymentId: String(pay.id ?? ""),
       checkoutUrl: (pay.invoiceUrl as string) || null,
       status: confirmed ? ("confirmed" as const) : ("pending" as const),
       pixQrImage: qr.image,
       pixCopiaECola: qr.payload,
+      customerId,
+      cardToken: cc?.creditCardToken || input.cardToken || undefined,
+      cardLast4: cc?.creditCardNumber || undefined,
+      cardBrand: cc?.creditCardBrand || undefined,
     };
   },
 

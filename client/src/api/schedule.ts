@@ -147,8 +147,14 @@ export interface CardPayload {
 export interface PayPayload {
   cpf: string;
   method: "pix" | "cartao";
+  useSavedCard?: boolean; // pagar com o cartao salvo (sem digitar)
   card?: CardPayload;
   holder?: { postalCode: string; addressNumber: string; phone: string };
+}
+
+export interface SavedCard {
+  last4: string;
+  brand: string;
 }
 
 export interface PayResult {
@@ -375,6 +381,14 @@ export const scheduleApi = {
     api
       .get<{ paid: boolean }>(`/bookings/${id}/service-status`)
       .then((r) => r.data),
+
+  // cartao salvo do cliente (reutilizavel em qualquer estabelecimento)
+  getSavedCard: () =>
+    api
+      .get<{ savedCard: SavedCard | null }>(`/auth/saved-card`)
+      .then((r) => r.data.savedCard),
+  removeSavedCard: () =>
+    api.delete<{ removed: boolean }>(`/auth/saved-card`).then((r) => r.data),
 
   // adiciona tempo extra ao atendimento (imprevistos); ocupa a agenda
   extendBooking: (id: string, extraMinutes: number) =>

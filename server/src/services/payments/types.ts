@@ -43,6 +43,10 @@ export interface CreateChargeInput {
   // se informada, cria a cobranca DIRETO na subconta do estabelecimento (sem
   // split, empresa fora do fluxo). Sem ela, usa split na conta principal.
   subaccountApiKey?: string;
+  // cartao salvo: reusa um cliente + token de cartao ja existentes (na conta
+  // principal), para o cliente nao digitar o cartao de novo.
+  customerId?: string; // cliente reutilizavel (conta principal)
+  cardToken?: string; // token do cartao salvo (cobra sem pedir os dados)
   // dados do cartao (billingType === "cartao"); cobra na hora
   card?: {
     holderName: string;
@@ -154,6 +158,11 @@ export interface PaymentProvider {
     status: "confirmed" | "pending";
     pixQrImage?: string | null;
     pixCopiaECola?: string | null;
+    // cartao: cliente + token para salvar e reusar depois
+    customerId?: string;
+    cardToken?: string;
+    cardLast4?: string;
+    cardBrand?: string;
   }>;
   // consulta o status de UMA cobranca avulsa direto no gateway (fallback quando
   // o webhook nao chega — ex.: testar sem URL publica). "confirmed" = pago.

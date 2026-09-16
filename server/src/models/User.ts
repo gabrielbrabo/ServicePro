@@ -20,6 +20,10 @@ export interface IUser extends Document {
   whatsappOptIn?: boolean; // aceita receber avisos por WhatsApp (default true)
   rating: number;
   ratingCount: number;
+  // pagamento: cliente na conta da empresa (Asaas) + cartao salvo (token),
+  // reutilizavel em qualquer estabelecimento
+  asaasCustomerId?: string;
+  savedCard?: { token: string; last4: string; brand: string };
   emailVerified: boolean;
   emailTokenHash?: string; // hash do token de verificacao (nunca o token cru)
   emailTokenExpiry?: Date;
@@ -72,6 +76,20 @@ const userSchema = new Schema<IUser>(
     // Nota media como prestador (calculada a partir das Reviews)
     rating: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
+    // pagamento pelo app: cartao salvo (token do Asaas na conta da empresa)
+    asaasCustomerId: { type: String, default: "", select: false },
+    savedCard: {
+      type: new Schema(
+        {
+          token: { type: String, default: "" },
+          last4: { type: String, default: "" },
+          brand: { type: String, default: "" },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+      select: false,
+    },
   },
   { timestamps: true }
 );

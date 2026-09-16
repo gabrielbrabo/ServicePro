@@ -3,6 +3,7 @@ import { register, login, me, updateMe } from "../controllers/authController";
 import { protect } from "../middleware/auth";
 import { verifyEmail, resendVerification } from "../controllers/authController";
 import { googleAuth } from "../controllers/authController";
+import { getSavedCard, deleteSavedCard } from "../controllers/authController";
 
 const router = Router();
 
@@ -16,5 +17,8 @@ router.post("/verify-email/:token", verifyEmail);
 router.post("/resend-verification", protect, resendVerification);
 router.get("/me", protect, me);
 router.patch("/me", protect, updateMe);
+// cartao salvo do cliente (pagamento pelo app)
+router.get("/saved-card", protect, getSavedCard);
+router.delete("/saved-card", protect, deleteSavedCard);
 
 export default router;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Booking, scheduleApi, PayPayload } from "../api/schedule";
+import { Booking, scheduleApi, PayPayload, SavedCard } from "../api/schedule";
 import { formatPrice } from "../lib/time";
 
 // Modal de pagamento do cliente pelo app. Serve para o SINAL (mode="deposit")
@@ -46,7 +46,21 @@ export function PayDepositModal({
   const [pixImage, setPixImage] = useState<string | null>(null);
   const [pixCode, setPixCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // cartao salvo do cliente
+  const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
+  const [useSaved, setUseSaved] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // busca o cartao salvo ao abrir (pra oferecer "pagar com cartao salvo")
+  useEffect(() => {
+    scheduleApi
+      .getSavedCard()
+      .then((c) => {
+        setSavedCard(c);
+        if (c) setUseSaved(true);
+      })
+      .catch(() => {});
+  }, []);
 
   const maskCpf = (v: string) =>
     v
@@ -116,9 +130,38 @@ export function PayDepositModal({
     }, 4000);
   };
 
+  // pagar com o cartao salvo (nao pede CPF nem dados do cartao)
+  const payWithSavedCard = method === "cartao" && useSaved && !!savedCard;
+
   const gerar = async () => {
     setError(null);
     const cpfDigits = cpf.replace(/\D/g, "");
+
+    if (payWithSavedCard) {
+      setLoading(true);
+      try {
+        const payload: PayPayload = { cpf: "", method: "cartao", useSavedCard: true };
+        const res = isService
+          ? await scheduleApi.payService(booking._id, payload)
+          : await scheduleApi.payDeposit(booking._id, payload);
+        if (res.paid || res.alreadyPaid) {
+          markPaid();
+          return;
+        }
+        // improvavel no cartao, mas trata como pendente
+        setCheckoutUrl(res.checkoutUrl || null);
+        setWaiting(true);
+        startPoll();
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message;
+        setError(msg || "Não foi possível pagar com o cartão salvo.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (cpfDigits.length !== 11) {
       setError("Informe um CPF válido.");
       return;
@@ -323,20 +366,66 @@ export function PayDepositModal({
                 ))}
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-ink/70">
-                  Seu CPF
-                </label>
-                <input
-                  value={cpf}
-                  onChange={(e) => setCpf(maskCpf(e.target.value))}
-                  inputMode="numeric"
-                  placeholder="000.000.000-00"
-                  className={`mt-1 ${inputCls}`}
-                />
-              </div>
+              {!payWithSavedCard && (
+                <div>
+                  <label className="text-sm font-medium text-ink/70">
+                    Seu CPF
+                  </label>
+                  <input
+                    value={cpf}
+                    onChange={(e) => setCpf(maskCpf(e.target.value))}
+                    inputMode="numeric"
+                    placeholder="000.000.000-00"
+                    className={`mt-1 ${inputCls}`}
+                  />
+                </div>
+              )}
 
-              {method === "cartao" && (
+              {/* cartao salvo (reutilizavel em qualquer estabelecimento) */}
+              {method === "cartao" && savedCard && (
+                <div className="rounded-xl border border-ink/15 p-3 text-sm">
+                  {useSaved ? (
+                    <div className="space-y-2">
+                      <p className="text-ink/80">
+                        Cartão salvo:{" "}
+                        <strong>
+                          {savedCard.brand} ····{savedCard.last4}
+                        </strong>
+                      </p>
+                      <div className="flex gap-4 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setUseSaved(false)}
+                          className="font-medium text-teal-600"
+                        >
+                          Usar outro cartão
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await scheduleApi.removeSavedCard().catch(() => {});
+                            setSavedCard(null);
+                            setUseSaved(false);
+                          }}
+                          className="font-medium text-red-600"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setUseSaved(true)}
+                      className="font-medium text-teal-600"
+                    >
+                      Usar cartão salvo {savedCard.brand} ····{savedCard.last4}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {method === "cartao" && !payWithSavedCard && (
                 <div className="space-y-3 rounded-xl bg-sand/40 p-3">
                   <div>
                     <label className="text-xs font-medium text-ink/60">

@@ -2209,6 +2209,7 @@ export const extendBooking = async (
 type PayBody = {
   cpf?: string;
   method?: string; // "pix" | "cartao"
+  useSavedCard?: boolean; // usar o cartao salvo do cliente (sem digitar)
   card?: {
     holderName?: string;
     number?: string;
@@ -2218,6 +2219,79 @@ type PayBody = {
   };
   holder?: { postalCode?: string; addressNumber?: string; phone?: string };
 };
+
+// dados de cartao/cliente salvos (selecionados do User)
+type ClientCard = {
+  name?: string;
+  email?: string;
+  asaasCustomerId?: string;
+  savedCard?: { token: string; last4: string; brand: string };
+} | null;
+
+// true = pagar com o cartao ja salvo (sem pedir os dados de novo)
+function usingSavedCard(
+  method: string,
+  body: PayBody,
+  client: ClientCard
+): boolean {
+  return (
+    method === "cartao" &&
+    !!body.useSavedCard &&
+    !!client?.savedCard?.token &&
+    !!client?.asaasCustomerId
+  );
+}
+
+// campos de cartao/cliente para o createCharge (token salvo OU dados novos)
+function cardChargeOpts(
+  method: string,
+  body: PayBody,
+  req: AuthRequest,
+  client: ClientCard,
+  cpf: string
+): Record<string, unknown> {
+  if (method !== "cartao") return {};
+  if (usingSavedCard(method, body, client)) {
+    return {
+      customerId: client!.asaasCustomerId,
+      cardToken: client!.savedCard!.token,
+    };
+  }
+  return {
+    ...(client?.asaasCustomerId ? { customerId: client.asaasCustomerId } : {}),
+    ...buildCardFields(body, req, client, cpf),
+  };
+}
+
+// salva o cartao do cliente (token) apos uma cobranca com cartao NOVO, para
+// reutilizar em qualquer estabelecimento depois. Fire-and-forget.
+async function saveCardIfNew(
+  userId: string | Types.ObjectId,
+  method: string,
+  body: PayBody,
+  charge: { customerId?: string; cardToken?: string; cardLast4?: string; cardBrand?: string },
+  client: ClientCard
+): Promise<void> {
+  if (method !== "cartao" || usingSavedCard(method, body, client)) return;
+  if (!charge.cardToken) return;
+  try {
+    await User.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          asaasCustomerId: charge.customerId || client?.asaasCustomerId || "",
+          savedCard: {
+            token: charge.cardToken,
+            last4: charge.cardLast4 || "",
+            brand: charge.cardBrand || "",
+          },
+        },
+      }
+    );
+  } catch (e) {
+    console.error("saveCardIfNew:", e);
+  }
+}
 
 const onlyDigits = (v?: string) => String(v || "").replace(/\D/g, "");
 
@@ -2477,11 +2551,15 @@ export const payBookingDeposit = async (
     const body = req.body as PayBody;
     const method = body.method === "cartao" ? "cartao" : "pix";
     const cpf = onlyDigits(body.cpf);
-    if (cpf.length < 11) {
+    const client = await User.findById(booking.client).select(
+      "name email asaasCustomerId savedCard"
+    );
+    const savedCard = usingSavedCard(method, body, client);
+    if (!savedCard && cpf.length < 11) {
       res.status(400).json({ message: "Informe um CPF valido para o pagamento" });
       return;
     }
-    if (method === "cartao") {
+    if (method === "cartao" && !savedCard) {
       const cardErr = validateCardBody(body);
       if (cardErr) {
         res.status(400).json({ message: cardErr });
@@ -2489,7 +2567,6 @@ export const payBookingDeposit = async (
       }
     }
 
-    const client = await User.findById(booking.client).select("name email");
     const charge = await provider.createCharge({
       billingType: method,
       customerName: client?.name || "Cliente",
@@ -2499,12 +2576,14 @@ export const payBookingDeposit = async (
       description: "Sinal de agendamento - ServiçosPro",
       externalReference: `booking:${booking._id}`,
       splitWalletId: est.asaasWalletId,
-      subaccountApiKey: subKey,
-      ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
+      // cartao vai pela conta da empresa (token reutilizavel); PIX na subconta
+      subaccountApiKey: method === "pix" ? subKey : undefined,
+      ...cardChargeOpts(method, body, req, client, cpf),
     });
 
     booking.payment.depositPaymentId = charge.paymentId;
     await booking.save();
+    await saveCardIfNew(booking.client, method, body, charge, client);
 
     // cartao: capturado na hora -> ja marca o sinal recebido + caixa
     if (charge.status === "confirmed") {
@@ -2629,11 +2708,15 @@ export const payBookingService = async (
     const body = req.body as PayBody;
     const method = body.method === "cartao" ? "cartao" : "pix";
     const cpf = onlyDigits(body.cpf);
-    if (cpf.length < 11) {
+    const client = await User.findById(booking.client).select(
+      "name email asaasCustomerId savedCard"
+    );
+    const savedCard = usingSavedCard(method, body, client);
+    if (!savedCard && cpf.length < 11) {
       res.status(400).json({ message: "Informe um CPF valido para o pagamento" });
       return;
     }
-    if (method === "cartao") {
+    if (method === "cartao" && !savedCard) {
       const cardErr = validateCardBody(body);
       if (cardErr) {
         res.status(400).json({ message: cardErr });
@@ -2641,7 +2724,6 @@ export const payBookingService = async (
       }
     }
 
-    const client = await User.findById(booking.client).select("name email");
     const charge = await provider.createCharge({
       billingType: method,
       customerName: client?.name || "Cliente",
@@ -2651,12 +2733,14 @@ export const payBookingService = async (
       description: "Pagamento de serviço - ServiçosPro",
       externalReference: `booking-service:${booking._id}`,
       splitWalletId: est.asaasWalletId,
-      subaccountApiKey: subKey,
-      ...(method === "cartao" ? buildCardFields(body, req, client, cpf) : {}),
+      // cartao vai pela conta da empresa (token reutilizavel); PIX na subconta
+      subaccountApiKey: method === "pix" ? subKey : undefined,
+      ...cardChargeOpts(method, body, req, client, cpf),
     });
 
     booking.payment.servicePaymentId = charge.paymentId;
     await booking.save();
+    await saveCardIfNew(booking.client, method, body, charge, client);
 
     if (charge.status === "confirmed") {
       await finalizeServicePaid(booking, "cartao");
