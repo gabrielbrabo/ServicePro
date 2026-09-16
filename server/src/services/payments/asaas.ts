@@ -147,6 +147,9 @@ export const asaasProvider: PaymentProvider = {
       cpfCnpj: input.cpfCnpj,
       mobilePhone: input.phone,
       externalReference: input.externalRef,
+      // o app manda as proprias notificacoes/e-mails -> desliga as do Asaas
+      // (evita a "taxa de mensageria" cobrada por notificacao enviada)
+      notificationDisabled: true,
     });
     return { customerId: String(data.id) };
   },
@@ -191,6 +194,9 @@ export const asaasProvider: PaymentProvider = {
         name: input.customerName,
         cpfCnpj: input.customerCpfCnpj,
         ...(validEmail ? { email } : {}),
+        // desliga as notificacoes do Asaas (o app ja notifica) -> sem taxa de
+        // mensageria, que era o que descontava da conta
+        notificationDisabled: true,
       },
       sub
     );
