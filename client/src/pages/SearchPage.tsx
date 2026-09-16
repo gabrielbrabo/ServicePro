@@ -13,17 +13,16 @@ import {
 } from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
 
-// Categorias em destaque (recolhido). RODIZIO TRIMESTRAL: a cada 3 meses troca
-// as 8 destacadas -> 2 beleza + 4 saude + 2 gerais. As demais ficam no "Ver
-// mais categorias".
+// Categorias em destaque (recolhido). FIXAS: 2 beleza + 4 saude + 2 gerais.
+// (Antes havia rodizio trimestral; agora ficam FIXAS nas atuais. Para trocar
+// no futuro, edite ORIGINAL_SLUGS abaixo.) As demais ficam no "Ver mais
+// categorias".
 const FEATURED_MIX: { seg: "beleza" | "saude" | "geral"; count: number }[] = [
   { seg: "beleza", count: 2 },
   { seg: "saude", count: 4 },
   { seg: "geral", count: 2 },
 ];
-// Trimestre de referencia (set/2026): no offset 0 mostra as ORIGINAIS; os
-// trimestres seguintes rotacionam a partir delas.
-const BASE_QUARTER = 8106;
+// Categorias fixas atuais (ordem em que aparecem).
 const ORIGINAL_SLUGS = [
   "barbearia",
   "salao-de-beleza",
@@ -35,9 +34,7 @@ const ORIGINAL_SLUGS = [
   "estetica-automotiva",
 ];
 function featuredCategories(cats: Category[]): Category[] {
-  const now = new Date();
-  const quarter = Math.floor((now.getFullYear() * 12 + now.getMonth()) / 3);
-  const offset = quarter - BASE_QUARTER;
+  // FIXO: sempre as categorias atuais (originais), sem rodizio por data.
   const out: Category[] = [];
   for (const { seg, count } of FEATURED_MIX) {
     const all = cats.filter((c) => c.segment === seg);
@@ -50,9 +47,9 @@ function featuredCategories(cats: Category[]): Category[] {
       .sort((a, b) => a._id.localeCompare(b._id));
     const group = [...originals, ...rest];
     if (group.length === 0) continue;
-    const start = ((offset * count) % group.length + group.length) % group.length;
+    // pega as primeiras `count` (originais primeiro) — sempre as mesmas
     for (let i = 0; i < count && i < group.length; i++) {
-      out.push(group[(start + i) % group.length]);
+      out.push(group[i]);
     }
   }
   return out;
@@ -208,15 +205,22 @@ export function SearchPage() {
             placeholder="Cidade / localização"
             className="h-12 w-full rounded-xl border border-ink/15 bg-white pl-4 pr-12 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
           />
+          {/* pulso atras do pino: chama atencao enquanto o usuario nao usou */}
+          {!geoActive && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-1.5 top-1/2 h-9 w-9 -translate-y-1/2 rounded-xl bg-teal-500/40 animate-ping"
+            />
+          )}
           <button
             type="button"
             onClick={() => setLocationModalOpen(true)}
             aria-label="Buscar por perto usando minha localização"
-            title="Buscar por perto"
-            className={`absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg transition ${
+            title="Buscar estabelecimentos perto de você"
+            className={`absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-white shadow-md ring-2 transition ${
               geoActive
-                ? "bg-teal-500 text-white"
-                : "text-ink/45 hover:bg-sand hover:text-teal-600"
+                ? "bg-teal-600 ring-teal-500/40"
+                : "bg-teal-500 ring-teal-400/50 hover:bg-teal-600"
             }`}
           >
             {/* icone de pin de localizacao */}
@@ -237,6 +241,31 @@ export function SearchPage() {
           </button>
         </div>
       </div>
+
+      {/* dica: deixa claro que dá para buscar por perto (some quando ativo) */}
+      {!geoActive && (
+        <button
+          type="button"
+          onClick={() => setLocationModalOpen(true)}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-500/10 px-3 py-1.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-500/20 dark:text-teal-300"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          Toque no pino para buscar perto de você
+        </button>
+      )}
 
       {/* Chip do raio ativo */}
       {geoActive && (

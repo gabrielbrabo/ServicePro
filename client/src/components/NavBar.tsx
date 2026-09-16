@@ -263,6 +263,21 @@ export function NavBar() {
 
   const { badges } = useNotifications();
 
+  // pendentes do painel pro (soma de todos os estabelecimentos do usuario)
+  const proPending = Object.values(badges.byEstablishment || {}).reduce(
+    (a, b) => a + (b || 0),
+    0
+  );
+  // total geral (agendamentos do cliente + painel pro) — usado no hamburguer
+  const totalPending = (badges.clientPending || 0) + proPending;
+  // quantidade de sinalizacao por item do menu
+  const countFor = (to: string): number =>
+    to === "/agendamentos"
+      ? badges.clientPending || 0
+      : to === "/painel"
+        ? proPending
+        : 0;
+
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
@@ -295,9 +310,9 @@ export function NavBar() {
                   }`}
               >
                 {l.label}
-                {l.to === "/agendamentos" && badges.clientPending > 0 && (
+                {countFor(l.to) > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {badges.clientPending > 9 ? "9+" : badges.clientPending}
+                    {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
                   </span>
                 )}
               </Link>
@@ -350,10 +365,16 @@ export function NavBar() {
         {/* hamburguer (mobile) */}
         <button
           onClick={() => setMenuOpen((o) => !o)}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink/15 text-ink/70 transition hover:bg-sand sm:hidden"
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink/15 text-ink/70 transition hover:bg-sand sm:hidden"
           aria-label="Abrir menu"
           aria-expanded={menuOpen}
         >
+          {/* aviso no botao: quando o menu esta fechado, mostra que ha algo */}
+          {!menuOpen && totalPending > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+              {totalPending > 9 ? "9+" : totalPending}
+            </span>
+          )}
           {menuOpen ? (
             <svg
               className="h-5 w-5"
@@ -410,9 +431,9 @@ export function NavBar() {
                     }`}
                 >
                   {l.label}
-                  {l.to === "/agendamentos" && badges.clientPending > 0 && (
+                  {countFor(l.to) > 0 && (
                     <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
-                      {badges.clientPending}
+                      {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
                     </span>
                   )}
                 </Link>

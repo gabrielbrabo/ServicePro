@@ -901,8 +901,10 @@ via `lastEventId`.
   telefone — exigidos pela operadora); o Asaas cobra na hora → assinatura
   **ativa imediatamente** e o cartão fica **salvo** (tokenizado) para a
   recorrência mensal. ⚠️ os dados do cartão passam pelo backend → escopo PCI.
-- **PIX**: gera a fatura (link do Asaas); a tela **verifica sozinha**
-  (auto-poll) e libera assim que o pagamento cai.
+- **PIX**: mostra o **QR Code + copia-e-cola direto no app** (não abre a fatura,
+  que às vezes exibia boleto). A tela **verifica sozinha** (auto-poll) e libera
+  assim que o pagamento cai. `getSubscriptionPix` busca o QR da cobrança
+  pendente para exibir no painel mesmo quando a assinatura foi criada no cadastro.
 - **Fonte da verdade** é o **webhook** (`POST /api/webhooks/payments`, validado
   pelo header `asaas-access-token` = `PAYMENTS_WEBHOOK_SECRET`, idempotente).
   O `app.ts` guarda o `rawBody` no `express.json`. Em dev/sem webhook público,
@@ -939,6 +941,7 @@ via `lastEventId`.
 - `POST /api/subscriptions/:est/cancel` — cancelar (no fim do período)
 - `POST /api/subscriptions/:est/reactivate` — reativar (sem cobrar de novo)
 - `POST /api/subscriptions/:est/refresh` — consulta status no gateway (fallback do webhook)
+- `GET  /api/subscriptions/:est/pix` — QR/copia-e-cola do PIX da cobrança pendente
 - `POST /api/webhooks/payments` — webhook do Asaas (sem auth de usuário)
 
 ### Testes no sandbox
@@ -953,3 +956,106 @@ via `lastEventId`.
 > "indisponível" também na **busca** (`SearchPage`, hoje só na página do
 > estabelecimento); cartão parcelado/outras bandeiras; rodar `tsc --noEmit`.
 
+
+## 32. Pagamentos cliente ↔ estabelecimento (sinal e serviço)
+
+Além da assinatura (receita da plataforma), o **cliente paga o estabelecimento**
+pelo app: o **sinal** de um agendamento e o **serviço** concluído. A plataforma
+**não cobra %** — o dinheiro vai para o estabelecimento; ele arca com a taxa do
+Asaas.
+
+### Recebimentos (subconta Asaas por estabelecimento)
+
+- Aba **Recebimentos** (`ReceivablesManager`): o dono cadastra a **subconta**
+  (CPF/CNPJ, e-mail, celular, CEP, faturamento; PF `birthDate` / PJ `companyType`).
+  Precisa **confirmar o e-mail** que o Asaas envia.
+- `Establishment`: `asaasAccountId`, `asaasWalletId`, `asaasApiKey`,
+  `receivablesActive`. A **chave da subconta** (`asaasApiKey`) só é devolvida
+  **uma vez, na criação** — por isso é guardada nesse momento.
+- **Reaproveitar conta**: um dono com vários estabelecimentos usa a mesma conta
+  ("Usar a mesma conta" copia `walletId` + `apiKey`; `findSubaccount` por
+  CPF/CNPJ evita "documento já em uso").
+
+### Onde a cobrança é criada (empresa fora do fluxo)
+
+- **PIX** → criado **direto na subconta** do estabelecimento (com a `asaasApiKey`
+  dela), **sem split**. A conta da empresa **não aparece** e **não paga taxa**.
+- **Cartão** → criado na **conta da empresa** (split 100% para a subconta), para
+  o **cartão salvo funcionar em qualquer estabelecimento** (o token fica numa
+  conta só). A empresa **fica em R$ 0** (a taxa sai do valor; o estabelecimento
+  recebe o líquido).
+- **Taxa de mensageria desligada** (`notificationDisabled` no cliente do Asaas):
+  o app já manda as notificações/e-mails, então o Asaas não cobra a mensageria —
+  era o que descontava ~R$ 0,99 da conta da empresa por cobrança.
+
+### Sinal e serviço
+
+- **Sinal**: serviços com sinal exigem valor mínimo (`APP_PAYMENT_MIN_CENTS`,
+  padrão **R$ 20**). O cliente paga pelo app (botão **"Pagar sinal"**); ao
+  confirmar, o sinal é marcado como recebido automaticamente.
+- **Serviço**: o cliente pode pagar **antes ou depois** de concluir (botão
+  **"Pagar serviço"**, aparece a partir de confirmado). Cobra o **saldo**
+  (total − sinal já pago).
+- **Concluir "pelo app"**: ao concluir, o dono pode escolher **"Cliente vai
+  pagar pelo app"** — conclui sem receber na hora; o caixa entra quando o
+  pagamento confirmar. Se o serviço **já foi pago**, concluir **não abre** o
+  modal de forma de pagamento (evita lançar em duplicidade no caixa).
+- **Confirmação**: cartão captura na hora; PIX confirma pelo **poll**
+  (`/deposit-status`, `/service-status`, consulta o gateway com a chave certa) —
+  o modal mostra o QR e fecha sozinho ao confirmar. **Anti-cobrança-dupla**: se
+  já existe cobrança, o sistema confirma/reaproveita em vez de gerar outra.
+
+### Caixa à prova de duplicata
+
+- O **sinal** entra no caixa como lançamento próprio (`booking` nulo, para não
+  colidir com o índice único por agendamento); a **conclusão** lança o **saldo**
+  (`total − sinal já lançado`). Sinal + saldo = total, **sem duplicar**.
+- `utils/cashPosting.ts`: `postDepositToCash`, `postDepositIfSessionOpen`,
+  `postBookingToCash` (desconta o sinal já lançado). A varredura de abertura do
+  caixa lança sinais pendentes de agendamentos ainda não concluídos.
+
+### Cartão salvo (reutilizável em qualquer estabelecimento)
+
+- Ao pagar no cartão a 1ª vez, o token é salvo no `User`
+  (`asaasCustomerId` + `savedCard` {token, last4, brand}, ambos `select:false`).
+- Nas próximas vezes o modal oferece **"pagar com o cartão salvo ····1234"** num
+  toque (sem CPF nem dados). Opções **"usar outro cartão"** e **"remover"**.
+- Como o cartão vive na **conta da empresa**, o cartão salvo vale em **qualquer**
+  estabelecimento, mesmo um onde o cliente nunca pagou.
+- Endpoints: `GET /api/auth/saved-card` (só final + bandeira; nunca o token),
+  `DELETE /api/auth/saved-card`.
+
+### Notificações e e-mails
+
+- **Pagamento pendente** (serviço concluído para pagar pelo app) e **pagamento
+  recebido** (sinal/serviço) geram **notificação in-app + e-mail** para **ambas
+  as partes** (tipos `payment_pending`, `payment_received`).
+
+### Agenda (painel do estabelecimento)
+
+- Aba renomeada de "Agendamentos" para **"Agenda"**.
+- Ordenação: **novos/ativos** primeiro, depois **concluídos aguardando
+  pagamento** (com selo **"Pagamento pendente"**), depois concluídos pagos e
+  cancelados. Na conta do cliente, os pendentes de pagamento vão para o topo.
+
+### Endpoints (bookings)
+
+- `POST /api/bookings/:id/pay-deposit` — cliente paga o sinal (PIX/cartão)
+- `GET  /api/bookings/:id/deposit-status` — confirma/consulta o sinal
+- `POST /api/bookings/:id/pay-service` — cliente paga o serviço (saldo)
+- `GET  /api/bookings/:id/service-status` — confirma/consulta o serviço
+
+### Liquidação
+
+- **PIX**: cai **na hora** no saldo da subconta do estabelecimento.
+- **Cartão**: a venda fica **confirmada**, mas liquida em **~30 dias** (padrão
+  do cartão); na liquidação o split repassa **automaticamente** o líquido para a
+  subconta. Antes disso fica "a receber" (não sacável). Antecipação é opcional
+  no painel do Asaas.
+
+> Pendências: **rodar `npm run build`** (server e client) antes do deploy;
+> **limpar dados de teste** do banco em produção (assinaturas/recebimentos de
+> sandbox que aparecem como pagos); migrar subcontas **antigas** (sem
+> `asaasApiKey`) para o modelo "empresa fora" — precisa habilitar as chaves de
+> subconta no painel do Asaas (janela de 2h + whitelist de IP); opcionalmente
+> configurar webhook por subconta para PIX de cliente instantâneo (hoje via poll).
