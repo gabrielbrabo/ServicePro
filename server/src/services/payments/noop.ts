@@ -65,6 +65,10 @@ export const noopProvider: PaymentProvider = {
     };
   },
 
+  async updateSubscriptionValue(_subscriptionId: string, _newValueCents: number) {
+    // no-op
+  },
+
   async cancelSubscription(_subscriptionId: string, _endDate?: Date) {
     // no-op
   },

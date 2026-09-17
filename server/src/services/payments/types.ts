@@ -43,6 +43,9 @@ export interface CreateChargeInput {
   // se informada, cria a cobranca DIRETO na subconta do estabelecimento (sem
   // split, empresa fora do fluxo). Sem ela, usa split na conta principal.
   subaccountApiKey?: string;
+  // cobranca da PLATAFORMA (ex.: assento de funcionario): fica 100% na conta
+  // principal, SEM split e SEM subconta (receita da empresa).
+  platform?: boolean;
   // cartao salvo: reusa um cliente + token de cartao ja existentes (na conta
   // principal), para o cliente nao digitar o cartao de novo.
   customerId?: string; // cliente reutilizavel (conta principal)
@@ -184,6 +187,12 @@ export interface PaymentProvider {
     payload: string | null;
     checkoutUrl: string | null;
   }>;
+  // atualiza o valor recorrente da assinatura (ex.: somou assentos). O novo
+  // valor vale das proximas cobrancas em diante (nao mexe nas pendentes).
+  updateSubscriptionValue?(
+    subscriptionId: string,
+    newValueCents: number
+  ): Promise<void>;
   // cancela no fim do periodo (endDate) ou de vez (sem data)
   cancelSubscription(subscriptionId: string, endDate?: Date): Promise<void>;
   // reativa uma assinatura cancelada, com a proxima cobranca em nextDueDate

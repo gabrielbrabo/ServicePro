@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { professionalApi, Professional } from "../api/professional";
 import { catalogApi, Service } from "../api/catalog";
 import { inviteApi } from "../api/invite";
+import { subscriptionApi, SeatStatus } from "../api/subscription";
 import { ImageUpload } from "./ImageUpload";
 import { computeProsWithoutService } from "../lib/coverage";
 import { QrShareModal } from "./QrShareModal";
 import { AgendaShareModal } from "./AgendaShareModal";
+import { SeatPurchaseModal } from "./SeatPurchaseModal";
 
 export function ProfessionalManager({
   establishmentId,
@@ -32,6 +34,10 @@ export function ProfessionalManager({
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // assentos de funcionario (trava 5 + pagos)
+  const [seat, setSeat] = useState<SeatStatus | null>(null);
+  const [buyingSeat, setBuyingSeat] = useState(false);
+
   // modal de convite
   const [inviting, setInviting] = useState<Professional | null>(null);
   // modal de link/QR proprio do profissional
@@ -50,6 +56,16 @@ export function ProfessionalManager({
   }, [establishmentId]);
 
   useEffect(load, [load]);
+
+  // carrega a situacao dos assentos (so o dono recebe; membro recebe 403)
+  const loadSeats = useCallback(() => {
+    subscriptionApi
+      .seats(establishmentId)
+      .then(setSeat)
+      .catch(() => setSeat(null));
+  }, [establishmentId]);
+
+  useEffect(loadSeats, [loadSeats]);
 
   // carrega os servicos (para detectar profissional sem servico)
   useEffect(() => {
@@ -81,6 +97,11 @@ export function ProfessionalManager({
       setError("Informe o nome do profissional.");
       return;
     }
+    // trava de assentos: equipe cheia -> abre a compra de assento
+    if (seat && !seat.canAdd) {
+      setBuyingSeat(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -91,8 +112,18 @@ export function ProfessionalManager({
       });
       setPros((p) => [...p, created]);
       resetForm();
-    } catch {
-      setError("Não foi possível adicionar o profissional.");
+      loadSeats();
+    } catch (e: unknown) {
+      const resp = (
+        e as { response?: { status?: number; data?: { needSeat?: boolean } } }
+      )?.response;
+      // backend barrou por limite -> abre a compra de assento
+      if (resp?.status === 403 && resp?.data?.needSeat) {
+        loadSeats();
+        setBuyingSeat(true);
+      } else {
+        setError("Não foi possível adicionar o profissional.");
+      }
     } finally {
       setSaving(false);
     }
@@ -108,9 +139,19 @@ export function ProfessionalManager({
       await professionalApi.update(establishmentId, prof._id, {
         active: !prof.active,
       });
-    } catch {
+      loadSeats();
+    } catch (e: unknown) {
       setPros(prev);
-      setError("Não foi possível atualizar o profissional.");
+      const resp = (
+        e as { response?: { status?: number; data?: { needSeat?: boolean } } }
+      )?.response;
+      // reativar alem do limite -> abre a compra de assento
+      if (resp?.status === 403 && resp?.data?.needSeat) {
+        loadSeats();
+        setBuyingSeat(true);
+      } else {
+        setError("Não foi possível atualizar o profissional.");
+      }
     }
   };
 
@@ -201,6 +242,38 @@ export function ProfessionalManager({
           )}
         </div>
 
+        {/* uso de assentos: X de LIMITE (5 incluidos + pagos) */}
+        {seat && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm">
+            <span className="text-ink/70">
+              Equipe:{" "}
+              <span className="font-semibold text-ink">
+                {seat.used} de {seat.max}
+              </span>{" "}
+              <span className="text-ink/40">
+                ({seat.includedSeats} incluídos
+                {seat.extraSeats > 0 ? ` + ${seat.extraSeats} pagos` : ""})
+              </span>
+            </span>
+            {!seat.canAdd && (
+              <button
+                type="button"
+                onClick={() => setBuyingSeat(true)}
+                className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-amber-500"
+              >
+                + Adicionar assento
+              </button>
+            )}
+          </div>
+        )}
+
+        {seat && !seat.canAdd && (
+          <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-700">
+            Você atingiu o limite de funcionários do seu plano. Adicione um
+            assento para cadastrar mais.
+          </p>
+        )}
+
         {error && <p className="text-sm font-medium text-red-500">{error}</p>}
 
         <button
@@ -209,7 +282,11 @@ export function ProfessionalManager({
           disabled={saving}
           className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
         >
-          {saving ? "Adicionando..." : "Adicionar profissional"}
+          {saving
+            ? "Adicionando..."
+            : seat && !seat.canAdd
+              ? "Adicionar assento e cadastrar"
+              : "Adicionar profissional"}
         </button>
       </div>
 
@@ -326,6 +403,15 @@ export function ProfessionalManager({
           </div>
         )}
       </div>
+
+      {buyingSeat && seat && (
+        <SeatPurchaseModal
+          establishmentId={establishmentId}
+          seat={seat}
+          onClose={() => setBuyingSeat(false)}
+          onPurchased={loadSeats}
+        />
+      )}
 
       {inviting && (
         <InviteModal

@@ -55,6 +55,68 @@ export interface SubStatusInfo {
   isOwner: boolean;
 }
 
+// situacao dos assentos de funcionario (equipe alem dos 5 incluidos)
+export interface SeatStatus {
+  used: number;
+  includedSeats: number;
+  extraSeats: number;
+  max: number;
+  canAdd: boolean;
+  billingCycle: "mensal" | "anual";
+  nextSeatPriceCents: number;
+  nextSeatChargeNowCents: number;
+  pending: boolean;
+  hasSubscription: boolean;
+}
+
+export interface BuySeatPayload {
+  method: "pix" | "cartao";
+  cpfCnpj?: string;
+  card?: {
+    holderName: string;
+    number: string;
+    expiryMonth: string;
+    expiryYear: string;
+    ccv: string;
+  };
+  holderInfo?: { postalCode: string; addressNumber: string; phone: string };
+}
+
+export interface BuySeatResult {
+  granted: boolean;
+  extraSeats?: number;
+  paymentId?: string;
+  pixQrImage?: string | null;
+  pixCopiaECola?: string | null;
+  chargeNowCents?: number;
+}
+
+// espaco de galeria (armazenamento): single=1, antes/depois=2
+export interface GallerySpace {
+  used: number;
+  singles: number;
+  bas: number;
+  includedSlots: number;
+  extraSlots: number;
+  max: number;
+  remaining: number;
+  billingCycle: "mensal" | "anual";
+  packSlots: number;
+  packPriceCents: number;
+  packChargeNowCents: number;
+  pending: boolean;
+  hasSubscription: boolean;
+}
+
+export interface BuyGalleryResult {
+  granted: boolean;
+  extraSlots?: number;
+  paymentId?: string;
+  pixQrImage?: string | null;
+  pixCopiaECola?: string | null;
+  chargeNowCents?: number;
+}
+
 const base = "/subscriptions";
 
 export const subscriptionApi = {
@@ -107,5 +169,29 @@ export const subscriptionApi = {
   status: (establishmentId: string) =>
     api
       .get<SubStatusInfo>(`${base}/${establishmentId}/status`)
+      .then((r) => r.data),
+
+  // situacao dos assentos de funcionario (dono)
+  seats: (establishmentId: string) =>
+    api
+      .get<SeatStatus>(`${base}/${establishmentId}/seats`)
+      .then((r) => r.data),
+
+  // compra 1 assento extra (dono). PIX devolve QR; cartao concede na hora.
+  buySeat: (establishmentId: string, payload: BuySeatPayload) =>
+    api
+      .post<BuySeatResult>(`${base}/${establishmentId}/seats`, payload)
+      .then((r) => r.data),
+
+  // situacao do espaco de galeria (dono)
+  gallery: (establishmentId: string) =>
+    api
+      .get<GallerySpace>(`${base}/${establishmentId}/gallery`)
+      .then((r) => r.data),
+
+  // compra 1 pacote de espaco (dono). PIX devolve QR; cartao concede na hora.
+  buyGallery: (establishmentId: string, payload: BuySeatPayload) =>
+    api
+      .post<BuyGalleryResult>(`${base}/${establishmentId}/gallery`, payload)
       .then((r) => r.data),
 };

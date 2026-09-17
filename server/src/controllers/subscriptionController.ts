@@ -11,6 +11,22 @@ import {
 import { getPaymentProvider } from "../services/payments";
 import { PLANS, getPlan, priceForCycle } from "../config/plans";
 import { paymentsConfigured } from "../config/env";
+import {
+  INCLUDED_SEATS,
+  seatsCycleTotalCents,
+  nextSeatCycleCents,
+  nextSeatChargeNowCents,
+} from "../config/seats";
+import { teamCount, maxTeam } from "../utils/seatLimit";
+import {
+  INCLUDED_GALLERY_SLOTS,
+  GALLERY_PACK_SLOTS,
+  GALLERY_PACK_MONTHLY_CENTS,
+  galleryCycleTotalCents,
+  nextGalleryPackChargeNowCents,
+} from "../config/gallery";
+import { usedGallerySlots, maxGallerySlots } from "../utils/galleryLimit";
+import { ISubscription } from "../models/Subscription";
 
 // carrega o estabelecimento e confirma que o usuario logado e o DONO
 async function loadOwned(estId: string, userId?: string) {
@@ -438,6 +454,471 @@ export const refreshStatus = async (
   }
 };
 
+// ---- Extras da assinatura (assentos de equipe + espaco de galeria) ----
+
+// valor recorrente da assinatura = base do plano + assentos pagos + espaco extra
+// de galeria. Recalculado do zero a partir dos campos da assinatura (idempotente).
+function subscriptionRecurringValueCents(sub: ISubscription): number {
+  const plan = getPlan(sub.planId);
+  const base = plan ? priceForCycle(plan, sub.billingCycle) : sub.priceCents;
+  return (
+    base +
+    seatsCycleTotalCents(sub.extraSeats || 0, sub.billingCycle) +
+    galleryCycleTotalCents(sub.extraGallerySlots || 0, sub.billingCycle)
+  );
+}
+
+// atualiza o valor recorrente no gateway com o estado atual da assinatura
+async function pushRecurringValue(sub: ISubscription): Promise<void> {
+  const provider = getPaymentProvider();
+  if (provider.updateSubscriptionValue && sub.providerSubscriptionId) {
+    try {
+      await provider.updateSubscriptionValue(
+        sub.providerSubscriptionId,
+        subscriptionRecurringValueCents(sub)
+      );
+    } catch (e) {
+      console.warn("updateSubscriptionValue falhou:", (e as Error).message);
+    }
+  }
+}
+
+// Concede o(s) assento(s) pago(s): sobe extraSeats para o alvo e atualiza o
+// valor recorrente no gateway. Idempotente (nao desce nem duplica).
+async function grantSeat(
+  sub: ISubscription,
+  targetExtra: number
+): Promise<void> {
+  if (targetExtra <= (sub.extraSeats || 0)) {
+    // ja concedido: so limpa a pendencia
+    sub.seatPendingPaymentId = "";
+    sub.seatPendingExtra = 0;
+    await sub.save();
+    return;
+  }
+  sub.extraSeats = targetExtra;
+  sub.seatPendingPaymentId = "";
+  sub.seatPendingExtra = 0;
+  await sub.save();
+  await pushRecurringValue(sub);
+}
+
+// Concede o espaco de galeria pago: sobe extraGallerySlots para o alvo e
+// atualiza o valor recorrente no gateway. Idempotente.
+async function grantGallery(
+  sub: ISubscription,
+  targetSlots: number
+): Promise<void> {
+  if (targetSlots <= (sub.extraGallerySlots || 0)) {
+    sub.galleryPendingPaymentId = "";
+    sub.galleryPendingSlots = 0;
+    await sub.save();
+    return;
+  }
+  sub.extraGallerySlots = targetSlots;
+  sub.galleryPendingPaymentId = "";
+  sub.galleryPendingSlots = 0;
+  await sub.save();
+  await pushRecurringValue(sub);
+}
+
+// GET /api/subscriptions/:establishmentId/seats  (dono)
+// Situacao dos assentos: quantos usa, limite, preco do proximo, e se ha uma
+// compra PIX pendente (consulta o gateway e concede se ja pagou).
+export const getSeats = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (!owned) {
+      res.status(403).json({ message: "Apenas o dono gerencia assentos" });
+      return;
+    }
+
+    const sub = await Subscription.findOne({ establishment: est._id });
+    const cycle = sub?.billingCycle || est.billingCycle || "mensal";
+    const extra = sub?.extraSeats || 0;
+
+    // ha compra PIX pendente? consulta o gateway; se pago, concede na hora
+    let pending = !!sub?.seatPendingPaymentId;
+    if (sub && sub.seatPendingPaymentId) {
+      const provider = getPaymentProvider();
+      if (provider.getChargeStatus) {
+        try {
+          const st = await provider.getChargeStatus(sub.seatPendingPaymentId);
+          if (st.status === "confirmed") {
+            await grantSeat(sub, sub.seatPendingExtra);
+            pending = false;
+          } else if (st.status === "canceled") {
+            sub.seatPendingPaymentId = "";
+            sub.seatPendingExtra = 0;
+            await sub.save();
+            pending = false;
+          }
+        } catch {
+          // sem status agora; mantem pendente
+        }
+      }
+    }
+
+    const currentExtra = sub?.extraSeats || 0;
+    const used = teamCount(est);
+    const max = maxTeam(currentExtra);
+
+    res.json({
+      used,
+      includedSeats: INCLUDED_SEATS,
+      extraSeats: currentExtra,
+      max,
+      canAdd: used < max,
+      billingCycle: cycle,
+      // preco do proximo assento por ciclo e o valor a cobrar agora
+      nextSeatPriceCents: nextSeatCycleCents(currentExtra, cycle),
+      nextSeatChargeNowCents: nextSeatChargeNowCents(
+        currentExtra,
+        cycle,
+        sub?.currentPeriodEnd || null
+      ),
+      pending,
+      hasSubscription: !!sub,
+    });
+  } catch (err) {
+    console.error("getSeats:", err);
+    res.status(500).json({ message: "Erro ao consultar assentos" });
+  }
+};
+
+// POST /api/subscriptions/:establishmentId/seats  (dono)
+// Compra 1 assento extra. Cobra AGORA na conta da PLATAFORMA (sem split):
+//  - cartao: confirma na hora e ja concede o assento
+//  - pix: devolve QR/copia-e-cola; concede quando o pagamento constar
+// body: { method: "pix"|"cartao", cpfCnpj?, card?, holderInfo? }
+export const buySeat = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (!owned) {
+      res.status(403).json({ message: "Apenas o dono compra assentos" });
+      return;
+    }
+
+    const sub = await Subscription.findOne({ establishment: est._id });
+    if (!sub || (sub.status !== "active" && sub.status !== "trialing")) {
+      res.status(400).json({
+        message: "Tenha uma assinatura ativa para comprar assentos.",
+      });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    if (!provider.createCharge) {
+      res.status(400).json({ message: "Pagamentos indisponiveis." });
+      return;
+    }
+
+    const {
+      method = "pix",
+      cpfCnpj,
+      card,
+      holderInfo,
+    } = req.body as {
+      method?: "pix" | "cartao";
+      cpfCnpj?: string;
+      card?: {
+        holderName: string;
+        number: string;
+        expiryMonth: string;
+        expiryYear: string;
+        ccv: string;
+      };
+      holderInfo?: { postalCode: string; addressNumber: string; phone: string };
+    };
+
+    if (method === "cartao" && (!card || !holderInfo)) {
+      res.status(400).json({ message: "Dados do cartão incompletos" });
+      return;
+    }
+
+    const owner = await User.findById(est.owner).select("name email");
+    if (!owner) {
+      res.status(400).json({ message: "Dono nao encontrado" });
+      return;
+    }
+
+    const currentExtra = sub.extraSeats || 0;
+    const targetExtra = currentExtra + 1;
+    const chargeNow = nextSeatChargeNowCents(
+      currentExtra,
+      sub.billingCycle,
+      sub.currentPeriodEnd || null
+    );
+
+    const charge = await provider.createCharge({
+      billingType: method,
+      customerName: owner.name,
+      customerEmail: owner.email,
+      customerCpfCnpj: cpfCnpj || "",
+      valueCents: chargeNow,
+      description: `ServiçosPro — assento de funcionário (${est.name})`,
+      externalReference: `seat:${est._id.toString()}`,
+      splitWalletId: "",
+      platform: true, // receita da empresa: sem split, na conta principal
+      card,
+      holderInfo:
+        method === "cartao" && card && holderInfo
+          ? {
+              name: owner.name,
+              email: owner.email,
+              cpfCnpj: cpfCnpj || "",
+              postalCode: holderInfo.postalCode,
+              addressNumber: holderInfo.addressNumber,
+              phone: holderInfo.phone,
+            }
+          : undefined,
+      remoteIp: req.ip,
+    });
+
+    // guarda a pendencia (o webhook/poll concede quando confirmar)
+    sub.seatPendingPaymentId = charge.paymentId;
+    sub.seatPendingExtra = targetExtra;
+    await sub.save();
+
+    // cartao confirmado na hora -> concede ja
+    if (charge.status === "confirmed") {
+      await grantSeat(sub, targetExtra);
+      res.json({ granted: true, extraSeats: targetExtra });
+      return;
+    }
+
+    // pix pendente -> devolve o QR para o app exibir
+    res.json({
+      granted: false,
+      paymentId: charge.paymentId,
+      pixQrImage: charge.pixQrImage ?? null,
+      pixCopiaECola: charge.pixCopiaECola ?? null,
+      chargeNowCents: chargeNow,
+    });
+  } catch (err) {
+    console.error("buySeat:", err);
+    res.status(500).json({ message: "Erro ao comprar assento" });
+  }
+};
+
+// ---- Espaco de galeria (armazenamento) ----
+
+// GET /api/subscriptions/:establishmentId/gallery  (dono)
+// Situacao do espaco: usado, limite, restante e preco do proximo pacote.
+// Consulta uma compra PIX pendente e concede se ja pagou.
+export const getGallery = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (!owned) {
+      res.status(403).json({ message: "Apenas o dono gerencia o espaco" });
+      return;
+    }
+
+    const sub = await Subscription.findOne({ establishment: est._id });
+    const cycle = sub?.billingCycle || est.billingCycle || "mensal";
+
+    // compra PIX pendente? consulta o gateway; concede se pago
+    let pending = !!sub?.galleryPendingPaymentId;
+    if (sub && sub.galleryPendingPaymentId) {
+      const provider = getPaymentProvider();
+      if (provider.getChargeStatus) {
+        try {
+          const st = await provider.getChargeStatus(
+            sub.galleryPendingPaymentId
+          );
+          if (st.status === "confirmed") {
+            await grantGallery(sub, sub.galleryPendingSlots);
+            pending = false;
+          } else if (st.status === "canceled") {
+            sub.galleryPendingPaymentId = "";
+            sub.galleryPendingSlots = 0;
+            await sub.save();
+            pending = false;
+          }
+        } catch {
+          // sem status agora; mantem pendente
+        }
+      }
+    }
+
+    const extra = sub?.extraGallerySlots || 0;
+    const { used, singles, bas } = await usedGallerySlots(est._id);
+    const max = maxGallerySlots(extra);
+
+    res.json({
+      used,
+      singles, // qtde de fotos normais publicadas
+      bas, // qtde de antes/depois publicados
+      includedSlots: INCLUDED_GALLERY_SLOTS,
+      extraSlots: extra,
+      max,
+      remaining: Math.max(0, max - used),
+      billingCycle: cycle,
+      packSlots: GALLERY_PACK_SLOTS,
+      packPriceCents: GALLERY_PACK_MONTHLY_CENTS,
+      packChargeNowCents: nextGalleryPackChargeNowCents(
+        cycle,
+        sub?.currentPeriodEnd || null
+      ),
+      pending,
+      hasSubscription: !!sub,
+    });
+  } catch (err) {
+    console.error("getGallery:", err);
+    res.status(500).json({ message: "Erro ao consultar o espaco" });
+  }
+};
+
+// POST /api/subscriptions/:establishmentId/gallery  (dono)
+// Compra 1 pacote de espaco. Cobra AGORA na conta da PLATAFORMA (sem split):
+//  - cartao: confirma na hora e ja concede o espaco
+//  - pix: devolve QR; concede quando o pagamento constar
+// body: { method, cpfCnpj?, card?, holderInfo? }
+export const buyGallery = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (!owned) {
+      res.status(403).json({ message: "Apenas o dono compra espaco" });
+      return;
+    }
+
+    const sub = await Subscription.findOne({ establishment: est._id });
+    if (!sub || (sub.status !== "active" && sub.status !== "trialing")) {
+      res.status(400).json({
+        message: "Tenha uma assinatura ativa para comprar espaco.",
+      });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    if (!provider.createCharge) {
+      res.status(400).json({ message: "Pagamentos indisponiveis." });
+      return;
+    }
+
+    const {
+      method = "pix",
+      cpfCnpj,
+      card,
+      holderInfo,
+    } = req.body as {
+      method?: "pix" | "cartao";
+      cpfCnpj?: string;
+      card?: {
+        holderName: string;
+        number: string;
+        expiryMonth: string;
+        expiryYear: string;
+        ccv: string;
+      };
+      holderInfo?: { postalCode: string; addressNumber: string; phone: string };
+    };
+
+    if (method === "cartao" && (!card || !holderInfo)) {
+      res.status(400).json({ message: "Dados do cartão incompletos" });
+      return;
+    }
+
+    const owner = await User.findById(est.owner).select("name email");
+    if (!owner) {
+      res.status(400).json({ message: "Dono nao encontrado" });
+      return;
+    }
+
+    const targetSlots = (sub.extraGallerySlots || 0) + GALLERY_PACK_SLOTS;
+    const chargeNow = nextGalleryPackChargeNowCents(
+      sub.billingCycle,
+      sub.currentPeriodEnd || null
+    );
+
+    const charge = await provider.createCharge({
+      billingType: method,
+      customerName: owner.name,
+      customerEmail: owner.email,
+      customerCpfCnpj: cpfCnpj || "",
+      valueCents: chargeNow,
+      description: `ServiçosPro — espaço de galeria +${GALLERY_PACK_SLOTS} (${est.name})`,
+      externalReference: `gallery:${est._id.toString()}`,
+      splitWalletId: "",
+      platform: true, // receita da empresa: sem split, na conta principal
+      card,
+      holderInfo:
+        method === "cartao" && card && holderInfo
+          ? {
+              name: owner.name,
+              email: owner.email,
+              cpfCnpj: cpfCnpj || "",
+              postalCode: holderInfo.postalCode,
+              addressNumber: holderInfo.addressNumber,
+              phone: holderInfo.phone,
+            }
+          : undefined,
+      remoteIp: req.ip,
+    });
+
+    sub.galleryPendingPaymentId = charge.paymentId;
+    sub.galleryPendingSlots = targetSlots;
+    await sub.save();
+
+    if (charge.status === "confirmed") {
+      await grantGallery(sub, targetSlots);
+      res.json({ granted: true, extraSlots: targetSlots });
+      return;
+    }
+
+    res.json({
+      granted: false,
+      paymentId: charge.paymentId,
+      pixQrImage: charge.pixQrImage ?? null,
+      pixCopiaECola: charge.pixCopiaECola ?? null,
+      chargeNowCents: chargeNow,
+    });
+  } catch (err) {
+    console.error("buyGallery:", err);
+    res.status(500).json({ message: "Erro ao comprar espaco" });
+  }
+};
+
 // POST /api/webhooks/payments  (SEM auth de usuario; validado pelo gateway)
 // Fonte da verdade do "pago". Idempotente via lastEventId.
 export const paymentsWebhook = async (
@@ -482,6 +963,30 @@ export const paymentsWebhook = async (
         if (booking && !booking.payment.depositPaid) {
           if (event.paymentId) booking.payment.depositPaymentId = event.paymentId;
           await finalizeDepositPaid(booking, "pix");
+        }
+      }
+      res.json({ ok: true });
+      return;
+    }
+    // "seat:<estId>" = compra de assento de funcionario (receita da plataforma)
+    if (ref.startsWith("seat:")) {
+      if (event.type === "payment_confirmed") {
+        const id = ref.slice("seat:".length);
+        const seatSub = await Subscription.findOne({ establishment: id });
+        if (seatSub && seatSub.seatPendingExtra) {
+          await grantSeat(seatSub, seatSub.seatPendingExtra);
+        }
+      }
+      res.json({ ok: true });
+      return;
+    }
+    // "gallery:<estId>" = compra de espaco de galeria (receita da plataforma)
+    if (ref.startsWith("gallery:")) {
+      if (event.type === "payment_confirmed") {
+        const id = ref.slice("gallery:".length);
+        const gSub = await Subscription.findOne({ establishment: id });
+        if (gSub && gSub.galleryPendingSlots) {
+          await grantGallery(gSub, gSub.galleryPendingSlots);
         }
       }
       res.json({ ok: true });

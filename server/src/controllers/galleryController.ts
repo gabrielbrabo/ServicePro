@@ -4,6 +4,12 @@ import { Establishment } from "../models/Establishment";
 import { AuthRequest } from "../middleware/auth";
 import { Types } from "mongoose";
 import { deleteS3ByUrls } from "../config/s3";
+import {
+  usedGallerySlots,
+  paidGallerySlots,
+  maxGallerySlots,
+  slotsForKind,
+} from "../utils/galleryLimit";
 
 // dono OU membro do estabelecimento gerencia a galeria
 const canManage = async (
@@ -110,6 +116,26 @@ export const createGalleryItem = async (
       res
         .status(400)
         .json({ message: "Envie as duas fotos (antes e depois)" });
+      return;
+    }
+
+    // trava de armazenamento: single ocupa 1 espaco, antes/depois ocupa 2.
+    // Bloqueia quando nao ha espaco e sinaliza ao front pra comprar um pacote.
+    const cost = slotsForKind(isSingle ? "single" : "ba");
+    const [{ used }, extra] = await Promise.all([
+      usedGallerySlots(establishmentId),
+      paidGallerySlots(establishmentId),
+    ]);
+    const max = maxGallerySlots(extra);
+    if (used + cost > max) {
+      res.status(403).json({
+        message:
+          "Sem espaço na galeria. Adicione um pacote de espaço para publicar mais fotos.",
+        needSpace: true,
+        used,
+        max,
+        cost,
+      });
       return;
     }
 

@@ -3,6 +3,7 @@ import { Establishment } from "../models/Establishment";
 import { AuthRequest } from "../middleware/auth";
 import { deleteS3ByUrl } from "../config/s3";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
+import { teamCount, paidExtraSeats, maxTeam } from "../utils/seatLimit";
 
 // so o dono do estabelecimento gerencia profissionais
 const loadOwnedEstablishment = async (
@@ -83,6 +84,21 @@ export const addProfessional = async (
       return;
     }
 
+    // trava de assentos: 5 incluidos + assentos pagos. Bloqueia o cadastro
+    // alem do limite e sinaliza ao front que e preciso comprar um assento.
+    const extra = await paidExtraSeats(est._id);
+    const max = maxTeam(extra);
+    const used = teamCount(est);
+    if (used >= max) {
+      res.status(403).json({
+        message: `Seu plano permite ${max} funcionarios. Adicione um assento para cadastrar mais.`,
+        needSeat: true,
+        used,
+        max,
+      });
+      return;
+    }
+
     est.professionals.push({
       name: String(name).trim(),
       photo: photo || "",
@@ -149,7 +165,24 @@ export const updateProfessional = async (
       photoReplaced = true;
     }
     if (Array.isArray(specialties)) prof.specialties = specialties;
-    if (typeof active === "boolean") prof.active = active;
+    if (typeof active === "boolean") {
+      // reativar um profissional volta a ocupar um assento — respeita a trava
+      if (active && !prof.active) {
+        const extra = await paidExtraSeats(est._id);
+        const max = maxTeam(extra);
+        const used = teamCount(est); // prof ainda inativo, nao esta contado
+        if (used >= max) {
+          res.status(403).json({
+            message: `Seu plano permite ${max} funcionarios. Adicione um assento para reativar.`,
+            needSeat: true,
+            used,
+            max,
+          });
+          return;
+        }
+      }
+      prof.active = active;
+    }
 
     await est.save();
 

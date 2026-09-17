@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { galleryApi, GalleryItem } from "../api/gallery";
 import { professionalApi, Professional } from "../api/professional";
 import { catalogApi, Service } from "../api/catalog";
+import { subscriptionApi, GallerySpace } from "../api/subscription";
 import { ImageUpload } from "./ImageUpload";
+import { GallerySpaceModal } from "./GallerySpaceModal";
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString("pt-BR", {
@@ -28,6 +30,10 @@ export function GalleryManager({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // espaco de armazenamento (single=1, antes/depois=2)
+  const [space, setSpace] = useState<GallerySpace | null>(null);
+  const [buyingSpace, setBuyingSpace] = useState(false);
+
   // formulário
   const [showForm, setShowForm] = useState(false);
   const [kind, setKind] = useState<"ba" | "single">("ba");
@@ -49,8 +55,17 @@ export function GalleryManager({
       .finally(() => setLoading(false));
   }, [establishmentId]);
 
+  // situacao do espaco (so o dono recebe; equipe/erro -> null, sem trava no front)
+  const loadSpace = useCallback(() => {
+    subscriptionApi
+      .gallery(establishmentId)
+      .then(setSpace)
+      .catch(() => setSpace(null));
+  }, [establishmentId]);
+
   useEffect(() => {
     load();
+    loadSpace();
     professionalApi
       .list(establishmentId)
       .then(setProfessionals)
@@ -59,7 +74,7 @@ export function GalleryManager({
       .byEstablishment(establishmentId)
       .then(setServices)
       .catch(() => setServices([]));
-  }, [load, establishmentId]);
+  }, [load, loadSpace, establishmentId]);
 
   const resetForm = () => {
     setBeforeUrl("");
@@ -80,6 +95,12 @@ export function GalleryManager({
       );
       return;
     }
+    // trava de espaco: single ocupa 1, antes/depois ocupa 2
+    const cost = kind === "ba" ? 2 : 1;
+    if (space && space.remaining < cost) {
+      setBuyingSpace(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -96,8 +117,18 @@ export function GalleryManager({
       setItems((list) => [created, ...list]);
       resetForm();
       setShowForm(false);
-    } catch {
-      setError("Não foi possível salvar o registro.");
+      loadSpace();
+    } catch (e: unknown) {
+      const resp = (
+        e as { response?: { status?: number; data?: { needSpace?: boolean } } }
+      )?.response;
+      // backend barrou por falta de espaco -> abre a compra de pacote
+      if (resp?.status === 403 && resp?.data?.needSpace) {
+        loadSpace();
+        setBuyingSpace(true);
+      } else {
+        setError("Não foi possível salvar o registro.");
+      }
     } finally {
       setSaving(false);
     }
@@ -125,6 +156,7 @@ export function GalleryManager({
     setItems((list) => list.filter((x) => x._id !== itemId));
     try {
       await galleryApi.remove(establishmentId, itemId);
+      loadSpace(); // remover libera espaco (apaga do S3)
     } catch {
       setItems(prev);
       setError("Não foi possível remover o registro.");
@@ -147,6 +179,46 @@ export function GalleryManager({
           {showForm ? "Cancelar" : "+ Novo registro"}
         </button>
       </div>
+
+      {/* uso do espaco de armazenamento */}
+      {space && (
+        <div className="mb-4 rounded-xl border border-ink/10 bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm">
+              <span className="text-ink/70">Espaço de fotos: </span>
+              <span className="font-semibold text-ink">
+                {space.used} de {space.max} usados
+              </span>
+              <span className="text-ink/50">
+                {" "}
+                · {space.remaining} livre{space.remaining !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <button
+              onClick={() => setBuyingSpace(true)}
+              className="rounded-lg border border-teal-500/40 px-3 py-1.5 text-xs font-semibold text-teal-600 transition hover:bg-teal-500/10"
+            >
+              + Adicionar espaço
+            </button>
+          </div>
+          {/* barra de uso */}
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-ink/10">
+            <div
+              className={`h-full rounded-full ${
+                space.remaining <= 0 ? "bg-red-500" : "bg-teal-500"
+              }`}
+              style={{
+                width: `${Math.min(100, (space.used / space.max) * 100)}%`,
+              }}
+            />
+          </div>
+          <p className="mt-1.5 text-xs text-ink/50">
+            Foto normal usa 1 espaço · antes e depois usa 2. Você tem{" "}
+            {space.singles} foto{space.singles !== 1 ? "s" : ""} e {space.bas}{" "}
+            antes/depois.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -281,17 +353,49 @@ export function GalleryManager({
             )}
           </div>
 
+          {/* aviso de espaco deste tipo (single=1, antes/depois=2) */}
+          {space && (
+            <p
+              className={`mt-4 rounded-lg px-3 py-2 text-xs font-medium ${
+                space.remaining < (kind === "ba" ? 2 : 1)
+                  ? "bg-amber-400/10 text-amber-700"
+                  : "bg-sand/60 text-ink/60"
+              }`}
+            >
+              {kind === "ba"
+                ? "Antes e depois usa 2 espaços."
+                : "Foto normal usa 1 espaço."}{" "}
+              Você tem {space.remaining} livre
+              {space.remaining !== 1 ? "s" : ""} de {space.max}.
+              {space.remaining < (kind === "ba" ? 2 : 1) &&
+                " Adicione um pacote de espaço para publicar."}
+            </p>
+          )}
+
           <button
             onClick={submit}
             disabled={
               saving ||
               (kind === "single" ? !photoUrl : !beforeUrl || !afterUrl)
             }
-            className="mt-5 h-11 rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
+            className="mt-4 h-11 rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
           >
-            {saving ? "Salvando..." : "Publicar na galeria"}
+            {saving
+              ? "Salvando..."
+              : space && space.remaining < (kind === "ba" ? 2 : 1)
+                ? "Adicionar espaço e publicar"
+                : "Publicar na galeria"}
           </button>
         </div>
+      )}
+
+      {buyingSpace && space && (
+        <GallerySpaceModal
+          establishmentId={establishmentId}
+          space={space}
+          onClose={() => setBuyingSpace(false)}
+          onPurchased={loadSpace}
+        />
       )}
 
       {/* Lista */}

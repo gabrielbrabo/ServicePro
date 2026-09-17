@@ -7,8 +7,10 @@ const serviceTitle = (s: GalleryItem["service"]): string | null => {
   return null;
 };
 
-// Seção pública de antes/depois: carrossel horizontal + lightbox.
-// Não renderiza nada se o estabelecimento não tiver itens.
+// Seção pública da galeria. Dois carrosséis separados:
+//  - "Fotos": imagens normais (kind === "single") — em cima
+//  - "Antes e depois": pares antes/depois (kind === "ba") — embaixo
+// Cada um com suas próprias setas; o lightbox é compartilhado.
 export function GallerySection({
   establishmentId,
 }: {
@@ -17,8 +19,6 @@ export function GallerySection({
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [openItem, setOpenItem] = useState<GalleryItem | null>(null);
-
-  const trackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     galleryApi
@@ -38,116 +38,39 @@ export function GallerySection({
     return () => window.removeEventListener("keydown", onKey);
   }, [openItem]);
 
-  const scrollBy = (dir: 1 | -1) => {
-    const el = trackRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * (el.clientWidth * 0.8), behavior: "smooth" });
-  };
+  // separa por tipo: normais em cima, antes/depois embaixo
+  const singles = items.filter((i) => i.kind === "single");
+  const bas = items.filter((i) => i.kind === "ba");
 
   // nada a mostrar: some da página
   if (loading || items.length === 0) return null;
 
   return (
-    <section className="mt-10">
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <div>
-          <h2 className="font-display text-2xl font-bold text-ink">
-            Galeria
-          </h2>
-          <p className="text-sm text-ink/60">
-            Alguns trabalhos realizados aqui.
-          </p>
-        </div>
-
-        {/* setas só fazem sentido quando há mais de um */}
-        {items.length > 1 && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => scrollBy(-1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink/60 transition hover:border-teal-500 hover:text-teal-600"
-              aria-label="Anterior"
-            >
-              ←
-            </button>
-            <button
-              onClick={() => scrollBy(1)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink/60 transition hover:border-teal-500 hover:text-teal-600"
-              aria-label="Próximo"
-            >
-              →
-            </button>
-          </div>
-        )}
+    <section className="mt-10 space-y-8">
+      <div>
+        <h2 className="font-display text-2xl font-bold text-ink">Galeria</h2>
+        <p className="text-sm text-ink/60">Alguns trabalhos realizados aqui.</p>
       </div>
 
-      {/* carrossel */}
-      <div
-        ref={trackRef}
-        className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scroll-smooth"
-      >
-        {items.map((item) => (
-          <button
-            key={item._id}
-            onClick={() => setOpenItem(item)}
-            className="group w-72 shrink-0 snap-start overflow-hidden rounded-2xl border border-ink/10 bg-white text-left transition hover:border-teal-500 hover:shadow-sm"
-          >
-            {item.kind === "single" ? (
-              <div className="relative">
-                <img
-                  src={item.photoUrl}
-                  alt={item.title || "Foto"}
-                  loading="lazy"
-                  className="h-36 w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2">
-                <div className="relative">
-                  <img
-                    src={item.beforeUrl}
-                    alt="Antes"
-                    loading="lazy"
-                    className="h-36 w-full object-cover"
-                  />
-                  <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-medium text-white">
-                    Antes
-                  </span>
-                </div>
-                <div className="relative">
-                  <img
-                    src={item.afterUrl}
-                    alt="Depois"
-                    loading="lazy"
-                    className="h-36 w-full object-cover"
-                  />
-                  <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
-                    Depois
-                  </span>
-                </div>
-              </div>
-            )}
+      {/* fotos normais (em cima) */}
+      {singles.length > 0 && (
+        <GalleryCarousel
+          title="Fotos"
+          items={singles}
+          onOpen={setOpenItem}
+        />
+      )}
 
-            <div className="p-3">
-              {item.title && (
-                <h3 className="font-medium text-ink group-hover:text-teal-600">
-                  {item.title}
-                </h3>
-              )}
-              {(item.professionalName || serviceTitle(item.service)) && (
-                <p className="mt-0.5 text-xs text-ink/50">
-                  {item.professionalName}
-                  {item.professionalName && serviceTitle(item.service)
-                    ? " · "
-                    : ""}
-                  {serviceTitle(item.service)}
-                </p>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
+      {/* antes e depois (embaixo) */}
+      {bas.length > 0 && (
+        <GalleryCarousel
+          title="Antes e depois"
+          items={bas}
+          onOpen={setOpenItem}
+        />
+      )}
 
-      {/* lightbox */}
+      {/* lightbox compartilhado */}
       {openItem && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm"
@@ -225,5 +148,118 @@ export function GallerySection({
         </div>
       )}
     </section>
+  );
+}
+
+// Um carrossel horizontal de itens da galeria, com título e setas próprias.
+function GalleryCarousel({
+  title,
+  items,
+  onOpen,
+}: {
+  title: string;
+  items: GalleryItem[];
+  onOpen: (item: GalleryItem) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const scrollBy = (dir: 1 | -1) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * (el.clientWidth * 0.8), behavior: "smooth" });
+  };
+
+  return (
+    <div>
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <h3 className="font-display text-lg font-semibold text-ink">{title}</h3>
+
+        {/* setas só fazem sentido quando há mais de um */}
+        {items.length > 1 && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => scrollBy(-1)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink/60 transition hover:border-teal-500 hover:text-teal-600"
+              aria-label="Anterior"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => scrollBy(1)}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink/60 transition hover:border-teal-500 hover:text-teal-600"
+              aria-label="Próximo"
+            >
+              →
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={trackRef}
+        className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scroll-smooth"
+      >
+        {items.map((item) => (
+          <button
+            key={item._id}
+            onClick={() => onOpen(item)}
+            className="group w-72 shrink-0 snap-start overflow-hidden rounded-2xl border border-ink/10 bg-white text-left transition hover:border-teal-500 hover:shadow-sm"
+          >
+            {item.kind === "single" ? (
+              <div className="relative">
+                <img
+                  src={item.photoUrl}
+                  alt={item.title || "Foto"}
+                  loading="lazy"
+                  className="h-36 w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2">
+                <div className="relative">
+                  <img
+                    src={item.beforeUrl}
+                    alt="Antes"
+                    loading="lazy"
+                    className="h-36 w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-medium text-white">
+                    Antes
+                  </span>
+                </div>
+                <div className="relative">
+                  <img
+                    src={item.afterUrl}
+                    alt="Depois"
+                    loading="lazy"
+                    className="h-36 w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
+                    Depois
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="p-3">
+              {item.title && (
+                <h4 className="font-medium text-ink group-hover:text-teal-600">
+                  {item.title}
+                </h4>
+              )}
+              {(item.professionalName || serviceTitle(item.service)) && (
+                <p className="mt-0.5 text-xs text-ink/50">
+                  {item.professionalName}
+                  {item.professionalName && serviceTitle(item.service)
+                    ? " · "
+                    : ""}
+                  {serviceTitle(item.service)}
+                </p>
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

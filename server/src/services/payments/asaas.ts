@@ -216,8 +216,9 @@ export const asaasProvider: PaymentProvider = {
       description: input.description,
       externalReference: input.externalReference,
     };
-    // split só quando NÃO é direto na subconta (modelo legado na conta principal)
-    if (!sub) {
+    // split só quando NÃO é direto na subconta E NÃO é cobranca da plataforma.
+    // Cobranca da plataforma (assento) fica 100% na conta principal, sem split.
+    if (!sub && !input.platform) {
       body.split = [{ walletId: input.splitWalletId, percentualValue: 100 }];
     }
     if (isCard) {
@@ -399,6 +400,15 @@ export const asaasProvider: PaymentProvider = {
     } catch {
       return { image: null, payload: null, checkoutUrl: null };
     }
+  },
+
+  // Atualiza o valor recorrente da assinatura (ex.: somou assentos). Nao mexe
+  // nas cobrancas ja geradas (updatePendingPayments:false).
+  async updateSubscriptionValue(subscriptionId: string, newValueCents: number) {
+    await api(`/subscriptions/${subscriptionId}`, "PUT", {
+      value: cents(newValueCents),
+      updatePendingPayments: false,
+    });
   },
 
   // Cancela no FIM do periodo (endDate) mantendo o acesso ate la; sem data,

@@ -17,6 +17,15 @@ export interface ISubscription extends Document {
   planId: string;
   billingCycle: "mensal" | "anual";
   priceCents: number;
+  // assentos de funcionario pagos alem dos 5 incluidos no plano
+  extraSeats: number;
+  // compra de assento pendente (PIX): cobranca a confirmar e alvo de assentos
+  seatPendingPaymentId: string;
+  seatPendingExtra: number;
+  // espacos de galeria (armazenamento) pagos alem do incluido, + pendencia PIX
+  extraGallerySlots: number;
+  galleryPendingPaymentId: string;
+  galleryPendingSlots: number;
   status: SubscriptionStatus;
   // gateway
   provider: string; // "asaas" | "mercadopago" | "" (noop/dev)
@@ -54,6 +63,12 @@ const subscriptionSchema = new Schema<ISubscription>(
       default: "mensal",
     },
     priceCents: { type: Number, required: true, min: 0 },
+    extraSeats: { type: Number, default: 0, min: 0 },
+    seatPendingPaymentId: { type: String, default: "" },
+    seatPendingExtra: { type: Number, default: 0, min: 0 },
+    extraGallerySlots: { type: Number, default: 0, min: 0 },
+    galleryPendingPaymentId: { type: String, default: "" },
+    galleryPendingSlots: { type: Number, default: 0, min: 0 },
     status: {
       type: String,
       enum: ["none", "trialing", "active", "past_due", "canceled"],
