@@ -98,7 +98,13 @@ export function GalleryManager({
     // trava de espaco: single ocupa 1, antes/depois ocupa 2
     const cost = kind === "ba" ? 2 : 1;
     if (space && space.remaining < cost) {
-      setBuyingSpace(true);
+      if (space.isOwner) {
+        setBuyingSpace(true);
+      } else {
+        setError(
+          "Sem espaço na galeria. Peça ao dono para adicionar um pacote de espaço."
+        );
+      }
       return;
     }
     setSaving(true);
@@ -125,7 +131,13 @@ export function GalleryManager({
       // backend barrou por falta de espaco -> abre a compra de pacote
       if (resp?.status === 403 && resp?.data?.needSpace) {
         loadSpace();
-        setBuyingSpace(true);
+        if (space?.isOwner) {
+          setBuyingSpace(true);
+        } else {
+          setError(
+            "Sem espaço na galeria. Peça ao dono para adicionar um pacote de espaço."
+          );
+        }
       } else {
         setError("Não foi possível salvar o registro.");
       }
@@ -194,12 +206,14 @@ export function GalleryManager({
                 · {space.remaining} livre{space.remaining !== 1 ? "s" : ""}
               </span>
             </div>
-            <button
-              onClick={() => setBuyingSpace(true)}
-              className="rounded-lg border border-teal-500/40 px-3 py-1.5 text-xs font-semibold text-teal-600 transition hover:bg-teal-500/10"
-            >
-              + Adicionar espaço
-            </button>
+            {space.isOwner && (
+              <button
+                onClick={() => setBuyingSpace(true)}
+                className="rounded-lg border border-teal-500/40 px-3 py-1.5 text-xs font-semibold text-teal-600 transition hover:bg-teal-500/10"
+              >
+                + Adicionar espaço
+              </button>
+            )}
           </div>
           {/* barra de uso */}
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-ink/10">
@@ -368,7 +382,9 @@ export function GalleryManager({
               Você tem {space.remaining} livre
               {space.remaining !== 1 ? "s" : ""} de {space.max}.
               {space.remaining < (kind === "ba" ? 2 : 1) &&
-                " Adicione um pacote de espaço para publicar."}
+                (space.isOwner
+                  ? " Adicione um pacote de espaço para publicar."
+                  : " Peça ao dono para adicionar um pacote de espaço.")}
             </p>
           )}
 
@@ -382,7 +398,9 @@ export function GalleryManager({
           >
             {saving
               ? "Salvando..."
-              : space && space.remaining < (kind === "ba" ? 2 : 1)
+              : space &&
+                  space.isOwner &&
+                  space.remaining < (kind === "ba" ? 2 : 1)
                 ? "Adicionar espaço e publicar"
                 : "Publicar na galeria"}
           </button>

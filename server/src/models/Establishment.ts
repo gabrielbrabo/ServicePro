@@ -4,7 +4,8 @@ import { SEGMENTS, DEFAULT_SEGMENT, SegmentKey } from "../config/segments";
 // Um membro da equipe do estabelecimento (acesso/permissao, com login).
 export interface IMember {
   professional: Types.ObjectId;
-  role: "owner" | "professional";
+  // "secretary" = atendente que organiza a agenda de todos, sem prestar servico
+  role: "owner" | "professional" | "secretary";
   active: boolean;
 }
 
@@ -82,7 +83,7 @@ const memberSchema = new Schema<IMember>(
     professional: { type: Schema.Types.ObjectId, ref: "User", required: true },
     role: {
       type: String,
-      enum: ["owner", "professional"],
+      enum: ["owner", "professional", "secretary"],
       default: "professional",
     },
     active: { type: Boolean, default: true },

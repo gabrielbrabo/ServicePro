@@ -3,7 +3,7 @@ import { Establishment } from "../models/Establishment";
 import { AuthRequest } from "../middleware/auth";
 import { deleteS3ByUrl } from "../config/s3";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
-import { teamCount, paidExtraSeats, maxTeam } from "../utils/seatLimit";
+import { usedSeats, paidExtraSeats, maxTeam } from "../utils/seatLimit";
 
 // so o dono do estabelecimento gerencia profissionais
 const loadOwnedEstablishment = async (
@@ -88,7 +88,7 @@ export const addProfessional = async (
     // alem do limite e sinaliza ao front que e preciso comprar um assento.
     const extra = await paidExtraSeats(est._id);
     const max = maxTeam(extra);
-    const used = teamCount(est);
+    const used = usedSeats(est);
     if (used >= max) {
       res.status(403).json({
         message: `Seu plano permite ${max} funcionarios. Adicione um assento para cadastrar mais.`,
@@ -170,7 +170,7 @@ export const updateProfessional = async (
       if (active && !prof.active) {
         const extra = await paidExtraSeats(est._id);
         const max = maxTeam(extra);
-        const used = teamCount(est); // prof ainda inativo, nao esta contado
+        const used = usedSeats(est); // prof ainda inativo, nao esta contado
         if (used >= max) {
           res.status(403).json({
             message: `Seu plano permite ${max} funcionarios. Adicione um assento para reativar.`,

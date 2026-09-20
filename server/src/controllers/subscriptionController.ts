@@ -17,7 +17,7 @@ import {
   nextSeatCycleCents,
   nextSeatChargeNowCents,
 } from "../config/seats";
-import { teamCount, maxTeam } from "../utils/seatLimit";
+import { usedSeats, maxTeam } from "../utils/seatLimit";
 import {
   INCLUDED_GALLERY_SLOTS,
   GALLERY_PACK_SLOTS,
@@ -570,7 +570,7 @@ export const getSeats = async (
     }
 
     const currentExtra = sub?.extraSeats || 0;
-    const used = teamCount(est);
+    const used = usedSeats(est);
     const max = maxTeam(currentExtra);
 
     res.json({
@@ -739,17 +739,23 @@ export const getGallery = async (
       res.status(404).json({ message: "Estabelecimento nao encontrado" });
       return;
     }
-    if (!owned) {
-      res.status(403).json({ message: "Apenas o dono gerencia o espaco" });
+    // dono OU membro pode VER o espaco (funcionario tambem publica fotos).
+    // So o dono compra pacote (isso fica no endpoint buyGallery, dono-only).
+    const isMember = est.members.some(
+      (m) => m.professional?.toString() === req.userId
+    );
+    if (!owned && !isMember) {
+      res.status(403).json({ message: "Sem acesso" });
       return;
     }
 
     const sub = await Subscription.findOne({ establishment: est._id });
     const cycle = sub?.billingCycle || est.billingCycle || "mensal";
 
-    // compra PIX pendente? consulta o gateway; concede se pago
+    // compra PIX pendente? consulta o gateway; concede se pago.
+    // So o dono dispara isso (e quem paga); membro apenas le o uso.
     let pending = !!sub?.galleryPendingPaymentId;
-    if (sub && sub.galleryPendingPaymentId) {
+    if (owned && sub && sub.galleryPendingPaymentId) {
       const provider = getPaymentProvider();
       if (provider.getChargeStatus) {
         try {
@@ -790,6 +796,7 @@ export const getGallery = async (
         cycle,
         sub?.currentPeriodEnd || null
       ),
+      isOwner: owned, // so o dono ve o botao de comprar espaco
       pending,
       hasSubscription: !!sub,
     });

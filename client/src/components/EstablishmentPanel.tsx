@@ -4,6 +4,7 @@ import { AgendaTab } from "./AgendaTab";
 import { ServiceManager } from "./ServiceManager";
 import { BookingList } from "./BookingList";
 import { ProfessionalManager } from "./ProfessionalManager";
+import { SecretaryManager } from "./SecretaryManager";
 import { professionalApi } from "../api/professional";
 import { CashRegister } from "./CashRegister";
 import { ClientsManager } from "./ClientsManager";
@@ -55,6 +56,8 @@ export function EstablishmentPanel({
 }) {
   // papel do usuario neste estabelecimento (vem de /establishments/mine)
   const isEmployee = establishment.myRole === "professional";
+  // secretaria(o): organiza a agenda de todos, sem prestar servico nem ser dono
+  const isSecretary = establishment.myRole === "secretary";
   const myProfessionalId = establishment.myProfessionalId ?? null;
 
   // aba controlada pelo contexto: permite que a notificacao troque de aba
@@ -286,12 +289,21 @@ export function EstablishmentPanel({
   // Assinatura inativa: painel trava, deixando so "Agendamentos" (ver os
   // existentes) e "Minha assinatura" (renovar). Lembretes/e-mails seguem.
   const ALLOWED_WHEN_BLOCKED = new Set<PanelTab>(["recebidos", "assinatura"]);
-  const visibleTabs = gate?.blocked
+  // secretaria(o) so organiza a agenda: ve apenas "Agenda" e "Clientes"
+  const SECRETARY_TABS = new Set<PanelTab>(["recebidos", "clientes"]);
+  const baseTabs = gate?.blocked
     ? tabs.filter(([key]) => ALLOWED_WHEN_BLOCKED.has(key))
     : tabs;
+  const visibleTabs = isSecretary
+    ? baseTabs.filter(([key]) => SECRETARY_TABS.has(key))
+    : baseTabs;
   useEffect(() => {
     if (gate?.blocked && !ALLOWED_WHEN_BLOCKED.has(tab)) setTab("recebidos");
   }, [gate?.blocked, tab, setTab]);
+  useEffect(() => {
+    if (isSecretary && !SECRETARY_TABS.has(tab)) setTab("recebidos");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSecretary, tab, setTab]);
 
   return (
     <div>
@@ -521,7 +533,10 @@ export function EstablishmentPanel({
           />
         )}
         {tab === "equipe" && !isEmployee && (
-          <ProfessionalManager establishmentId={establishment._id} />
+          <div className="space-y-6">
+            <ProfessionalManager establishmentId={establishment._id} />
+            <SecretaryManager establishmentId={establishment._id} />
+          </div>
         )}
         {tab === "agenda" && (
           <AgendaTab

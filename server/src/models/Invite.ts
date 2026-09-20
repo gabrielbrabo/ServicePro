@@ -5,7 +5,10 @@ import crypto from "crypto";
 // login e virar membro operacional do estabelecimento.
 export interface IInvite extends Document {
   establishment: Types.ObjectId;
-  professionalId: Types.ObjectId; // _id do subdoc em Establishment.professionals
+  // vazio quando o convite e de secretaria(o) (nao vira profissional agendavel)
+  professionalId?: Types.ObjectId | null; // _id do subdoc em professionals
+  // papel que o convidado tera ao aceitar
+  role: "professional" | "secretary";
   email: string;
   tokenHash: string; // guardamos o hash, nunca o token cru
   status: "pendente" | "aceito" | "cancelado" | "expirado";
@@ -23,7 +26,12 @@ const inviteSchema = new Schema<IInvite>(
       ref: "Establishment",
       required: true,
     },
-    professionalId: { type: Schema.Types.ObjectId, required: true },
+    professionalId: { type: Schema.Types.ObjectId, required: false, default: null },
+    role: {
+      type: String,
+      enum: ["professional", "secretary"],
+      default: "professional",
+    },
     email: { type: String, required: true, lowercase: true, trim: true },
     tokenHash: { type: String, required: true, index: true },
     status: {

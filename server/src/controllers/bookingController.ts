@@ -561,6 +561,26 @@ export const createBooking = async (
   }
 };
 
+// true se o user e dono OU secretaria(o) ATIVA do estabelecimento — ambos tem
+// poder de gestao sobre QUALQUER agendamento (organizam a agenda de todos).
+async function isEstablishmentManager(
+  establishmentId: Types.ObjectId | string | undefined | null,
+  userId?: string
+): Promise<boolean> {
+  if (!establishmentId || !userId) return false;
+  const est = await Establishment.findById(establishmentId).select(
+    "owner members"
+  );
+  if (!est) return false;
+  if (est.owner.toString() === userId) return true;
+  return est.members.some(
+    (m) =>
+      m.active &&
+      m.role === "secretary" &&
+      m.professional?.toString() === userId
+  );
+}
+
 // GET /api/bookings  (protegido)
 export const listBookings = async (
   req: AuthRequest,
@@ -581,24 +601,32 @@ export const listBookings = async (
 
     if (establishment) {
       const est = await Establishment.findById(establishment).select(
-        "owner professionals"
+        "owner professionals members"
       );
 
       if (est && est.owner.toString() !== req.userId) {
-        // nao e o dono: so pode ser funcionario. Descobre o professionalId dele
-        // (o subdoc cujo linkedUser aponta para este user).
+        // nao e o dono: pode ser secretaria(o) (ve tudo) ou profissional (ve o seu)
+        const isSecretary = est.members.some(
+          (m) =>
+            m.active &&
+            m.role === "secretary" &&
+            m.professional?.toString() === req.userId
+        );
         const myProf = est.professionals.find(
           (p) => p.linkedUser && p.linkedUser.toString() === req.userId
         );
 
-        if (!myProf) {
-          // nem dono nem profissional vinculado: nao ve nada
+        if (isSecretary) {
+          // secretaria(o): organiza a agenda de TODOS -> ve o estabelecimento inteiro
+          filter = { establishment };
+        } else if (!myProf) {
+          // nem dono, nem secretaria, nem profissional vinculado: nao ve nada
           res.json([]);
           return;
+        } else {
+          // funcionario: filtra pelo estabelecimento e pelos agendamentos dele
+          filter = { establishment, professional: myProf._id };
         }
-
-        // funcionario: filtra pelo estabelecimento e pelos agendamentos dele
-        filter = { establishment, professional: myProf._id };
       } else {
         // e o dono: todos do estabelecimento
         filter = { owner: req.userId, establishment };
@@ -698,8 +726,11 @@ export const updateBookingStatus = async (
       return;
     }
 
-    const isOwner = booking.owner.toString() === req.userId;
+    let isOwner = booking.owner.toString() === req.userId;
     const isClient = booking.client.toString() === req.userId;
+    // secretaria(o) ativa gerencia a agenda como o estabelecimento
+    if (!isOwner)
+      isOwner = await isEstablishmentManager(booking.establishment, req.userId);
 
     // funcionario responsavel pelo agendamento tambem pode gerenciar (confirmar/
     // concluir/cancelar). Verifica se o user e o profissional do booking, via
@@ -1047,8 +1078,11 @@ export const rescheduleBooking = async (
       return;
     }
 
-    const isOwner = booking.owner.toString() === req.userId;
+    let isOwner = booking.owner.toString() === req.userId;
     const isClient = booking.client.toString() === req.userId;
+    // secretaria(o) ativa reagenda como o estabelecimento
+    if (!isOwner)
+      isOwner = await isEstablishmentManager(booking.establishment, req.userId);
 
     // funcionario responsavel pelo agendamento tambem pode reagendar (mesmo
     // padrao do updateBookingStatus): e o profissional do booking cujo
@@ -1872,8 +1906,11 @@ export const cancelSeries = async (
       return;
     }
 
-    const isOwner = sample.owner.toString() === req.userId;
+    let isOwner = sample.owner.toString() === req.userId;
     const isClient = sample.client.toString() === req.userId;
+    // secretaria(o) ativa cancela a serie como o estabelecimento
+    if (!isOwner)
+      isOwner = await isEstablishmentManager(sample.establishment, req.userId);
     if (!isOwner && !isClient) {
       res.status(403).json({ message: "Sem permissao" });
       return;
@@ -2133,8 +2170,10 @@ export const extendBooking = async (
       return;
     }
 
-    // so o estabelecimento estende: dono OU o profissional do agendamento
-    const isOwner = booking.owner.toString() === req.userId;
+    // so o estabelecimento estende: dono, secretaria(o) OU o profissional
+    let isOwner = booking.owner.toString() === req.userId;
+    if (!isOwner)
+      isOwner = await isEstablishmentManager(booking.establishment, req.userId);
     let isAssignedProfessional = false;
     if (!isOwner && booking.professional) {
       const estProf = await Establishment.findById(

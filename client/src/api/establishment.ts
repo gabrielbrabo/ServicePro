@@ -50,7 +50,7 @@ export interface Establishment {
   // serviços do estabelecimento (preenchido por /establishments/:id via getById)
   services?: EstablishmentService[];
   // preenchidos por /establishments/mine — indicam o papel do user logado
-  myRole?: "owner" | "professional";
+  myRole?: "owner" | "professional" | "secretary";
   myProfessionalId?: string | null;
   // recebe agendamentos? (false quando a assinatura esta inativa) — vem do
   // GET publico /establishments/:id

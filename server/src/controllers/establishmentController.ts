@@ -132,9 +132,19 @@ export const myEstablishments = async (
       );
       const myProfessionalId = prof ? prof._id.toString() : null;
 
+      // papel do usuario neste estabelecimento: dono, secretaria(o) ou profissional
+      const myMember = est.members.find(
+        (m) => m.professional?.toString() === req.userId
+      );
+      const myRole = isOwner
+        ? "owner"
+        : myMember?.role === "secretary"
+          ? "secretary"
+          : "professional";
+
       return {
         ...est.toObject(),
-        myRole: isOwner ? "owner" : "professional",
+        myRole,
         myProfessionalId,
       };
     })

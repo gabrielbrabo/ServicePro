@@ -1059,3 +1059,98 @@ Asaas.
 > `asaasApiKey`) para o modelo "empresa fora" — precisa habilitar as chaves de
 > subconta no painel do Asaas (janela de 2h + whitelist de IP); opcionalmente
 > configurar webhook por subconta para PIX de cliente instantâneo (hoje via poll).
+
+## 33. Assentos de funcionário (limite de equipe)
+
+O plano inclui **5 funcionários** (a EQUIPE; o **dono não conta**). Acima disso,
+cada assento extra é pago e entra na assinatura:
+
+- 6º, 7º e 8º funcionário: **R$ 9,99/mês** cada
+- do 9º em diante: **R$ 14,99/mês** cada
+- ciclo **anual = 10×** o mensal (2 meses grátis)
+
+Cobrança do assento é feita **na conta da empresa** (receita da plataforma, sem
+split, flag `platform` em `createCharge`) e, ao confirmar, sobe `extraSeats` e
+**atualiza o valor recorrente** da assinatura no Asaas
+(`updateSubscriptionValue`). No meio de um ciclo anual, cobra **proporcional**
+aos meses restantes. A trava está no **backend** (`professionalController` bloqueia
+cadastro/reativação além do limite, com `403 { needSeat }`), então não dá para
+furar pela API. No painel (aba Equipe) o dono vê "X de Y" e um botão de comprar
+assento (modal PIX/cartão).
+
+- Config: `server/src/config/seats.ts` (preços/incluídos), `utils/seatLimit.ts`
+  (`teamCount`, `usedSeats`, `maxTeam`).
+- Modelo: `Subscription.extraSeats` + `seatPendingPaymentId`/`seatPendingExtra`.
+- Endpoints: `GET/POST /subscriptions/:est/seats`; ramo `seat:` no webhook.
+- Front: `SeatPurchaseModal.tsx`, `ProfessionalManager` (gating).
+
+## 34. Galeria: dois carrosséis + limite de armazenamento
+
+**Exibição** (`GallerySection.tsx`): no perfil do estabelecimento a galeria tem
+**dois carrosséis** — "Fotos" (imagens normais) em cima e "Antes e depois"
+embaixo — cada um com setas próprias e lightbox compartilhado.
+
+**Limite = armazenamento** (nº de arquivos no S3, que é o que custa). O dono
+aloca como quiser: foto normal ocupa **1 espaço**, antes/depois ocupa **2**
+(são 2 arquivos).
+
+- Incluído no plano: **40 espaços**.
+- Pacote extra: **+20 espaços por R$ 6,99/mês** (recorrente, soma na assinatura,
+  anual ×10, proporcional no meio do ciclo).
+
+A trava está em `galleryController.createGalleryItem` (`403 { needSpace }`).
+Dono e **funcionários** veem o indicador de uso; só o **dono** compra pacote.
+
+- Config: `server/src/config/gallery.ts`, `utils/galleryLimit.ts`.
+- Modelo: `Subscription.extraGallerySlots` + pendências.
+- Endpoints: `GET/POST /subscriptions/:est/gallery`; ramo `gallery:` no webhook.
+- Front: `GallerySpaceModal.tsx`, `GalleryManager` (indicador + trava).
+
+## 35. Secretário(a) / Atendente (papel de agenda)
+
+Papel de acesso novo: um login que **organiza a agenda de todos** (ver, criar,
+remarcar, cancelar agendamentos e falar com clientes), **sem** prestar serviço,
+sem financeiro/caixa, sem assinatura e sem gerenciar equipe/serviços.
+
+- Membro do estabelecimento com `role: "secretary"` (não é um profissional
+  agendável, não aparece para clientes).
+- **1º(ª) é grátis**; do(a) 2º(ª) em diante cada um(a) ocupa **um assento pago**
+  (entra no mesmo contador da seção 33).
+- Convite por e-mail/link, igual aos profissionais (`Invite.role`).
+- Permissão de agenda: helper `isEstablishmentManager` em `bookingController`
+  dá poder de "estabelecimento" sobre qualquer agendamento (aplicado em
+  `listBookings`, `updateBookingStatus`, `rescheduleBooking`, `cancelSeries`,
+  `extendBooking`). Financeiro fica de fora de propósito.
+- Painel: quando `myRole === "secretary"`, só aparecem as abas **Agenda** e
+  **Clientes** (`SECRETARY_TABS` em `EstablishmentPanel`).
+- Login: é o login normal do app — aceita o convite (cria senha ou vincula) e
+  depois entra por e-mail+senha; o estabelecimento aparece no Painel Pro.
+
+- Backend: `inviteController` (`inviteSecretary`/`listSecretaries`/
+  `removeSecretary` + `acceptInvite` tratando o papel), rotas em
+  `establishmentRoutes`, `Establishment.members[].role`, `Invite.role`.
+- Front: `SecretaryManager.tsx`, `api/secretary.ts`.
+
+## 36. Produção — domínio, e-mail, uploads, login Google, assinatura
+
+Checklist do que o **domínio** (`servicospro.com`, front na Netlify, back no
+Render) exige em cada serviço:
+
+- **DNS**: o domínio usa **Netlify DNS** (nameservers da Netlify). Todos os
+  registros (inclusive e-mail) são criados **no painel de DNS da Netlify**, não
+  no Squarespace.
+- **Front ↔ back**: `CLIENT_URL` (Render) = origem exata do site, sem barra
+  final; `VITE_API_URL` (Netlify) = URL do back **e rebuild** (Vite "assa" no
+  build).
+- **E-mail (Brevo)**: domínio **autenticado** (registros DKIM 1/2, DMARC
+  `p=none` e brevo-code); `EMAIL_FROM_ADDRESS` = algo **@servicospro.com**; a
+  trava de **IPs autorizados de API** deve ficar **desligada** (o IP de saída do
+  Render é dinâmico — senão dá 401).
+- **Uploads (S3)**: adicionar as origens `https://servicospro.com` e `www` no
+  **CORS do bucket** (métodos PUT/GET/HEAD), senão o upload direto quebra.
+- **Login Google**: adicionar as origens do domínio em **Authorized JavaScript
+  origins** (Google Cloud Console) e o domínio em Authorized domains.
+- **Assinatura (ClickSign)**: por padrão fica em **sandbox** e **desligada** sem
+  `CLICKSIGN_API_TOKEN` (no-op, nada quebra e sem custo). Para produção: token de
+  produção, `CLICKSIGN_BASE_URL=https://app.clicksign.com`, webhook + secret, e
+  `CLICKSIGN_SIGN_AUTH=email` (ICP-Brasil exige certificado do assinante).

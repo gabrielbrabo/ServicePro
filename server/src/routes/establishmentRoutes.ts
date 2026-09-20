@@ -16,7 +16,12 @@ import {
 } from "../controllers/establishmentPhotoController";
 import { protect } from "../middleware/auth";
 import professionalRoutes from "./professionalRoutes";
-import { listInvites } from "../controllers/inviteController";
+import {
+  listInvites,
+  inviteSecretary,
+  listSecretaries,
+  removeSecretary,
+} from "../controllers/inviteController";
 
 const router = Router();
 
@@ -28,6 +33,11 @@ router.get("/:establishmentId/photos", getPhotos);
 router.put("/:establishmentId/photos/profile", protect, updateProfilePhoto);
 router.put("/:establishmentId/photos/covers", protect, updateCoverPhotos);
 router.get("/:establishmentId/invites", protect, listInvites);
+
+// secretarias / atendentes (dono)
+router.get("/:establishmentId/secretaries", protect, listSecretaries);
+router.post("/:establishmentId/secretaries/invite", protect, inviteSecretary);
+router.delete("/:establishmentId/secretaries/:userId", protect, removeSecretary);
 
 // rotas especificas antes das com :id
 router.get("/mine", protect, myEstablishments);

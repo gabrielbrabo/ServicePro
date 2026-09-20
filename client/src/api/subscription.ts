@@ -104,6 +104,7 @@ export interface GallerySpace {
   packSlots: number;
   packPriceCents: number;
   packChargeNowCents: number;
+  isOwner: boolean; // so o dono pode comprar espaco
   pending: boolean;
   hasSubscription: boolean;
 }
