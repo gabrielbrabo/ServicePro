@@ -46,6 +46,24 @@ export function AffiliateRegisterPage() {
       return;
     }
 
+    // CNPJ (14 dígitos) = pessoa jurídica; senão pessoa física (exige nascimento).
+    // O Asaas precisa desses dados para abrir sua conta de recebimento.
+    const digits = form.cpfCnpj.replace(/\D/g, "");
+    const isCnpj = digits.length > 11;
+    if (!isCnpj && !form.birthDate) {
+      setError("Informe sua data de nascimento");
+      return;
+    }
+    if (
+      !form.postalCode ||
+      !form.address ||
+      !form.addressNumber ||
+      !form.province
+    ) {
+      setError("Preencha o endereço completo (CEP, endereço, número e bairro)");
+      return;
+    }
+
     setLoading(true);
     try {
       const { token, affiliate } = await affiliateApi.register({
@@ -55,10 +73,10 @@ export function AffiliateRegisterPage() {
         phone: form.phone,
         cpfCnpj: form.cpfCnpj,
         birthDate: form.birthDate || undefined,
-        postalCode: form.postalCode || undefined,
-        address: form.address || undefined,
-        addressNumber: form.addressNumber || undefined,
-        province: form.province || undefined,
+        postalCode: form.postalCode,
+        address: form.address,
+        addressNumber: form.addressNumber,
+        province: form.province,
       });
       localStorage.setItem("token", token);
       setCreated(affiliate);
@@ -113,8 +131,8 @@ export function AffiliateRegisterPage() {
               Sua comissão de {created.commissionPercent}% cai na sua conta de
               recebimento no Asaas a cada pagamento dos seus indicados. Você vai
               receber um <strong>e-mail do Asaas</strong> para ativar seu acesso
-              — é por lá que você <strong>saca</strong> o dinheiro. O painel
-              mostra o seu saldo e leva direto pra tela de saque do Asaas.
+              — é por lá que você <strong>saca</strong>. O painel mostra o seu
+              saldo e leva direto pra tela de saque do Asaas.
             </p>
           </div>
           <Button type="button" onClick={() => navigate("/afiliado")}>
@@ -180,8 +198,8 @@ export function AffiliateRegisterPage() {
         </div>
         <Input
           id="birthDate"
-          label="Data de nascimento (AAAA-MM-DD)"
-          placeholder="1990-05-20"
+          label="Data de nascimento"
+          type="date"
           value={form.birthDate}
           onChange={update("birthDate")}
         />
@@ -189,12 +207,14 @@ export function AffiliateRegisterPage() {
           <Input
             id="postalCode"
             label="CEP"
+            required
             value={form.postalCode}
             onChange={update("postalCode")}
           />
           <Input
             id="province"
             label="Bairro"
+            required
             value={form.province}
             onChange={update("province")}
           />
@@ -203,20 +223,23 @@ export function AffiliateRegisterPage() {
           <Input
             id="address"
             label="Endereço"
+            required
             value={form.address}
             onChange={update("address")}
           />
           <Input
             id="addressNumber"
             label="Número"
+            required
             value={form.addressNumber}
             onChange={update("addressNumber")}
           />
         </div>
         <p className="text-xs text-ink/50">
-          Com esses dados abrimos sua conta de recebimento no Asaas. Você vai
-          receber um <strong>e-mail do Asaas</strong> para ativar seu acesso — é
-          por lá que você saca suas comissões.
+          Com esses dados abrimos sua conta de recebimento no Asaas (por isso a
+          data de nascimento e o endereço são obrigatórios). Você vai receber um{" "}
+          <strong>e-mail do Asaas</strong> para ativar o acesso — é por lá que
+          você saca suas comissões.
         </p>
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>

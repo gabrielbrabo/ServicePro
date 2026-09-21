@@ -50,6 +50,7 @@ async function ensureSubaccount(input: {
   province: string;
   postalCode: string;
   birthDate?: string;
+  companyType?: string;
 }): Promise<{ accountId: string; walletId: string; apiKey: string }> {
   const provider = getPaymentProvider();
   let accountId = "";
@@ -74,7 +75,9 @@ async function ensureSubaccount(input: {
       addressNumber: input.addressNumber,
       province: input.province,
       postalCode: input.postalCode,
-      birthDate: input.birthDate,
+      // pessoa fisica exige birthDate; pessoa juridica exige companyType
+      birthDate: input.companyType ? undefined : input.birthDate,
+      companyType: input.companyType,
     });
     accountId = created.accountId;
     walletId = created.walletId;
@@ -123,6 +126,24 @@ export const registerAffiliate = async (
       res
         .status(400)
         .json({ message: "CPF/CNPJ e telefone sao obrigatorios" });
+      return;
+    }
+
+    // CNPJ (14 digitos) -> pessoa juridica; senao pessoa fisica (exige nascimento)
+    const digits = cpfCnpj.replace(/\D/g, "");
+    const isCnpj = digits.length > 11;
+
+    // O Asaas exige esses dados para abrir a conta de recebimento. Validamos
+    // aqui para devolver uma mensagem clara (em vez do erro cru do gateway).
+    if (!isCnpj && !birthDate) {
+      res.status(400).json({ message: "Informe sua data de nascimento." });
+      return;
+    }
+    if (!postalCode || !address || !addressNumber || !province) {
+      res.status(400).json({
+        message:
+          "Preencha o endereco completo (CEP, endereco, numero e bairro).",
+      });
       return;
     }
 
@@ -184,6 +205,7 @@ export const registerAffiliate = async (
       province: province || "",
       postalCode: postalCode || "",
       birthDate,
+      companyType: isCnpj ? "LIMITED" : undefined,
     });
 
     // 4) cria a conta de afiliado/representante
