@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
+import { Types } from "mongoose";
 import crypto from "crypto";
 import { User } from "../models/User";
+import { Affiliate } from "../models/Affiliate";
 import { signToken } from "../utils/token";
 import { AuthRequest } from "../middleware/auth";
 import { env } from "../config/env";
@@ -53,7 +55,7 @@ const sendVerificationEmail = async (user: {
 
 // POST /api/auth/register
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password, phone, country, state, city } = req.body;
+  const { name, email, password, phone, country, state, city, ref } = req.body;
 
   if (!name || !email || !password) {
     res.status(400).json({ message: "Nome, email e senha sao obrigatorios" });
@@ -66,6 +68,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // indicacao: se veio um ?ref de afiliado/representante ativo, vincula o
+  // usuario ao afiliado (o split de comissao e aplicado quando ele assinar).
+  let referredByAffiliate: Types.ObjectId | null = null;
+  if (typeof ref === "string" && ref.trim()) {
+    const aff = await Affiliate.findOne({
+      code: ref.trim(),
+      status: "active",
+    }).select("_id");
+    if (aff) referredByAffiliate = aff._id;
+  }
+
   const user = await User.create({
     name,
     email,
@@ -74,6 +87,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     country: country || "Brasil",
     state,
     city,
+    referredByAffiliate,
   });
 
   // envia a confirmacao (nao bloqueia o cadastro se falhar)
@@ -350,7 +364,7 @@ export const googleAuth = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { credential } = req.body;
+    const { credential, ref } = req.body;
 
     if (!credential) {
       res.status(400).json({ message: "Credencial ausente" });
@@ -400,6 +414,15 @@ export const googleAuth = async (
       }
       if (changed) await user.save();
     } else {
+      // indicacao: se veio ?ref de afiliado/representante ativo, vincula.
+      let referredByAffiliate: Types.ObjectId | null = null;
+      if (typeof ref === "string" && ref.trim()) {
+        const aff = await Affiliate.findOne({
+          code: ref.trim(),
+          status: "active",
+        }).select("_id");
+        if (aff) referredByAffiliate = aff._id;
+      }
       // conta nova via Google: sem senha, ja verificada
       user = await User.create({
         name,
@@ -409,6 +432,7 @@ export const googleAuth = async (
         avatar,
         emailVerified: true,
         country: "Brasil",
+        referredByAffiliate,
       });
     }
 

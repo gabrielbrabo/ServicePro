@@ -53,6 +53,17 @@ export function EstablishmentForm({
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // link/código de quem indicou (afiliado/representante). Pré-preenche a partir
+  // do ?ref guardado no link do afiliado; o dono também pode colar manualmente.
+  const [referredBy, setReferredBy] = useState("");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sp_ref");
+      if (saved) setReferredBy(saved);
+    } catch {
+      // ambiente sem localStorage: ignora
+    }
+  }, []);
   // negócio já criado (para retentar o pagamento sem duplicar o cadastro)
   const [createdEst, setCreatedEst] = useState<Establishment | null>(null);
   // PIX gerado após assinar (mostrado na hora, antes de entrar no painel)
@@ -202,6 +213,8 @@ export function EstablishmentForm({
           location: coords
             ? { type: "Point", coordinates: [coords.lon, coords.lat] }
             : undefined,
+          // indicação: link/código do afiliado/representante que indicou
+          ref: referredBy.trim() || undefined,
         });
         setCreatedEst(est);
       }
@@ -771,6 +784,24 @@ export function EstablishmentForm({
               rows={2}
               className="w-full rounded-xl border border-ink/15 bg-white px-4 py-3 outline-none focus:border-teal-500"
             />
+          </label>
+
+          {/* indicação: link/código de quem indicou (afiliado/representante) */}
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-ink/70">
+              Link de quem indicou{" "}
+              <span className="font-normal text-ink/40">(opcional)</span>
+            </span>
+            <input
+              value={referredBy}
+              onChange={(e) => setReferredBy(e.target.value)}
+              placeholder="Cole aqui o link do afiliado/representante que indicou você"
+              className={inputClass}
+            />
+            <span className="mt-1 block text-xs text-ink/40">
+              Se você chegou pelo link de um afiliado/representante, ele já vem
+              preenchido. Assim ele recebe a comissão da sua indicação.
+            </span>
           </label>
 
           <div className="flex gap-3">

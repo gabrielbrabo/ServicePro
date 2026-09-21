@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import {
@@ -22,6 +23,9 @@ import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
 import { AgendaPublicPage } from "./pages/AgendaPublicPage";
 import { ReviewPublicPage } from "./pages/ReviewPublicPage";
+import { AffiliateRegisterPage } from "./pages/AffiliateRegisterPage";
+import { AffiliateLoginPage } from "./pages/AffiliateLoginPage";
+import { AffiliateDashboardPage } from "./pages/AffiliateDashboardPage";
 
 // Para onde mandar um usuario logado: se tem estabelecimento (dono OU
 // funcionario) vai para o painel; senao (cliente) vai para a busca.
@@ -55,12 +59,27 @@ function P({ children }: { children: React.ReactNode }) {
   return <ProtectedRoute>{children}</ProtectedRoute>;
 }
 
+// Captura o ?ref=<code> do link do afiliado/representante e guarda no
+// localStorage. Sobrevive entre visitas ate o cadastro do indicado enviar.
+function RefCapture() {
+  useEffect(() => {
+    try {
+      const ref = new URLSearchParams(window.location.search).get("ref");
+      if (ref) localStorage.setItem("sp_ref", ref);
+    } catch {
+      // ambiente sem localStorage/URLSearchParams: ignora
+    }
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <EstablishmentProvider>
         <NotificationProvider>
           <BrowserRouter>
+            <RefCapture />
             <Routes>
               <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
               <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
@@ -70,6 +89,11 @@ export default function App() {
               <Route path="/agendamentos" element={<P><BookingsPage /></P>} />
               <Route path="/perfil" element={<P><ProfilePage /></P>} />
               <Route path="/estabelecimento/:id/editar" element={<P><EstablishmentEditPage /></P>} />
+
+              {/* Programa de afiliados/representantes — area propria (sistema a parte) */}
+              <Route path="/seja-afiliado" element={<AffiliateRegisterPage />} />
+              <Route path="/afiliado/login" element={<AffiliateLoginPage />} />
+              <Route path="/afiliado" element={<AffiliateDashboardPage />} />
 
               {/* pagina publica do estabelecimento (link de divulgacao) */}
               <Route path="/e/:establishmentId" element={<ProviderPublicPage />} />

@@ -27,6 +27,10 @@ export interface ISubscription extends Document {
   galleryPendingPaymentId: string;
   galleryPendingSlots: number;
   status: SubscriptionStatus;
+  // afiliado/representante que indicou o dono: recebe split (25%) desta
+  // assinatura. affiliateWalletId = a subconta Asaas que recebe o split.
+  affiliate: Types.ObjectId | null;
+  affiliateWalletId: string;
   // gateway
   provider: string; // "asaas" | "mercadopago" | "" (noop/dev)
   providerCustomerId: string;
@@ -75,6 +79,14 @@ const subscriptionSchema = new Schema<ISubscription>(
       default: "none",
       index: true,
     },
+    // afiliado/representante (indicacao) — split de 25% desta assinatura
+    affiliate: {
+      type: Schema.Types.ObjectId,
+      ref: "Affiliate",
+      default: null,
+      index: true,
+    },
+    affiliateWalletId: { type: String, default: "" },
     provider: { type: String, default: "" },
     providerCustomerId: { type: String, default: "", index: true },
     providerSubscriptionId: { type: String, default: "", index: true },

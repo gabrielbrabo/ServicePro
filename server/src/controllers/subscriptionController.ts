@@ -1,7 +1,14 @@
 import { Request, Response } from "express";
+import { Types } from "mongoose";
 import { AuthRequest } from "../middleware/auth";
 import { Establishment } from "../models/Establishment";
 import { User } from "../models/User";
+import { Affiliate } from "../models/Affiliate";
+import { AffiliateCommission } from "../models/AffiliateCommission";
+import {
+  sendCommissionReceivedEmail,
+  sendNonRenewalEmail,
+} from "../utils/affiliateEmails";
 import { Subscription } from "../models/Subscription";
 import { Booking } from "../models/Booking";
 import {
@@ -227,10 +234,34 @@ export const subscribe = async (
       return;
     }
 
-    const owner = await User.findById(est.owner).select("name email");
+    const owner = await User.findById(est.owner).select(
+      "name email referredByAffiliate"
+    );
     if (!owner) {
       res.status(400).json({ message: "Dono nao encontrado" });
       return;
+    }
+
+    // afiliado/representante que indicou o dono: se ativo e com subconta, injeta
+    // split (25%) na assinatura (o Asaas repassa a cada cobranca) e guarda o
+    // vinculo na assinatura para o painel/contabilizacao.
+    let affiliateId: Types.ObjectId | null = null;
+    let affiliateWalletId = "";
+    let affiliatePercent = 0;
+    if (owner.referredByAffiliate) {
+      const aff = await Affiliate.findOne({
+        _id: owner.referredByAffiliate,
+        status: "active",
+      }).select("asaasWalletId commissionPercent user");
+      // anti-autoindicacao: o afiliado nao recebe comissao por indicar o proprio
+      // estabelecimento (mesma conta como afiliado e como dono).
+      const selfReferral =
+        aff && aff.user && aff.user.toString() === est.owner.toString();
+      if (aff && aff.asaasWalletId && !selfReferral) {
+        affiliateId = aff._id;
+        affiliateWalletId = aff.asaasWalletId;
+        affiliatePercent = aff.commissionPercent || 25;
+      }
     }
 
     const provider = getPaymentProvider();
@@ -268,6 +299,8 @@ export const subscribe = async (
               phone: holderInfo.phone,
             }
           : undefined,
+      splitWalletId: affiliateWalletId || undefined,
+      splitPercent: affiliateWalletId ? affiliatePercent : undefined,
       remoteIp: req.ip,
       externalRef: est._id.toString(),
     });
@@ -285,6 +318,8 @@ export const subscribe = async (
       currentPeriodEnd: result.currentPeriodEnd,
       cardLast4: result.cardLast4 || "",
       cardBrand: result.cardBrand || "",
+      affiliate: affiliateId,
+      affiliateWalletId,
     };
 
     sub = await Subscription.findOneAndUpdate(
@@ -926,6 +961,144 @@ export const buyGallery = async (
   }
 };
 
+// Efeitos de afiliado/representante disparados pelo webhook de assinatura:
+//  - payment_confirmed -> registra a comissao (idempotente por paymentId) e
+//    avisa o afiliado por e-mail (pagou na 1a; renovou nas seguintes).
+//  - payment_overdue   -> avisa o afiliado que o indicado nao renovou.
+// Fire-and-forget do ponto de vista do webhook (o chamador engole erros).
+async function creditAffiliate(
+  sub: ISubscription,
+  event: { type: string; paymentId?: string }
+): Promise<void> {
+  const aff = await Affiliate.findById(sub.affiliate);
+  if (!aff) return;
+  const owner = await User.findById(aff.user).select("email");
+  const est = await Establishment.findById(sub.establishment).select("name");
+  const establishmentName = est?.name || "Estabelecimento";
+  const to = owner?.email || "";
+
+  if (event.type === "payment_confirmed") {
+    const paymentId = event.paymentId || "";
+    // sem id de pagamento nao ha chave de idempotencia: nao registra em dobro
+    if (!paymentId) return;
+    const exists = await AffiliateCommission.findOne({ paymentId }).select("_id");
+    if (exists) return;
+
+    const percent = aff.commissionPercent || 25;
+    const grossCents = sub.priceCents;
+    const commissionCents = Math.round((grossCents * percent) / 100);
+    // 1a comissao desta assinatura = "paid"; as seguintes = "renewed"
+    const prior = await AffiliateCommission.countDocuments({
+      subscription: sub._id,
+    });
+    const type: "paid" | "renewed" = prior > 0 ? "renewed" : "paid";
+
+    await AffiliateCommission.create({
+      affiliate: aff._id,
+      subscription: sub._id,
+      establishment: sub.establishment || null,
+      paymentId,
+      grossCents,
+      commissionPercent: percent,
+      commissionCents,
+      type,
+      paidAt: new Date(),
+    });
+
+    const plan = getPlan(sub.planId);
+    if (to) {
+      sendCommissionReceivedEmail({
+        to,
+        establishmentName,
+        planName: plan?.name || sub.planId,
+        commissionCents,
+        renewed: type === "renewed",
+      });
+    }
+  } else if (event.type === "payment_overdue") {
+    if (to) sendNonRenewalEmail({ to, establishmentName });
+  } else if (event.type === "payment_refunded") {
+    // estorno/chargeback: reverte a comissao daquele pagamento (o Asaas ja
+    // reverteu o split). Nao inflamos o "recebido" do painel.
+    const paymentId = event.paymentId || "";
+    if (!paymentId) return;
+    const commission = await AffiliateCommission.findOne({ paymentId });
+    if (commission && !commission.reversed) {
+      commission.reversed = true;
+      commission.reversedAt = new Date();
+      await commission.save();
+    }
+  }
+}
+
+// Reconcilia as comissoes de UMA assinatura direto na API do gateway: busca os
+// pagamentos ja confirmados e registra no ledger os que ainda faltam (idempotente
+// por paymentId). Serve de rede de seguranca quando o webhook nao chegou. Recebe
+// os campos da assinatura (aceita doc ou objeto lean). Falha silenciosa.
+export async function reconcileAffiliateForSubscription(sub: {
+  _id: Types.ObjectId | string;
+  affiliate?: Types.ObjectId | string | null;
+  providerSubscriptionId?: string;
+  establishment?: Types.ObjectId | string | null;
+  planId: string;
+}): Promise<void> {
+  try {
+    if (!sub.affiliate || !sub.providerSubscriptionId) return;
+    const provider = getPaymentProvider();
+    if (!provider.listConfirmedPayments) return;
+
+    const payments = await provider.listConfirmedPayments(
+      sub.providerSubscriptionId
+    );
+    if (!payments.length) return;
+
+    const aff = await Affiliate.findById(sub.affiliate);
+    if (!aff) return;
+    const percent = aff.commissionPercent || 25;
+    const owner = await User.findById(aff.user).select("email");
+    const est = await Establishment.findById(sub.establishment).select("name");
+    const establishmentName = est?.name || "Estabelecimento";
+    const to = owner?.email || "";
+    const plan = getPlan(sub.planId);
+
+    for (const p of payments) {
+      if (!p.paymentId) continue;
+      const exists = await AffiliateCommission.findOne({
+        paymentId: p.paymentId,
+      }).select("_id");
+      if (exists) continue;
+      const grossCents = p.valueCents || 0;
+      const commissionCents = Math.round((grossCents * percent) / 100);
+      const prior = await AffiliateCommission.countDocuments({
+        subscription: sub._id,
+      });
+      const type: "paid" | "renewed" = prior > 0 ? "renewed" : "paid";
+      await AffiliateCommission.create({
+        affiliate: aff._id,
+        subscription: sub._id,
+        establishment: sub.establishment || null,
+        paymentId: p.paymentId,
+        grossCents,
+        commissionPercent: percent,
+        commissionCents,
+        type,
+        paidAt: new Date(),
+      });
+      if (to) {
+        sendCommissionReceivedEmail({
+          to,
+          establishmentName,
+          planName: plan?.name || sub.planId,
+          commissionCents,
+          renewed: type === "renewed",
+        });
+      }
+    }
+  } catch (e) {
+    console.error("reconcileAffiliateForSubscription:", (e as Error).message);
+  }
+}
+
 // POST /api/webhooks/payments  (SEM auth de usuario; validado pelo gateway)
 // Fonte da verdade do "pago". Idempotente via lastEventId.
 export const paymentsWebhook = async (
@@ -1031,6 +1204,19 @@ export const paymentsWebhook = async (
     sub.lastEventId = event.id || sub.lastEventId;
     sub.lastEventAt = new Date();
     await sub.save();
+
+    // afiliado/representante: registra a comissao e avisa por e-mail. Nunca
+    // derruba o webhook (erro aqui e apenas logado).
+    if (sub.affiliate) {
+      try {
+        await creditAffiliate(sub, {
+          type: event.type,
+          paymentId: event.paymentId,
+        });
+      } catch (e) {
+        console.error("creditAffiliate:", (e as Error).message);
+      }
+    }
 
     res.json({ ok: true });
   } catch (err) {

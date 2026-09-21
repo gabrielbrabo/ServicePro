@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { PipelineStage, Types } from "mongoose";
 import { Establishment } from "../models/Establishment";
+import { User } from "../models/User";
+import { Affiliate } from "../models/Affiliate";
 import { Service } from "../models/Service";
 import { Category } from "../models/Category";
 import { AuthRequest } from "../middleware/auth";
@@ -11,6 +13,45 @@ import { isSegment, DEFAULT_SEGMENT } from "../config/segments";
 import { isEstablishmentActive } from "../utils/subscriptionActive";
 import { getPaymentProvider } from "../services/payments";
 import { paymentsConfigured } from "../config/env";
+
+// extrai o codigo de indicacao de um link (…/?ref=CODE) ou aceita o codigo cru
+function extractRefCode(input: unknown): string {
+  const s = typeof input === "string" ? input.trim() : "";
+  if (!s) return "";
+  const m = s.match(/[?&]ref=([^&#\s]+)/i);
+  if (m) {
+    try {
+      return decodeURIComponent(m[1]);
+    } catch {
+      return m[1];
+    }
+  }
+  return s;
+}
+
+// vincula o dono a um afiliado/representante a partir do ref informado no
+// cadastro do estabelecimento. So vincula se o dono ainda nao tem indicacao,
+// o afiliado esta ativo e nao e auto-indicacao. Falha silenciosa.
+async function linkAffiliateFromRef(
+  userId: string | undefined,
+  refRaw: unknown
+): Promise<void> {
+  try {
+    const code = extractRefCode(refRaw);
+    if (!code || !userId) return;
+    const owner = await User.findById(userId).select("referredByAffiliate");
+    if (!owner || owner.referredByAffiliate) return; // ja indicado: nao troca
+    const aff = await Affiliate.findOne({
+      code,
+      status: "active",
+    }).select("_id user");
+    if (!aff || aff.user.toString() === userId) return; // invalido/auto-indicacao
+    owner.referredByAffiliate = aff._id;
+    await owner.save();
+  } catch (e) {
+    console.error("linkAffiliateFromRef:", (e as Error).message);
+  }
+}
 
 // POST /api/establishments  (protegido)
 export const createEstablishment = async (
@@ -89,6 +130,11 @@ export const createEstablishment = async (
     // o dono tambem atende: cria seu profissional agendavel (vinculado a ele)
     const created = await ensureOwnerProfessional(establishment);
     if (created) await establishment.save();
+
+    // indicacao por afiliado/representante: se veio um link/codigo no cadastro e
+    // o dono ainda nao tem afiliado vinculado, vincula agora (o split entra no
+    // subscribe). Nao sobrescreve uma indicacao anterior nem permite auto-indicar.
+    await linkAffiliateFromRef(req.userId, req.body.ref);
 
     res.status(201).json(establishment);
   } catch (err) {

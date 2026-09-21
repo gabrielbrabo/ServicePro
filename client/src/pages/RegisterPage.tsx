@@ -76,6 +76,15 @@ export function RegisterPage() {
 
     setLoading(true);
     try {
+      // indicacao: se veio por link de afiliado/representante, envia o ?ref
+      // guardado no localStorage para o back vincular a indicacao.
+      let ref: string | undefined;
+      try {
+        ref = localStorage.getItem("sp_ref") || undefined;
+      } catch {
+        ref = undefined;
+      }
+
       await register({
         name: form.name,
         email: form.email,
@@ -84,7 +93,16 @@ export function RegisterPage() {
         country: form.country,
         state: form.state,
         city: form.city,
+        ref,
       });
+
+      // vinculo consumido: limpa para nao reaproveitar em outro cadastro
+      try {
+        localStorage.removeItem("sp_ref");
+      } catch {
+        // ignora
+      }
+
       navigate("/");
     } catch (err) {
       const ax = err as AxiosError<{ message: string }>;

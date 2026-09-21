@@ -1,13 +1,14 @@
 import { useState, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
-import { GoogleLoginButton } from "../components/GoogleLoginButton";
+import { affiliateApi } from "../api/affiliate";
 
-export function LoginPage() {
-  const { login } = useAuth();
+// Login da área do afiliado/representante — separada da do estabelecimento,
+// como um sistema à parte. Usa a mesma conta; se a conta ainda não for de
+// afiliado, o back devolve notAffiliate e mandamos para o cadastro.
+export function AffiliateLoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,11 +20,16 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      // "/" decide o destino (painel do dono/funcionario ou busca do cliente)
-      navigate("/");
+      const { token } = await affiliateApi.login({ email, password });
+      localStorage.setItem("token", token);
+      navigate("/afiliado");
     } catch (err) {
-      const ax = err as AxiosError<{ message: string }>;
+      const ax = err as AxiosError<{ message: string; notAffiliate?: boolean }>;
+      // credenciais certas mas a conta ainda nao e afiliado: leva ao cadastro
+      if (ax.response?.data?.notAffiliate) {
+        navigate("/seja-afiliado");
+        return;
+      }
       setError(ax.response?.data?.message || "Não foi possível entrar");
     } finally {
       setLoading(false);
@@ -31,20 +37,10 @@ export function LoginPage() {
   };
 
   return (
-    <AuthLayout title="Entrar" subtitle="Bem-vindo de volta ao ServiçosPro.">
-      <GoogleLoginButton
-        onSuccess={() => navigate("/")}
-        onError={(msg) => setError(msg)}
-      />
-
-      <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-ink/10" />
-        <span className="text-xs font-medium uppercase tracking-wide text-ink/40">
-          ou
-        </span>
-        <span className="h-px flex-1 bg-ink/10" />
-      </div>
-
+    <AuthLayout
+      title="Área do afiliado/representante"
+      subtitle="Acompanhe seus indicados e suas comissões."
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           id="email"
@@ -71,27 +67,18 @@ export function LoginPage() {
       </form>
 
       <p className="mt-6 text-center text-sm text-ink/60">
-        Não tem conta?{" "}
-        <Link to="/register" className="font-semibold text-teal-500">
-          Criar conta
+        Ainda não é afiliado/representante?{" "}
+        <Link to="/seja-afiliado" className="font-semibold text-teal-500">
+          Cadastre-se
         </Link>
       </p>
 
-      {/* acesso à área do afiliado/representante — sistema à parte */}
-      <p className="mt-4 rounded-xl bg-teal-500/5 px-4 py-3 text-center text-sm text-ink/60">
-        É afiliado/representante?{" "}
-        <Link to="/afiliado/login" className="font-semibold text-teal-500">
-          Acesse aqui
-        </Link>
-      </p>
-
-      {/* visitante pode voltar a navegar sem criar conta */}
       <p className="mt-4 border-t border-ink/10 pt-4 text-center">
         <Link
-          to="/buscar"
+          to="/login"
           className="inline-flex items-center gap-1 text-sm font-medium text-ink/50 transition hover:text-ink/80"
         >
-          ← Voltar para a busca
+          ← Login do estabelecimento
         </Link>
       </p>
     </AuthLayout>

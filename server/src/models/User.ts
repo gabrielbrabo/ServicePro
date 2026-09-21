@@ -24,6 +24,8 @@ export interface IUser extends Document {
   // reutilizavel em qualquer estabelecimento
   asaasCustomerId?: string;
   savedCard?: { token: string; last4: string; brand: string };
+  // indicacao: afiliado/representante que trouxe este usuario (gravado no cadastro)
+  referredByAffiliate?: Types.ObjectId | null;
   emailVerified: boolean;
   emailTokenHash?: string; // hash do token de verificacao (nunca o token cru)
   emailTokenExpiry?: Date;
@@ -89,6 +91,13 @@ const userSchema = new Schema<IUser>(
       ),
       default: undefined,
       select: false,
+    },
+    // indicacao: afiliado/representante que trouxe este usuario (gravado no cadastro)
+    referredByAffiliate: {
+      type: Schema.Types.ObjectId,
+      ref: "Affiliate",
+      index: true,
+      default: null,
     },
   },
   { timestamps: true }

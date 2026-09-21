@@ -104,6 +104,11 @@ export interface CreateSubscriptionInput {
   };
   remoteIp?: string;
   externalRef?: string;
+  // split de comissao do afiliado/representante: quando informado, a assinatura
+  // nasce com split para a subconta do afiliado e TODA cobranca recorrente ja
+  // sai repartida. splitPercent default 25.
+  splitWalletId?: string;
+  splitPercent?: number;
 }
 
 export interface SubscriptionResult {
@@ -127,6 +132,7 @@ export interface NormalizedEvent {
   type:
     | "payment_confirmed" // pagou -> ativa/renova
     | "payment_overdue" // atrasou -> past_due
+    | "payment_refunded" // estornado/chargeback -> reverte a comissao do afiliado
     | "subscription_canceled"
     | "unknown";
   providerSubscriptionId?: string;
@@ -210,4 +216,18 @@ export interface PaymentProvider {
     status: "active" | "past_due" | "canceled";
     currentPeriodEnd: Date | null;
   } | null>;
+  // saldo disponivel de uma SUBCONTA (ex.: afiliado). apiKey = chave da subconta.
+  getBalance?(apiKey: string): Promise<{ balanceCents: number }>;
+  // transferencia PIX a partir de uma SUBCONTA para uma chave PIX. Usado no
+  // saque do afiliado/representante (white-label: ele saca pelo app).
+  transferPix?(
+    apiKey: string,
+    input: { valueCents: number; pixKey: string }
+  ): Promise<{ transferId: string; status: string }>;
+  // lista os pagamentos JA CONFIRMADOS de uma assinatura (id + valor). Usado
+  // para reconciliar comissoes de afiliado direto na API (sem depender do
+  // webhook), ex.: quando o webhook nao esta configurado.
+  listConfirmedPayments?(
+    subscriptionId: string
+  ): Promise<{ paymentId: string; valueCents: number }[]>;
 }

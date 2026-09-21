@@ -20,6 +20,7 @@ interface AuthContextType {
     country?: string;
     state?: string;
     city?: string;
+    ref?: string;
   }) => Promise<void>;
   logout: () => void;
   loginWithGoogle: (credential: string) => Promise<User>;
@@ -27,6 +28,22 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// lê o ?ref guardado no cadastro por link de afiliado/representante
+function readRef(): string | undefined {
+  try {
+    return localStorage.getItem("sp_ref") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+function clearRef(): void {
+  try {
+    localStorage.removeItem("sp_ref");
+  } catch {
+    // ignora
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -65,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     country?: string;
     state?: string;
     city?: string;
+    ref?: string;
   }) => {
     const { token, user } = await authApi.register(data);
     localStorage.setItem("token", token);
@@ -79,8 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginWithGoogle = async (credential: string): Promise<User> => {
-    const { token, user } = await authApi.google(credential);
+    // leva a indicacao (?ref) para o back vincular contas Google novas
+    const ref = readRef();
+    const { token, user } = await authApi.google(credential, ref);
     localStorage.setItem("token", token);
+    clearRef();
     setUser(user);
     connectSocket();
     return user;

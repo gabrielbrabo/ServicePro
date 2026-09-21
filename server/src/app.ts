@@ -58,6 +58,7 @@ import { publicAgendaRoutes } from "./routes/publicAgendaRoutes";
 import subscriptionRoutes, {
   paymentsWebhook,
 } from "./routes/subscriptionRoutes";
+import affiliateRoutes from "./routes/affiliateRoutes";
 
 export const createApp = (): Application => {
   const app = express();
@@ -133,6 +134,9 @@ export const createApp = (): Application => {
   // e validado pelo proprio adapter do gateway).
   app.use("/api/subscriptions", subscriptionRoutes);
   app.post("/api/webhooks/payments", paymentsWebhook);
+
+  // Programa de afiliados/representantes (cadastro, login proprio, painel)
+  app.use("/api/affiliates", affiliateRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

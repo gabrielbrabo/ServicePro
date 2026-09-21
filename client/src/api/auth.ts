@@ -32,6 +32,8 @@ export const authApi = {
     country?: string;
     state?: string;
     city?: string;
+    // indicacao: codigo do afiliado/representante que trouxe o usuario
+    ref?: string;
   }) => api.post<AuthResponse>("/auth/register", data).then((r) => r.data),
 
   login: (data: { email: string; password: string }) =>
@@ -65,8 +67,9 @@ export const authApi = {
       .post<{ message: string }>("/auth/resend-verification")
       .then((r) => r.data),
 
-  google: (credential: string) =>
+  // ref: indicacao de afiliado/representante (aplicada so em conta nova)
+  google: (credential: string, ref?: string) =>
     api
-      .post<{ token: string; user: User }>("/auth/google", { credential })
+      .post<{ token: string; user: User }>("/auth/google", { credential, ref })
       .then((r) => r.data),
 };

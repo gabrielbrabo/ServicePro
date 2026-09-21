@@ -297,6 +297,17 @@ export const asaasProvider: PaymentProvider = {
       description: `Assinatura ServiçosPro (${input.planId})`,
       externalReference: input.externalRef,
     };
+    // split de comissao do afiliado/representante (25% por padrao). O Asaas
+    // aplica este split a TODA cobranca gerada pela assinatura (recorrente),
+    // creditando a porcentagem direto na subconta do afiliado.
+    if (input.splitWalletId) {
+      body.split = [
+        {
+          walletId: input.splitWalletId,
+          percentualValue: input.splitPercent ?? 25,
+        },
+      ];
+    }
     const paidByCard =
       input.method === "cartao" && !!input.card && !!input.holderInfo;
 
@@ -460,6 +471,54 @@ export const asaasProvider: PaymentProvider = {
     return { status: "past_due" as const, currentPeriodEnd: null };
   },
 
+  // saldo disponivel da subconta (chave da subconta no header)
+  async getBalance(apiKey: string) {
+    const data = await api("/finance/balance", "GET", undefined, apiKey);
+    const reais = Number(data.balance ?? 0);
+    return { balanceCents: Math.round(reais * 100) };
+  },
+
+  // transferencia PIX da subconta para uma chave PIX (saque do afiliado)
+  async transferPix(apiKey: string, input: { valueCents: number; pixKey: string }) {
+    const data = await api(
+      "/transfers",
+      "POST",
+      {
+        value: cents(input.valueCents),
+        pixAddressKey: input.pixKey,
+        operationType: "PIX",
+      },
+      apiKey
+    );
+    return {
+      transferId: String(data.id ?? ""),
+      status: String(data.status ?? ""),
+    };
+  },
+
+  // pagamentos JA CONFIRMADOS de uma assinatura (para reconciliar comissoes)
+  async listConfirmedPayments(subscriptionId: string) {
+    const pays = await api(
+      `/subscriptions/${subscriptionId}/payments`,
+      "GET"
+    );
+    const list =
+      (pays.data as { id?: string; status?: string; value?: number }[] | undefined) ||
+      [];
+    return list
+      .filter(
+        (p) =>
+          p.status === "CONFIRMED" ||
+          p.status === "RECEIVED" ||
+          p.status === "RECEIVED_IN_CASH"
+      )
+      .map((p) => ({
+        paymentId: String(p.id ?? ""),
+        valueCents: Math.round(Number(p.value ?? 0) * 100),
+      }))
+      .filter((p) => p.paymentId);
+  },
+
   verifyWebhook(_rawBody, headers) {
     const token = headers["asaas-access-token"];
     const secret = env.payments.webhookSecret;
@@ -491,6 +550,12 @@ export const asaasProvider: PaymentProvider = {
       type = "payment_confirmed";
     } else if (b.event === "PAYMENT_OVERDUE") {
       type = "payment_overdue";
+    } else if (
+      b.event === "PAYMENT_REFUNDED" ||
+      b.event === "PAYMENT_CHARGEBACK_REQUESTED"
+    ) {
+      // estorno/chargeback: o Asaas reverte o split; revertemos a comissao
+      type = "payment_refunded";
     } else if (
       b.event === "SUBSCRIPTION_DELETED" ||
       b.event === "SUBSCRIPTION_INACTIVATED"

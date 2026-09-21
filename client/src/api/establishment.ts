@@ -116,6 +116,8 @@ export const establishmentApi = {
     phone?: string;
     address: Address;
     location?: { type: string; coordinates: [number, number] };
+    // indicação: link/código do afiliado/representante que indicou o dono
+    ref?: string;
   }) => api.post<Establishment>("/establishments", data).then((r) => r.data),
 
   update: (

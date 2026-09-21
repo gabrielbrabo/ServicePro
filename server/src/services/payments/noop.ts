@@ -77,6 +77,24 @@ export const noopProvider: PaymentProvider = {
     // no-op
   },
 
+  async getBalance(_apiKey: string) {
+    // dev: saldo ficticio para nao travar o fluxo local
+    return { balanceCents: 0 };
+  },
+
+  async transferPix(
+    _apiKey: string,
+    _input: { valueCents: number; pixKey: string }
+  ) {
+    // dev: finge que a transferencia foi feita
+    return { transferId: "noop-transfer", status: "PENDING" };
+  },
+
+  async listConfirmedPayments(_subscriptionId: string) {
+    // dev: sem gateway real, nada a reconciliar
+    return [];
+  },
+
   verifyWebhook() {
     return true;
   },
