@@ -4,6 +4,7 @@ import { establishmentApi, Establishment } from "../api/establishment";
 import { AddressAutocomplete, ResolvedAddress } from "./AddressAutocomplete";
 import { SEGMENT_LIST, SegmentKey, categorySegment } from "../lib/segments";
 import { subscriptionApi } from "../api/subscription";
+import { affiliateApi } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 
 // Cadastro em 3 etapas:
@@ -63,6 +64,18 @@ export function EstablishmentForm({
     } catch {
       // ambiente sem localStorage: ignora
     }
+  }, []);
+  // o dono logado JA foi indicado por um afiliado? Se sim, travamos o campo e
+  // mostramos por quem foi indicado (nao da pra trocar de afiliado depois).
+  const [referrer, setReferrer] = useState<{
+    referred: boolean;
+    affiliateName?: string;
+  } | null>(null);
+  useEffect(() => {
+    affiliateApi
+      .myReferrer()
+      .then(setReferrer)
+      .catch(() => setReferrer({ referred: false }));
   }, []);
   // negócio já criado (para retentar o pagamento sem duplicar o cadastro)
   const [createdEst, setCreatedEst] = useState<Establishment | null>(null);
@@ -786,23 +799,40 @@ export function EstablishmentForm({
             />
           </label>
 
-          {/* indicação: link/código de quem indicou (afiliado/representante) */}
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink/70">
-              Link de quem indicou{" "}
-              <span className="font-normal text-ink/40">(opcional)</span>
-            </span>
-            <input
-              value={referredBy}
-              onChange={(e) => setReferredBy(e.target.value)}
-              placeholder="Cole aqui o link do afiliado/representante que indicou você"
-              className={inputClass}
-            />
-            <span className="mt-1 block text-xs text-ink/40">
-              Se você chegou pelo link de um afiliado/representante, ele já vem
-              preenchido. Assim ele recebe a comissão da sua indicação.
-            </span>
-          </label>
+          {/* indicação: link/código de quem indicou (afiliado/representante).
+              Se o dono JA foi indicado, o campo fica travado e mostra por quem. */}
+          {referrer?.referred ? (
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 px-4 py-3">
+              <span className="mb-1 block text-sm font-medium text-ink/70">
+                Indicação
+              </span>
+              <p className="text-sm text-ink">
+                Indicado pelo afiliado/representante{" "}
+                <strong>{referrer.affiliateName}</strong>
+              </p>
+              <span className="mt-1 block text-xs text-ink/40">
+                Sua conta já está vinculada a este afiliado/representante — ele
+                recebe a comissão das suas assinaturas.
+              </span>
+            </div>
+          ) : (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink/70">
+                Link de quem indicou{" "}
+                <span className="font-normal text-ink/40">(opcional)</span>
+              </span>
+              <input
+                value={referredBy}
+                onChange={(e) => setReferredBy(e.target.value)}
+                placeholder="Cole aqui o link do afiliado/representante que indicou você"
+                className={inputClass}
+              />
+              <span className="mt-1 block text-xs text-ink/40">
+                Se você chegou pelo link de um afiliado/representante, ele já vem
+                preenchido. Assim ele recebe a comissão da sua indicação.
+              </span>
+            </label>
+          )}
 
           <div className="flex gap-3">
             <button

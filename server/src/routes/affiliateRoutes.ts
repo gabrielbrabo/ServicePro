@@ -5,6 +5,7 @@ import {
   getMyAffiliate,
   getMyReferrals,
   getMyWallet,
+  getMyReferrer,
 } from "../controllers/affiliateController";
 import { protect, optionalProtect } from "../middleware/auth";
 
@@ -21,5 +22,8 @@ router.get("/me", protect, getMyAffiliate);
 router.get("/me/referrals", protect, getMyReferrals);
 // saldo da subconta + link para sacar dentro do Asaas
 router.get("/me/wallet", protect, getMyWallet);
+// se o usuario logado ja foi indicado por um afiliado (e por quem) -> usado no
+// cadastro de estabelecimento para travar o campo de link de indicacao.
+router.get("/my-referrer", protect, getMyReferrer);
 
 export default router;

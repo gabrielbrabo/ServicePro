@@ -91,4 +91,13 @@ export const affiliateApi = {
 
   wallet: () =>
     api.get<AffiliateWallet>("/affiliates/me/wallet").then((r) => r.data),
+
+  // dono logado ja foi indicado por um afiliado? (para travar o campo no
+  // cadastro de estabelecimento e mostrar por quem foi indicado)
+  myReferrer: () =>
+    api
+      .get<{ referred: boolean; affiliateName?: string; code?: string }>(
+        "/affiliates/my-referrer"
+      )
+      .then((r) => r.data),
 };

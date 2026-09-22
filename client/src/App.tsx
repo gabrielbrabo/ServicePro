@@ -34,6 +34,13 @@ function useHomePath(): string | null {
   const { status, establishments } = useEstablishments();
   if (loading) return null;
   if (!user) return "/buscar";
+  // se a ultima area usada foi a do afiliado/representante, volta pra la no
+  // refresh (senao o usuario "caia" no painel de cliente/dono e se perdia).
+  try {
+    if (localStorage.getItem("sp_area") === "affiliate") return "/afiliado";
+  } catch {
+    /* sem localStorage: ignora */
+  }
   // aguarda o carregamento de /establishments/mine para nao decidir errado
   if (status === "idle" || status === "loading") return null;
   return establishments.length > 0 ? "/painel" : "/buscar";

@@ -384,10 +384,15 @@ export const getMyReferrals = async (
     const anySubs = await Subscription.find({ affiliate: { $ne: null } })
       .select("affiliate")
       .lean();
+    const distinctIds = [...new Set(anySubs.map((s) => String(s.affiliate)))];
+    const donos = await Affiliate.find({ _id: { $in: distinctIds } })
+      .select("code")
+      .lean();
     console.log(
-      `[aff-debug-panel] painelAffiliate=${affiliate._id} ` +
-        `subsDoPainel=${subs.length} totalComAfiliado=${anySubs.length} ` +
-        `idsGravados=[${anySubs.map((s) => String(s.affiliate)).join(", ")}]`
+      `[aff-debug-panel] VOCE esta no painel do afiliado id=${affiliate._id} ` +
+        `code=${affiliate.code} -> tem ${subs.length} indicado(s). ` +
+        `Os indicados de teste pertencem a: ` +
+        donos.map((d) => `code=${d.code} (id=${d._id})`).join(", ")
     );
 
     // rede de seguranca: reconcilia comissoes direto na API do gateway (caso o
@@ -531,5 +536,35 @@ export const getMyWallet = async (
   } catch (err) {
     console.error("getMyWallet:", err);
     res.status(500).json({ message: "Erro ao consultar o saldo" });
+  }
+};
+
+// GET /api/affiliates/my-referrer  (qualquer usuario logado)
+// Diz se o dono logado JA foi indicado por um afiliado/representante e, se sim,
+// o nome dele. O cadastro de estabelecimento usa isto para travar o campo de
+// link de indicacao (nao da pra trocar de afiliado depois de indicado).
+export const getMyReferrer = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = await User.findById(req.userId).select("referredByAffiliate");
+    if (!user?.referredByAffiliate) {
+      res.json({ referred: false });
+      return;
+    }
+    const aff = await Affiliate.findById(user.referredByAffiliate)
+      .populate("user", "name")
+      .lean();
+    if (!aff) {
+      res.json({ referred: false });
+      return;
+    }
+    const affName =
+      (aff.user as unknown as { name?: string } | null)?.name || "Afiliado";
+    res.json({ referred: true, affiliateName: affName, code: aff.code });
+  } catch (err) {
+    console.error("getMyReferrer:", err);
+    res.status(500).json({ message: "Erro ao verificar indicacao" });
   }
 };

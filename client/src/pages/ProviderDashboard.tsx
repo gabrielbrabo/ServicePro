@@ -16,6 +16,16 @@ export function ProviderDashboard() {
 
   const [modalOpen, setModalOpen] = useState(true);
 
+  // ao entrar no painel do estabelecimento, marca a area como "app" -> se o
+  // usuario tambem for afiliado, o refresh nao o joga mais pro painel de afiliado.
+  useEffect(() => {
+    try {
+      localStorage.setItem("sp_area", "app");
+    } catch {
+      /* ignora */
+    }
+  }, []);
+
   useEffect(() => {
     if (status === "idle") refresh();
   }, [status, refresh]);

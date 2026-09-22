@@ -45,6 +45,23 @@ function clearRef(): void {
   }
 }
 
+// area atual (app do cliente/dono x painel do afiliado). Usada no refresh para
+// devolver o usuario para onde ele estava, em vez de sempre cair no app.
+function markArea(area: "app" | "affiliate"): void {
+  try {
+    localStorage.setItem("sp_area", area);
+  } catch {
+    // ignora
+  }
+}
+function clearArea(): void {
+  try {
+    localStorage.removeItem("sp_area");
+  } catch {
+    // ignora
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const { token, user } = await authApi.login({ email, password });
     localStorage.setItem("token", token);
+    markArea("app");
     setUser(user);
     connectSocket();
     return user; // permite ao chamador decidir o redirect
@@ -89,12 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const ref = data.ref ?? readRef();
     const { token, user } = await authApi.register({ ...data, ref });
     localStorage.setItem("token", token);
+    markArea("app");
     setUser(user);
     connectSocket();
   };
 
   const logout = () => {
     localStorage.removeItem("token");
+    clearArea();
     disconnectSocket();
     setUser(null);
   };
@@ -105,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { token, user } = await authApi.google(credential, ref);
     localStorage.setItem("token", token);
     clearRef();
+    markArea("app"); // area do afiliado sobrescreve isto ao abrir /afiliado
     setUser(user);
     connectSocket();
     return user;

@@ -23,6 +23,11 @@ export function AffiliateLoginPage() {
     try {
       const { token } = await affiliateApi.login({ email, password });
       localStorage.setItem("token", token);
+      try {
+        localStorage.setItem("sp_area", "affiliate");
+      } catch {
+        /* ignora */
+      }
       navigate("/afiliado");
     } catch (err) {
       const ax = err as AxiosError<{ message: string; notAffiliate?: boolean }>;
@@ -44,7 +49,14 @@ export function AffiliateLoginPage() {
     >
       {/* Google: entra e vai pro painel do afiliado (cadastra se ainda não for) */}
       <GoogleLoginButton
-        onSuccess={() => navigate("/afiliado")}
+        onSuccess={() => {
+          try {
+            localStorage.setItem("sp_area", "affiliate");
+          } catch {
+            /* ignora */
+          }
+          navigate("/afiliado");
+        }}
         onError={(msg) => setError(msg)}
       />
 

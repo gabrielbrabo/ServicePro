@@ -16,7 +16,7 @@ const links = [
 ];
 
 // Botao de troca de tema (sol/lua)
-function ThemeToggle({ className = "" }: { className?: string }) {
+export function ThemeToggle({ className = "" }: { className?: string }) {
   const { theme, toggle } = useTheme();
   const dark = theme === "dark";
   return (
@@ -261,6 +261,17 @@ export function NavBar() {
 
   const onPanel = pathname.startsWith("/painel");
 
+  // Estamos na "area do afiliado/representante"? Se sim, escondemos a navegacao
+  // de cliente/dono (Explorar/Agendamentos/Painel, trocador de negocio, sino) e
+  // mostramos apenas um atalho para voltar ao painel do afiliado.
+  const affiliateArea = (() => {
+    try {
+      return localStorage.getItem("sp_area") === "affiliate";
+    } catch {
+      return false;
+    }
+  })();
+
   const { badges } = useNotifications();
 
   // pendentes do painel pro (soma de todos os estabelecimentos do usuario)
@@ -289,8 +300,8 @@ export function NavBar() {
           <Logo />
         </Link>
 
-        {/* switcher no topo — SO no desktop */}
-        {onPanel && (
+        {/* switcher no topo — SO no desktop e SO fora da area do afiliado */}
+        {onPanel && !affiliateArea && (
           <div className="hidden min-w-0 sm:block sm:max-w-xs">
             <EstablishmentSwitcher />
           </div>
@@ -298,33 +309,42 @@ export function NavBar() {
 
         {/* nav desktop */}
         <nav className="hidden items-center gap-1 sm:flex">
-          {links.map((l) => {
-            const active = pathname.startsWith(l.to);
-            return (
-              <Link
-                key={l.to}
-                to={l.to}
-                className={`relative rounded-lg px-3 py-2 text-sm font-medium transition ${active
-                  ? "bg-teal-50 text-teal-600"
-                  : "text-ink/70 hover:bg-sand"
-                  }`}
-              >
-                {l.label}
-                {countFor(l.to) > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+          {affiliateArea ? (
+            <Link
+              to="/afiliado"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-teal-600 transition hover:bg-teal-50"
+            >
+              ← Voltar ao painel
+            </Link>
+          ) : (
+            links.map((l) => {
+              const active = pathname.startsWith(l.to);
+              return (
+                <Link
+                  key={l.to}
+                  to={l.to}
+                  className={`relative rounded-lg px-3 py-2 text-sm font-medium transition ${active
+                    ? "bg-teal-50 text-teal-600"
+                    : "text-ink/70 hover:bg-sand"
+                    }`}
+                >
+                  {l.label}
+                  {countFor(l.to) > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
+                    </span>
+                  )}
+                </Link>
+              );
+            })
+          )}
         </nav>
 
         <div className="hidden shrink-0 items-center gap-2 sm:flex">
           <ThemeToggle />
           {user ? (
             <>
-              <NotificationBell />
+              {!affiliateArea && <NotificationBell />}
               <Link
                 to="/perfil"
                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition hover:bg-sand"
@@ -354,7 +374,7 @@ export function NavBar() {
 
         {/* tema + sininho no mobile */}
         <ThemeToggle className="sm:hidden" />
-        {user && (
+        {user && !affiliateArea && (
           <div className="sm:hidden">
             <NotificationBell />
           </div>
@@ -410,35 +430,45 @@ export function NavBar() {
       {/* menu mobile expansivel */}
       {menuOpen && (
         <div className="border-t border-ink/10 bg-white px-4 py-3 sm:hidden">
-          {/* seletor de negocio + novo negocio (so no painel) */}
-          {onPanel && (
+          {/* seletor de negocio + novo negocio (so no painel, fora do afiliado) */}
+          {onPanel && !affiliateArea && (
             <div className="mb-3 border-b border-ink/10 pb-3">
               <MobileEstablishmentList onDone={() => setMenuOpen(false)} />
             </div>
           )}
 
           <nav className="flex flex-col gap-1">
-            {links.map((l) => {
-              const active = pathname.startsWith(l.to);
-              return (
-                <Link
-                  key={l.to}
-                  to={l.to}
-                  onClick={() => setMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${active
-                    ? "bg-teal-50 text-teal-600"
-                    : "text-ink/70 hover:bg-sand"
-                    }`}
-                >
-                  {l.label}
-                  {countFor(l.to) > 0 && (
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
-                      {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+            {affiliateArea ? (
+              <Link
+                to="/afiliado"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-teal-600 transition hover:bg-teal-50"
+              >
+                ← Voltar ao painel
+              </Link>
+            ) : (
+              links.map((l) => {
+                const active = pathname.startsWith(l.to);
+                return (
+                  <Link
+                    key={l.to}
+                    to={l.to}
+                    onClick={() => setMenuOpen(false)}
+                    className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${active
+                      ? "bg-teal-50 text-teal-600"
+                      : "text-ink/70 hover:bg-sand"
+                      }`}
+                  >
+                    {l.label}
+                    {countFor(l.to) > 0 && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+                        {countFor(l.to) > 9 ? "9+" : countFor(l.to)}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })
+            )}
           </nav>
 
           <div className="mt-3 border-t border-ink/10 pt-3">

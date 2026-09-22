@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "../components/Logo";
+import { ThemeToggle } from "../components/NavBar";
 import { Avatar } from "../components/Avatar";
 import { EstablishmentAvatar } from "../components/EstablishmentAvatar";
 import { authApi, User } from "../api/auth";
@@ -74,6 +75,16 @@ function ShareLink({
   copied: boolean;
   dark?: boolean;
 }) {
+  // "Compartilhar" so faz sentido no CELULAR/TABLET (Web Share nativa). O Chrome
+  // do PC tambem tem a API, entao checar so navigator.share nao basta: exigimos
+  // TAMBEM um dispositivo de toque (pointer: coarse). No PC com mouse o botao
+  // some e fica so o "Copiar".
+  const canShare =
+    typeof navigator !== "undefined" &&
+    typeof (navigator as Navigator & { share?: unknown }).share === "function" &&
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
   const share = async () => {
     const nav = navigator as Navigator & {
       share?: (data: { url?: string; text?: string }) => Promise<void>;
@@ -112,17 +123,19 @@ function ShareLink({
         >
           {copied ? "Copiado!" : "Copiar"}
         </button>
-        <button
-          type="button"
-          onClick={share}
-          className={
-            dark
-              ? "h-12 flex-1 rounded-xl border border-white/30 px-5 font-semibold text-white transition hover:bg-white/10 sm:flex-none"
-              : "h-12 flex-1 rounded-xl border border-ink/15 px-5 font-semibold text-ink/70 transition hover:bg-ink/5 sm:flex-none"
-          }
-        >
-          Compartilhar
-        </button>
+        {canShare && (
+          <button
+            type="button"
+            onClick={share}
+            className={
+              dark
+                ? "h-12 flex-1 rounded-xl border border-white/30 px-5 font-semibold text-white transition hover:bg-white/10 sm:flex-none"
+                : "h-12 flex-1 rounded-xl border border-ink/15 px-5 font-semibold text-ink/70 transition hover:bg-ink/5 sm:flex-none"
+            }
+          >
+            Compartilhar
+          </button>
+        )}
       </div>
     </div>
   );
@@ -131,9 +144,11 @@ function ShareLink({
 function Header({
   user,
   onLogout,
+  onProfile,
 }: {
   user: User | null;
   onLogout: () => void;
+  onProfile: () => void;
 }) {
   return (
     <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/90 backdrop-blur">
@@ -144,14 +159,20 @@ function Header({
             Afiliado/Representante
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           {user && (
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onProfile}
+              title="Abrir meu perfil"
+              className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition hover:bg-ink/5"
+            >
               <Avatar name={user.name} src={user.avatar} size={36} />
               <span className="hidden text-sm font-medium text-ink sm:inline">
                 {user.name}
               </span>
-            </div>
+            </button>
           )}
           <button
             type="button"
@@ -190,6 +211,13 @@ export function AffiliateDashboardPage() {
         setReferrals(data.referrals);
         setUser(u);
         setWallet(w);
+        // marca que a area atual e a do afiliado -> no refresh o app volta pra
+        // ca, em vez de jogar o usuario no painel de cliente/dono.
+        try {
+          localStorage.setItem("sp_area", "affiliate");
+        } catch {
+          /* ignora */
+        }
       })
       .catch((err) => {
         const status = (err as { response?: { status?: number } })?.response
@@ -220,8 +248,16 @@ export function AffiliateDashboardPage() {
 
   const logout = () => {
     localStorage.removeItem("token");
+    try {
+      localStorage.removeItem("sp_area");
+    } catch {
+      /* ignora */
+    }
     navigate("/afiliado/login");
   };
+
+  // abre o perfil do usuario (mesma tela das contas de cliente/dono)
+  const goProfile = () => navigate("/perfil");
 
   if (loading) {
     return (
@@ -239,7 +275,7 @@ export function AffiliateDashboardPage() {
   if (!aff.approved) {
     return (
       <div className="min-h-screen bg-ink/5">
-        <Header user={user} onLogout={logout} />
+        <Header user={user} onLogout={logout} onProfile={goProfile} />
         <main className="mx-auto max-w-2xl px-4 py-8">
           <section className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-6 sm:p-8">
             <span className="inline-block rounded-full bg-amber-400/20 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -301,7 +337,7 @@ export function AffiliateDashboardPage() {
 
   return (
     <div className="min-h-screen bg-ink/5">
-      <Header user={user} onLogout={logout} />
+      <Header user={user} onLogout={logout} onProfile={goProfile} />
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         {/* Hero: link de indicação */}
