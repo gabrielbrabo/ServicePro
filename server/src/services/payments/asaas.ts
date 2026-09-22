@@ -302,10 +302,17 @@ export const asaasProvider: PaymentProvider = {
     // creditando a porcentagem direto na subconta do afiliado.
     let splitApplied = false;
     if (input.splitWalletId) {
+      // Comissao do afiliado = X% do valor BRUTO do plano, com fixedValue (e
+      // NAO percentualValue) de proposito: o Asaas calcula percentualValue sobre
+      // o valor LIQUIDO (bruto - taxa), o que faria o afiliado dividir a taxa do
+      // Asaas com a empresa. Com fixedValue o afiliado recebe exatamente X% do
+      // bruto e a conta principal (empresa) absorve 100% da taxa do Asaas.
+      const pct = input.splitPercent ?? 25;
+      const commissionCents = Math.round((input.priceCents * pct) / 100);
       body.split = [
         {
           walletId: input.splitWalletId,
-          percentualValue: input.splitPercent ?? 25,
+          fixedValue: cents(commissionCents),
         },
       ];
       splitApplied = true;
