@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "../components/Logo";
 import { Avatar } from "../components/Avatar";
@@ -128,6 +128,44 @@ function ShareLink({
   );
 }
 
+function Header({
+  user,
+  onLogout,
+}: {
+  user: User | null;
+  onLogout: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Logo />
+          <span className="hidden rounded-full bg-teal-500/10 px-2.5 py-0.5 text-xs font-semibold text-teal-600 sm:inline">
+            Afiliado/Representante
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {user && (
+            <div className="flex items-center gap-2">
+              <Avatar name={user.name} src={user.avatar} size={36} />
+              <span className="hidden text-sm font-medium text-ink sm:inline">
+                {user.name}
+              </span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-ink/5"
+          >
+            Sair
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 export function AffiliateDashboardPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -136,11 +174,12 @@ export function AffiliateDashboardPage() {
   const [referrals, setReferrals] = useState<AffiliateReferral[]>([]);
   const [wallet, setWallet] = useState<AffiliateWallet | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedEst, setCopiedEst] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
+  const load = useCallback(() => {
+    return Promise.all([
       affiliateApi.referrals(),
       authApi.me().catch(() => null),
       affiliateApi.wallet().catch(() => null),
@@ -152,9 +191,22 @@ export function AffiliateDashboardPage() {
         setUser(u);
         setWallet(w);
       })
-      .catch(() => navigate("/afiliado/login"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        const status = (err as { response?: { status?: number } })?.response
+          ?.status;
+        navigate(status === 404 ? "/seja-afiliado" : "/afiliado/login");
+      });
   }, [navigate]);
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const recheck = async () => {
+    setChecking(true);
+    await load();
+    setChecking(false);
+  };
 
   const copy = async (text: string, setFlag: (v: boolean) => void) => {
     try {
@@ -180,42 +232,79 @@ export function AffiliateDashboardPage() {
   }
   if (!aff || !summary) return null;
 
+  const asaasUrl = wallet?.asaasLoginUrl || "https://www.asaas.com/login";
+
+  // Conta Asaas ainda não aprovada: NÃO libera o link — orienta a ativar/enviar
+  // documentos e conferir de novo.
+  if (!aff.approved) {
+    return (
+      <div className="min-h-screen bg-ink/5">
+        <Header user={user} onLogout={logout} />
+        <main className="mx-auto max-w-2xl px-4 py-8">
+          <section className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-6 sm:p-8">
+            <span className="inline-block rounded-full bg-amber-400/20 px-3 py-1 text-xs font-semibold text-amber-700">
+              Conta em aprovação
+            </span>
+            <h1 className="mt-3 font-display text-2xl font-bold text-ink">
+              Falta ativar sua conta de recebimento
+            </h1>
+            <p className="mt-2 text-ink/70">
+              Criamos sua conta de recebimento no Asaas. Para liberar seu{" "}
+              <strong>link de indicação</strong> e começar a ganhar comissões,
+              você precisa ativá-la:
+            </p>
+            <ol className="mt-4 space-y-2 text-sm text-ink/70">
+              <li>
+                <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong> (no
+                endereço que você usou no cadastro) e confirme o acesso.
+              </li>
+              <li>
+                <strong>2.</strong> Envie os <strong>documentos</strong> pedidos
+                para verificação da conta.
+              </li>
+              <li>
+                <strong>3.</strong> Assim que o Asaas <strong>aprovar</strong>,
+                volte aqui e toque em “Já ativei”.
+              </li>
+            </ol>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+              <a
+                href={asaasUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
+              >
+                Abrir o Asaas ↗
+              </a>
+              <button
+                type="button"
+                onClick={recheck}
+                disabled={checking}
+                className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-semibold text-ink/70 transition hover:bg-ink/5 disabled:opacity-60"
+              >
+                {checking ? "Verificando..." : "Já ativei — verificar"}
+              </button>
+            </div>
+            <p className="mt-4 text-xs text-ink/50">
+              Seu link de indicação só é liberado depois que a conta é aprovada —
+              assim garantimos que sua comissão sempre cai certinho.
+            </p>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   const firstName = user?.name?.split(/\s+/)[0] || "afiliado";
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const establishmentLink = `${origin}/painel?ref=${aff.code}`;
 
   return (
     <div className="min-h-screen bg-ink/5">
-      <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <span className="hidden rounded-full bg-teal-500/10 px-2.5 py-0.5 text-xs font-semibold text-teal-600 sm:inline">
-              Afiliado/Representante
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {user && (
-              <div className="flex items-center gap-2">
-                <Avatar name={user.name} src={user.avatar} size={36} />
-                <span className="hidden text-sm font-medium text-ink sm:inline">
-                  {user.name}
-                </span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/70 transition hover:bg-ink/5"
-            >
-              Sair
-            </button>
-          </div>
-        </div>
-      </header>
+      <Header user={user} onLogout={logout} />
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-        {/* Hero: link de indicação geral */}
+        {/* Hero: link de indicação */}
         <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-teal-600 to-teal-700 p-6 text-white shadow-sm sm:p-8">
           <p className="text-sm font-medium text-teal-100/80">Olá, {firstName} 👋</p>
           <h1 className="mt-1 font-display text-2xl font-bold sm:text-3xl">
@@ -246,38 +335,22 @@ export function AffiliateDashboardPage() {
                 {wallet?.canReadBalance ? brl(wallet.balanceCents) : "—"}
               </p>
             </div>
-            {wallet?.asaasLoginUrl && (
-              <a
-                href={wallet.asaasLoginUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
-              >
-                Sacar no Asaas ↗
-              </a>
-            )}
+            <a
+              href={asaasUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
+            >
+              Sacar no Asaas ↗
+            </a>
           </div>
           <p className="mt-3 text-xs text-ink/50">
             O saque é feito <strong>dentro do Asaas</strong>, na sua conta de
-            recebimento. Acesse com o <strong>e-mail do seu cadastro</strong> — o
-            Asaas envia um e-mail para você ativar o acesso na primeira vez.
+            recebimento. Acesse com o <strong>e-mail do seu cadastro</strong>.
             {wallet?.freeWithdrawalsPerMonth
               ? ` Você tem ${wallet.freeWithdrawalsPerMonth} saque(s) grátis por mês.`
               : " As taxas de transferência seguem as condições do Asaas."}
           </p>
-          {wallet && !wallet.hasAccount && (
-            <p className="mt-2 text-xs text-amber-600">
-              Sua conta de recebimento ainda está sendo criada. Assim que ficar
-              pronta, o saldo e o saque aparecem aqui.
-            </p>
-          )}
-          {wallet && wallet.hasAccount && !wallet.canReadBalance && (
-            <p className="mt-2 text-xs text-amber-600">
-              Não conseguimos ler seu saldo automaticamente (conta reaproveitada
-              ou ainda em ativação). Veja o valor e saque direto no Asaas pelo
-              botão acima.
-            </p>
-          )}
         </section>
 
         {/* Convide um estabelecimento */}

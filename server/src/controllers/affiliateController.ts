@@ -31,10 +31,33 @@ async function generateUniqueCode(): Promise<string> {
 const publicAffiliate = (a: IAffiliate) => ({
   id: a._id,
   code: a.code,
-  link: refLink(a.code),
+  // link so vale/aparece apos a conta Asaas ser aprovada
+  link: a.approved ? refLink(a.code) : "",
+  approved: a.approved,
   status: a.status,
   commissionPercent: a.commissionPercent,
 });
+
+// Consulta o status da conta Asaas do afiliado e marca approved=true quando
+// aprovada. Retorna o afiliado (atualizado). Falha silenciosa. Precisa da
+// asaasApiKey (subconta) selecionada no doc.
+async function refreshApproval(a: IAffiliate): Promise<IAffiliate> {
+  try {
+    if (a.approved) return a;
+    if (!a.asaasApiKey) return a;
+    const provider = getPaymentProvider();
+    if (!provider.getSubaccountStatus) return a;
+    const st = await provider.getSubaccountStatus(a.asaasApiKey);
+    if (st.approved) {
+      a.approved = true;
+      a.approvedAt = new Date();
+      await a.save();
+    }
+  } catch (e) {
+    console.error("refreshApproval:", (e as Error).message);
+  }
+  return a;
+}
 
 // cria (ou reusa) a subconta Asaas do afiliado. Com o adapter noop (dev) devolve
 // uma carteira ficticia; nada quebra. findSubaccount evita duplicar quando o
@@ -226,6 +249,10 @@ export const registerAffiliate = async (
       province: province || "",
     });
 
+    // ja checa a aprovacao (em dev/noop ja vem aprovada; em prod fica pendente
+    // ate o afiliado ativar a conta e enviar os documentos no Asaas)
+    await refreshApproval(affiliate);
+
     const token = signToken(user._id.toString());
     res.status(201).json({ token, affiliate: publicAffiliate(affiliate) });
   } catch (err) {
@@ -252,12 +279,27 @@ export const loginAffiliate = async (
     }
 
     const user = await User.findOne({ email }).select("+password");
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user) {
+      res.status(401).json({ message: "Credenciais invalidas" });
+      return;
+    }
+    // conta criada com Google nao tem senha: orienta a usar o Google
+    if (user.authProvider === "google" || !user.password) {
+      res.status(409).json({
+        message:
+          'Esta conta foi criada com o Google. Entre com o Google no login do ServiçosPro e depois acesse a area do afiliado.',
+        useGoogle: true,
+      });
+      return;
+    }
+    if (!(await user.comparePassword(password))) {
       res.status(401).json({ message: "Credenciais invalidas" });
       return;
     }
 
-    const affiliate = await Affiliate.findOne({ user: user._id });
+    const affiliate = await Affiliate.findOne({ user: user._id }).select(
+      "+asaasApiKey"
+    );
     if (!affiliate) {
       // credenciais certas, mas a conta ainda nao virou afiliado. O front usa
       // notAffiliate para oferecer o cadastro de afiliado.
@@ -268,6 +310,7 @@ export const loginAffiliate = async (
       });
       return;
     }
+    await refreshApproval(affiliate);
 
     const token = signToken(user._id.toString());
     res.json({ token, affiliate: publicAffiliate(affiliate) });
@@ -284,11 +327,14 @@ export const getMyAffiliate = async (
   res: Response
 ): Promise<void> => {
   try {
-    const affiliate = await Affiliate.findOne({ user: req.userId });
+    const affiliate = await Affiliate.findOne({ user: req.userId }).select(
+      "+asaasApiKey"
+    );
     if (!affiliate) {
       res.status(404).json({ message: "Voce ainda nao e afiliado" });
       return;
     }
+    await refreshApproval(affiliate);
     res.json({ affiliate: publicAffiliate(affiliate) });
   } catch (err) {
     console.error("getMyAffiliate:", err);
@@ -317,11 +363,14 @@ export const getMyReferrals = async (
   res: Response
 ): Promise<void> => {
   try {
-    const affiliate = await Affiliate.findOne({ user: req.userId });
+    const affiliate = await Affiliate.findOne({ user: req.userId }).select(
+      "+asaasApiKey"
+    );
     if (!affiliate) {
       res.status(404).json({ message: "Voce ainda nao e afiliado" });
       return;
     }
+    await refreshApproval(affiliate);
     const percent = affiliate.commissionPercent || 25;
 
     const subs = await Subscription.find({ affiliate: affiliate._id })

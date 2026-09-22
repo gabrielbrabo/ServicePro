@@ -300,6 +300,7 @@ export const asaasProvider: PaymentProvider = {
     // split de comissao do afiliado/representante (25% por padrao). O Asaas
     // aplica este split a TODA cobranca gerada pela assinatura (recorrente),
     // creditando a porcentagem direto na subconta do afiliado.
+    let splitApplied = false;
     if (input.splitWalletId) {
       body.split = [
         {
@@ -307,6 +308,7 @@ export const asaasProvider: PaymentProvider = {
           percentualValue: input.splitPercent ?? 25,
         },
       ];
+      splitApplied = true;
     }
     const paidByCard =
       input.method === "cartao" && !!input.card && !!input.holderInfo;
@@ -333,7 +335,22 @@ export const asaasProvider: PaymentProvider = {
       if (input.remoteIp) body.remoteIp = input.remoteIp;
     }
 
-    const sub = await api("/subscriptions", "POST", body);
+    // RESILIENCIA: uma carteira de afiliado invalida NAO pode bloquear a
+    // assinatura do estabelecimento. Se o Asaas recusar por causa do split
+    // (carteira inexistente/invalida), refaz a assinatura SEM split.
+    let sub: Record<string, unknown>;
+    try {
+      sub = await api("/subscriptions", "POST", body);
+    } catch (e) {
+      const msg = (e as Error).message || "";
+      if (splitApplied && /wallet|carteira|split/i.test(msg)) {
+        delete body.split;
+        splitApplied = false;
+        sub = await api("/subscriptions", "POST", body);
+      } else {
+        throw e;
+      }
+    }
     const subscriptionId = String(sub.id);
     const end = periodEnd(input.billingCycle);
 
@@ -350,6 +367,7 @@ export const asaasProvider: PaymentProvider = {
         checkoutUrl: null,
         cardLast4: cc?.creditCardNumber || "",
         cardBrand: cc?.creditCardBrand || "",
+        splitApplied,
       };
     }
 
@@ -383,6 +401,7 @@ export const asaasProvider: PaymentProvider = {
       checkoutUrl,
       pixQrImage,
       pixCopiaECola,
+      splitApplied,
     };
   },
 
@@ -517,6 +536,13 @@ export const asaasProvider: PaymentProvider = {
         valueCents: Math.round(Number(p.value ?? 0) * 100),
       }))
       .filter((p) => p.paymentId);
+  },
+
+  // status de aprovacao (KYC) da subconta. Usa a chave da subconta.
+  async getSubaccountStatus(apiKey: string) {
+    const data = await api("/myAccount/status", "GET", undefined, apiKey);
+    const general = String(data.general ?? "");
+    return { approved: general === "APPROVED", general };
   },
 
   verifyWebhook(_rawBody, headers) {

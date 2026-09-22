@@ -95,6 +95,11 @@ export const noopProvider: PaymentProvider = {
     return [];
   },
 
+  async getSubaccountStatus(_apiKey: string) {
+    // dev: considera aprovada para nao travar o fluxo local
+    return { approved: true, general: "APPROVED" };
+  },
+
   verifyWebhook() {
     return true;
   },

@@ -252,12 +252,14 @@ export const subscribe = async (
       const aff = await Affiliate.findOne({
         _id: owner.referredByAffiliate,
         status: "active",
-      }).select("asaasWalletId commissionPercent user");
+      }).select("asaasWalletId commissionPercent user approved");
       // anti-autoindicacao: o afiliado nao recebe comissao por indicar o proprio
       // estabelecimento (mesma conta como afiliado e como dono).
       const selfReferral =
         aff && aff.user && aff.user.toString() === est.owner.toString();
-      if (aff && aff.asaasWalletId && !selfReferral) {
+      // so aplica o split se a conta Asaas do afiliado estiver APROVADA
+      // (evita "wallet inexistente"/carteira nao operante bloqueando/errando).
+      if (aff && aff.asaasWalletId && aff.approved && !selfReferral) {
         affiliateId = aff._id;
         affiliateWalletId = aff.asaasWalletId;
         affiliatePercent = aff.commissionPercent || 25;
@@ -318,8 +320,11 @@ export const subscribe = async (
       currentPeriodEnd: result.currentPeriodEnd,
       cardLast4: result.cardLast4 || "",
       cardBrand: result.cardBrand || "",
-      affiliate: affiliateId,
-      affiliateWalletId,
+      // so vincula o afiliado se o split REALMENTE foi aplicado no gateway.
+      // Se a carteira do afiliado era invalida, o split caiu (assinatura seguiu
+      // sem ele) -> nao grava afiliado nem gera comissao.
+      affiliate: result.splitApplied === false ? null : affiliateId,
+      affiliateWalletId: result.splitApplied === false ? "" : affiliateWalletId,
     };
 
     sub = await Subscription.findOneAndUpdate(

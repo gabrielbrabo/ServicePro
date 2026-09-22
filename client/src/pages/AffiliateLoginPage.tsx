@@ -3,11 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
+import { GoogleLoginButton } from "../components/GoogleLoginButton";
 import { affiliateApi } from "../api/affiliate";
 
-// Login da área do afiliado/representante — separada da do estabelecimento,
-// como um sistema à parte. Usa a mesma conta; se a conta ainda não for de
-// afiliado, o back devolve notAffiliate e mandamos para o cadastro.
+// Login da área do afiliado/representante — separada da do estabelecimento.
+// Aceita e-mail/senha OU Google. Se a conta ainda não for afiliado, manda pro
+// cadastro; se a conta é Google, o back orienta a usar o botão do Google.
 export function AffiliateLoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -41,6 +42,20 @@ export function AffiliateLoginPage() {
       title="Área do afiliado/representante"
       subtitle="Acompanhe seus indicados e suas comissões."
     >
+      {/* Google: entra e vai pro painel do afiliado (cadastra se ainda não for) */}
+      <GoogleLoginButton
+        onSuccess={() => navigate("/afiliado")}
+        onError={(msg) => setError(msg)}
+      />
+
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-ink/10" />
+        <span className="text-xs font-medium uppercase tracking-wide text-ink/40">
+          ou
+        </span>
+        <span className="h-px flex-1 bg-ink/10" />
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           id="email"

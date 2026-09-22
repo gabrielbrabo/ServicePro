@@ -116,7 +116,20 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 
   const user = await User.findOne({ email }).select("+password");
-  if (!user || !(await user.comparePassword(password))) {
+  if (!user) {
+    res.status(401).json({ message: "Credenciais invalidas" });
+    return;
+  }
+  // conta criada com Google nao tem senha: orienta a usar o botao do Google
+  if (user.authProvider === "google" || !user.password) {
+    res.status(409).json({
+      message:
+        'Esta conta foi criada com o Google. Toque em "Entrar com Google".',
+      useGoogle: true,
+    });
+    return;
+  }
+  if (!(await user.comparePassword(password))) {
     res.status(401).json({ message: "Credenciais invalidas" });
     return;
   }

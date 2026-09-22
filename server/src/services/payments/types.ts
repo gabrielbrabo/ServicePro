@@ -123,6 +123,9 @@ export interface SubscriptionResult {
   // cartao salvo (quando pago no cartao)
   cardLast4?: string;
   cardBrand?: string;
+  // false quando havia split de afiliado mas ele foi removido (carteira
+  // invalida) para nao bloquear a assinatura. undefined = sem split pedido.
+  splitApplied?: boolean;
 }
 
 // Evento de webhook ja NORMALIZADO (cada adapter traduz o payload do seu
@@ -230,4 +233,9 @@ export interface PaymentProvider {
   listConfirmedPayments?(
     subscriptionId: string
   ): Promise<{ paymentId: string; valueCents: number }[]>;
+  // status de aprovacao (KYC) de uma SUBCONTA. apiKey = chave da subconta.
+  // approved = true quando a conta esta liberada para operar/receber split.
+  getSubaccountStatus?(
+    apiKey: string
+  ): Promise<{ approved: boolean; general: string }>;
 }

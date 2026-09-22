@@ -4,7 +4,8 @@ import { api } from "../lib/api";
 export interface Affiliate {
   id: string;
   code: string;
-  link: string;
+  link: string; // vazio enquanto a conta Asaas nao for aprovada
+  approved: boolean; // conta Asaas aprovada? so entao libera link e split
   status: "active" | "suspended";
   commissionPercent: number;
 }
@@ -29,20 +30,18 @@ export interface AffiliateSummary {
   total: number;
   active: number;
   commissionPercent: number;
-  // previsto (a partir das assinaturas ativas)
   monthlyEstimateCents: number;
   perPaymentEstimateCents: number;
-  // recebido de verdade (ledger de comissoes confirmadas)
   receivedTotalCents: number;
   receivedMonthCents: number;
 }
 
 export interface AffiliateWallet {
   balanceCents: number;
-  balanceAvailable: boolean; // o saldo foi consultado com sucesso no Asaas
-  hasAccount: boolean; // a subconta ja tem carteira
-  canReadBalance: boolean; // temos a apiKey da subconta para ler o saldo
-  asaasLoginUrl: string; // onde o afiliado saca (painel do Asaas)
+  balanceAvailable: boolean;
+  hasAccount: boolean;
+  canReadBalance: boolean;
+  asaasLoginUrl: string;
   freeWithdrawalsPerMonth: number | null;
 }
 

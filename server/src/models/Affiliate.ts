@@ -19,6 +19,9 @@ export interface IAffiliate extends Document {
   asaasAccountId: string;
   asaasWalletId: string;
   asaasApiKey: string;
+  // conta Asaas aprovada (KYC/documentos)? So libera o link e o split depois.
+  approved: boolean;
+  approvedAt: Date | null;
   // dados de KYC exigidos pelo Asaas para abrir a subconta
   cpfCnpj: string;
   phone: string;
@@ -57,6 +60,9 @@ const affiliateSchema = new Schema<IAffiliate>(
     asaasAccountId: { type: String, default: "", index: true },
     asaasWalletId: { type: String, default: "", index: true },
     asaasApiKey: { type: String, default: "", select: false },
+    // aprovacao da conta Asaas (KYC). So libera link/split apos aprovada.
+    approved: { type: Boolean, default: false, index: true },
+    approvedAt: { type: Date, default: null },
     // KYC (nao expor por padrao)
     cpfCnpj: { type: String, default: "", select: false },
     phone: { type: String, default: "" },

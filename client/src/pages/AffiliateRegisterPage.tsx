@@ -5,9 +5,9 @@ import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
 import { affiliateApi, Affiliate } from "../api/affiliate";
 
-// Cadastro aberto do afiliado/representante do ServiçosPro. Ao concluir, o
-// back abre a conta de recebimento (subconta Asaas) e devolve o link de
-// indicação, já com sessão. Quem já é dono/funcionário usa o MESMO e-mail.
+// Cadastro aberto do afiliado/representante do ServiçosPro. Abre a conta de
+// recebimento (subconta Asaas). O link de indicação só é liberado depois que a
+// conta Asaas é aprovada — por isso o pós-cadastro orienta a ativar/enviar docs.
 export function AffiliateRegisterPage() {
   const navigate = useNavigate();
 
@@ -45,9 +45,6 @@ export function AffiliateRegisterPage() {
       setError("Informe CPF/CNPJ e telefone");
       return;
     }
-
-    // CNPJ (14 dígitos) = pessoa jurídica; senão pessoa física (exige nascimento).
-    // O Asaas precisa desses dados para abrir sua conta de recebimento.
     const digits = form.cpfCnpj.replace(/\D/g, "");
     const isCnpj = digits.length > 11;
     if (!isCnpj && !form.birthDate) {
@@ -99,7 +96,46 @@ export function AffiliateRegisterPage() {
     }
   };
 
+  // pós-cadastro
   if (created) {
+    // conta ainda NÃO aprovada: orienta a ativar e enviar documentos
+    if (!created.approved) {
+      return (
+        <AuthLayout
+          title="Quase lá! Ative sua conta"
+          subtitle="Falta ativar sua conta de recebimento para liberar seu link."
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4 text-sm text-ink/70">
+              <p className="font-semibold text-ink">Como liberar seu link</p>
+              <ol className="mt-2 space-y-1">
+                <li>
+                  <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong> (no
+                  endereço que você cadastrou) e confirme o acesso.
+                </li>
+                <li>
+                  <strong>2.</strong> Envie os <strong>documentos</strong> para a
+                  verificação da conta.
+                </li>
+                <li>
+                  <strong>3.</strong> Após a <strong>aprovação</strong>, seu link
+                  de indicação é liberado no painel.
+                </li>
+              </ol>
+              <p className="mt-2 text-xs text-ink/50">
+                O link só aparece depois da aprovação — assim sua comissão sempre
+                cai certinho.
+              </p>
+            </div>
+            <Button type="button" onClick={() => navigate("/afiliado")}>
+              Ir para o painel
+            </Button>
+          </div>
+        </AuthLayout>
+      );
+    }
+
+    // conta já aprovada (ex.: ambiente dev): mostra o link direto
     return (
       <AuthLayout
         title="Você é afiliado/representante!"
@@ -125,16 +161,6 @@ export function AffiliateRegisterPage() {
               </button>
             </div>
           </label>
-          <div className="rounded-xl bg-teal-500/5 p-4 text-sm text-ink/70">
-            <p className="font-semibold text-ink">Como você recebe e saca</p>
-            <p className="mt-1">
-              Sua comissão de {created.commissionPercent}% cai na sua conta de
-              recebimento no Asaas a cada pagamento dos seus indicados. Você vai
-              receber um <strong>e-mail do Asaas</strong> para ativar seu acesso
-              — é por lá que você <strong>saca</strong>. O painel mostra o seu
-              saldo e leva direto pra tela de saque do Asaas.
-            </p>
-          </div>
           <Button type="button" onClick={() => navigate("/afiliado")}>
             Ir para o painel
           </Button>
@@ -236,10 +262,10 @@ export function AffiliateRegisterPage() {
           />
         </div>
         <p className="text-xs text-ink/50">
-          Com esses dados abrimos sua conta de recebimento no Asaas (por isso a
-          data de nascimento e o endereço são obrigatórios). Você vai receber um{" "}
-          <strong>e-mail do Asaas</strong> para ativar o acesso — é por lá que
-          você saca suas comissões.
+          Com esses dados abrimos sua conta de recebimento no Asaas. Depois do
+          cadastro você recebe um <strong>e-mail do Asaas</strong> para ativar a
+          conta e enviar documentos — o link de indicação é liberado após a
+          aprovação.
         </p>
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
