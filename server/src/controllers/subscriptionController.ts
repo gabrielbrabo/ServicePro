@@ -259,40 +259,32 @@ export const subscribe = async (
         aff && aff.user && aff.user.toString() === est.owner.toString();
 
       if (aff && aff.asaasWalletId && !selfReferral) {
-        // confirma a aprovacao AO VIVO no Asaas (nao depende do flag do banco
-        // estar sincronizado) -> um afiliado ja aprovado nunca fica sem split.
-        let approved = aff.approved;
-        if (!approved && aff.asaasApiKey) {
-          try {
-            const p = getPaymentProvider();
-            if (p.getSubaccountStatus) {
-              const st = await p.getSubaccountStatus(aff.asaasApiKey);
-              if (st.approved) {
-                approved = true;
-                aff.approved = true;
-                aff.approvedAt = new Date();
-                await aff.save();
-              }
-            }
-          } catch (e) {
-            console.error("subscribe approval check:", (e as Error).message);
-          }
-        }
-
-        if (approved) {
-          affiliateId = aff._id;
-          affiliateWalletId = aff.asaasWalletId;
-          affiliatePercent = aff.commissionPercent || 25;
-          console.log(
-            `[affiliate-split] est=${est._id} wallet=${affiliateWalletId} ` +
-              `percent=${affiliatePercent} priceCents=${priceCents}`
-          );
-        } else {
-          console.log(
-            `[affiliate-split] pulado: afiliado ${aff._id} sem aprovacao Asaas`
-          );
-        }
+        // Aplica o split sempre que o afiliado tem carteira. NAO dependemos mais
+        // de uma checagem de "aprovacao" ao vivo aqui: ela quebrava quando a
+        // apiKey da subconta era de outro ambiente ("chave nao pertence a este
+        // ambiente") e zerava o afiliado silenciosamente. Se a carteira for
+        // invalida, a resiliencia do provider refaz a assinatura SEM split (sem
+        // travar o estabelecimento). O "so libera apos aprovacao" continua
+        // valendo na GERACAO do link (o afiliado nem compartilha antes de aprovar).
+        affiliateId = aff._id;
+        affiliateWalletId = aff.asaasWalletId;
+        affiliatePercent = aff.commissionPercent || 25;
+        console.log(
+          `[affiliate-split] est=${est._id} wallet=${affiliateWalletId} ` +
+            `percent=${affiliatePercent} priceCents=${priceCents}`
+        );
+      } else {
+        console.log(
+          `[aff-debug] NAO aplicou: affEncontrado=${!!aff} ` +
+            `wallet=${aff?.asaasWalletId || "VAZIO"} ` +
+            `selfReferral=${!!selfReferral} ` +
+            `refByAff=${owner.referredByAffiliate}`
+        );
       }
+    } else {
+      console.log(
+        `[aff-debug] owner.referredByAffiliate VAZIO -> o link NAO vinculou o dono no cadastro`
+      );
     }
 
     const provider = getPaymentProvider();
@@ -349,10 +341,12 @@ export const subscribe = async (
       currentPeriodEnd: result.currentPeriodEnd,
       cardLast4: result.cardLast4 || "",
       cardBrand: result.cardBrand || "",
-      // so vincula o afiliado se o split REALMENTE foi aplicado no gateway.
-      // Se a carteira do afiliado era invalida, o split caiu (assinatura seguiu
-      // sem ele) -> nao grava afiliado nem gera comissao.
-      affiliate: result.splitApplied === false ? null : affiliateId,
+      // ATRIBUICAO (quem indicou) e gravada SEMPRE que houve afiliado -> o
+      // indicado aparece no painel mesmo que o split de dinheiro tenha caido
+      // (ex.: carteira de outro ambiente). Ja o walletId (dinheiro fluindo) so
+      // fica preenchido quando o split foi REALMENTE aplicado no gateway; se
+      // caiu, guardamos vazio pra deixar claro que a comissao nao esta fluindo.
+      affiliate: affiliateId,
       affiliateWalletId: result.splitApplied === false ? "" : affiliateWalletId,
     };
 

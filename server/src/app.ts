@@ -59,6 +59,8 @@ import subscriptionRoutes, {
   paymentsWebhook,
 } from "./routes/subscriptionRoutes";
 import affiliateRoutes from "./routes/affiliateRoutes";
+import { Affiliate as AffiliateDiag } from "./models/Affiliate";
+import { Subscription as SubscriptionDiag } from "./models/Subscription";
 
 export const createApp = (): Application => {
   const app = express();
@@ -137,6 +139,46 @@ export const createApp = (): Application => {
 
   // Programa de afiliados/representantes (cadastro, login proprio, painel)
   app.use("/api/affiliates", affiliateRoutes);
+
+  // DIAGNOSTICO TEMPORARIO (dev): lista afiliados + quantos indicados cada um
+  // tem, pra achar codigos duplicados/dados de teste baguncados. REMOVER depois.
+  app.get("/api/_affdiag", async (_req, res) => {
+    try {
+      const affs = await AffiliateDiag.find()
+        .select("code user status asaasWalletId")
+        .lean();
+      const subs = await SubscriptionDiag.find({ affiliate: { $ne: null } })
+        .select("affiliate")
+        .lean();
+      const counts: Record<string, number> = {};
+      for (const s of subs) {
+        const k = String((s as { affiliate?: unknown }).affiliate);
+        counts[k] = (counts[k] || 0) + 1;
+      }
+      const codeMap: Record<string, string[]> = {};
+      for (const a of affs) {
+        const c = String((a as { code?: unknown }).code);
+        (codeMap[c] = codeMap[c] || []).push(String(a._id));
+      }
+      res.json({
+        totalAfiliados: affs.length,
+        subsComAfiliado: subs.length,
+        codigosDuplicados: Object.entries(codeMap)
+          .filter(([, ids]) => ids.length > 1)
+          .map(([code, ids]) => ({ code, ids })),
+        afiliados: affs.map((a) => ({
+          id: String(a._id),
+          code: (a as { code?: string }).code,
+          user: String((a as { user?: unknown }).user),
+          status: (a as { status?: string }).status,
+          wallet: (a as { asaasWalletId?: string }).asaasWalletId,
+          indicados: counts[String(a._id)] || 0,
+        })),
+      });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
 
   app.use(notFound);
   app.use(errorHandler);

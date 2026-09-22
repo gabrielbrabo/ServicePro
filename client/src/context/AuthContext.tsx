@@ -84,7 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     city?: string;
     ref?: string;
   }) => {
-    const { token, user } = await authApi.register(data);
+    // garante que a indicacao (?ref) do link do afiliado vai pro back mesmo
+    // que a pagina de cadastro nao a tenha passado explicitamente.
+    const ref = data.ref ?? readRef();
+    const { token, user } = await authApi.register({ ...data, ref });
     localStorage.setItem("token", token);
     setUser(user);
     connectSocket();
