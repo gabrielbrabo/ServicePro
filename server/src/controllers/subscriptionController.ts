@@ -252,17 +252,46 @@ export const subscribe = async (
       const aff = await Affiliate.findOne({
         _id: owner.referredByAffiliate,
         status: "active",
-      }).select("asaasWalletId commissionPercent user approved");
+      }).select("asaasWalletId commissionPercent user approved +asaasApiKey");
       // anti-autoindicacao: o afiliado nao recebe comissao por indicar o proprio
       // estabelecimento (mesma conta como afiliado e como dono).
       const selfReferral =
         aff && aff.user && aff.user.toString() === est.owner.toString();
-      // so aplica o split se a conta Asaas do afiliado estiver APROVADA
-      // (evita "wallet inexistente"/carteira nao operante bloqueando/errando).
-      if (aff && aff.asaasWalletId && aff.approved && !selfReferral) {
-        affiliateId = aff._id;
-        affiliateWalletId = aff.asaasWalletId;
-        affiliatePercent = aff.commissionPercent || 25;
+
+      if (aff && aff.asaasWalletId && !selfReferral) {
+        // confirma a aprovacao AO VIVO no Asaas (nao depende do flag do banco
+        // estar sincronizado) -> um afiliado ja aprovado nunca fica sem split.
+        let approved = aff.approved;
+        if (!approved && aff.asaasApiKey) {
+          try {
+            const p = getPaymentProvider();
+            if (p.getSubaccountStatus) {
+              const st = await p.getSubaccountStatus(aff.asaasApiKey);
+              if (st.approved) {
+                approved = true;
+                aff.approved = true;
+                aff.approvedAt = new Date();
+                await aff.save();
+              }
+            }
+          } catch (e) {
+            console.error("subscribe approval check:", (e as Error).message);
+          }
+        }
+
+        if (approved) {
+          affiliateId = aff._id;
+          affiliateWalletId = aff.asaasWalletId;
+          affiliatePercent = aff.commissionPercent || 25;
+          console.log(
+            `[affiliate-split] est=${est._id} wallet=${affiliateWalletId} ` +
+              `percent=${affiliatePercent} priceCents=${priceCents}`
+          );
+        } else {
+          console.log(
+            `[affiliate-split] pulado: afiliado ${aff._id} sem aprovacao Asaas`
+          );
+        }
       }
     }
 
