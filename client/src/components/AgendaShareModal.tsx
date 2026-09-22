@@ -40,6 +40,94 @@ const C = {
   shadow: "rgba(15,27,26,0.10)",
 };
 
+// Cor da agenda divulgada. O usuario escolhe QUALQUER cor (grade grande + um
+// seletor livre). A partir da cor-base geramos automaticamente os 6 tons do
+// banner — do escuro do cabecalho aos claros dos cartoes — sempre legiveis.
+type Palette = {
+  c900: string;
+  c700: string;
+  c600: string;
+  c500: string;
+  c100: string;
+  c50: string;
+};
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const m = (hex || "").replace("#", "");
+  const n =
+    m.length === 3
+      ? m
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : m.padEnd(6, "0").slice(0, 6);
+  const r = parseInt(n.slice(0, 2), 16) / 255;
+  const g = parseInt(n.slice(2, 4), 16) / 255;
+  const b = parseInt(n.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = (((g - b) / d) % 6 + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const S = Math.max(0, Math.min(100, s)) / 100;
+  const L = Math.max(0, Math.min(100, l)) / 100;
+  const c = (1 - Math.abs(2 * L - 1)) * S;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const mm = L - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const to = (v: number) =>
+    Math.round((v + mm) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+// Deriva os 6 tons do banner de uma cor-base, fixando a luminosidade de cada tom
+// e mantendo o matiz -> contraste garantido em qualquer cor escolhida.
+function shadesFromHex(base: string): Palette {
+  const { h, s } = hexToHsl(base);
+  const sat = Math.max(35, Math.min(s, 85)); // evita cor "lavada" ou neon
+  return {
+    c900: hslToHex(h, Math.min(sat + 8, 90), 14),
+    c700: hslToHex(h, sat, 24),
+    c600: hslToHex(h, sat, 32),
+    c500: hslToHex(h, sat, 42),
+    c100: hslToHex(h, Math.max(sat - 25, 30), 86),
+    c50: hslToHex(h, Math.max(sat - 30, 25), 95),
+  };
+}
+
+// grade de cores prontas (o usuario tambem pode escolher QUALQUER cor no seletor)
+const BASE_COLORS = [
+  "#0E7C72", "#0D9488", "#059669", "#16A34A", "#65A30D",
+  "#CA8A04", "#D97706", "#EA580C", "#DC2626", "#E11D48",
+  "#DB2777", "#C026D3", "#9333EA", "#7C3AED", "#6D28D9",
+  "#4F46E5", "#2563EB", "#0284C7", "#0891B2", "#14B8A6",
+  "#475569", "#334155", "#1F2937", "#0F172A",
+];
+
+const DEFAULT_HEX = "#0E7C72";
+const DEFAULT_PALETTE: Palette = shadesFromHex(DEFAULT_HEX);
+
 const W = 1080;
 const H = 1350;
 
@@ -94,7 +182,8 @@ function fit(
 function drawBanner(
   canvas: HTMLCanvasElement,
   data: AgendaMonth,
-  img: HTMLImageElement | null
+  img: HTMLImageElement | null,
+  pal: Palette = DEFAULT_PALETTE
 ): void {
   canvas.width = W;
   canvas.height = H;
@@ -112,8 +201,8 @@ function drawBanner(
   // cabecalho
   const headerH = 232;
   const hg = ctx.createLinearGradient(0, 0, W, headerH);
-  hg.addColorStop(0, C.teal700);
-  hg.addColorStop(1, C.teal500);
+  hg.addColorStop(0, pal.c700);
+  hg.addColorStop(1, pal.c500);
   ctx.fillStyle = hg;
   ctx.fillRect(0, 0, W, headerH);
   ctx.fillStyle = "rgba(255,255,255,0.06)";
@@ -144,7 +233,7 @@ function drawBanner(
     ctx.arc(pCx, pCy, pR, 0, Math.PI * 2);
     ctx.stroke();
   } else {
-    ctx.fillStyle = C.teal900;
+    ctx.fillStyle = pal.c900;
     ctx.beginPath();
     ctx.arc(pCx, pCy, pR, 0, Math.PI * 2);
     ctx.fill();
@@ -161,7 +250,7 @@ function drawBanner(
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const tx = 52 + pR * 2 + 30;
-  ctx.fillStyle = C.teal100;
+  ctx.fillStyle = pal.c100;
   ctx.font = "700 26px system-ui, -apple-system, sans-serif";
   ctx.fillText("HORÁRIOS DISPONÍVEIS", tx, 98);
   ctx.fillStyle = C.white;
@@ -228,7 +317,7 @@ function drawBanner(
 
   // mes (pequeno, acima dos horarios, a esquerda)
   if (!emptyMsg) {
-    ctx.fillStyle = C.teal600;
+    ctx.fillStyle = pal.c600;
     ctx.font = "800 24px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
@@ -255,15 +344,15 @@ function drawBanner(
     }
     const bh = 76;
     const by = y + (rowH - bh) / 2;
-    ctx.fillStyle = C.teal50;
+    ctx.fillStyle = pal.c50;
     roundRect(ctx, listX, by, badgeW, bh, 16);
     ctx.fill();
-    ctx.fillStyle = C.teal600;
+    ctx.fillStyle = pal.c600;
     ctx.font = "700 20px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.fillText(WD[d.dow], listX + badgeW / 2, by + 28);
-    ctx.fillStyle = C.teal700;
+    ctx.fillStyle = pal.c700;
     ctx.font = "800 38px system-ui, -apple-system, sans-serif";
     ctx.fillText(String(dayNum), listX + badgeW / 2, by + 64);
 
@@ -279,7 +368,7 @@ function drawBanner(
         cyp += chipH + chipGap;
       }
       roundRect(ctx, cxp, cyp - chipH / 2, w, chipH, 12);
-      ctx.fillStyle = C.livre;
+      ctx.fillStyle = pal.c500;
       ctx.fill();
       ctx.fillStyle = C.white;
       ctx.font = "700 22px system-ui, -apple-system, sans-serif";
@@ -303,7 +392,7 @@ function drawBanner(
   }
 
   // rodape (marca)
-  ctx.fillStyle = C.teal600;
+  ctx.fillStyle = pal.c600;
   ctx.font = "800 30px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -334,6 +423,28 @@ export function AgendaShareModal({
   const [copied, setCopied] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // cor escolhida para o banner da agenda. Lembra a ultima escolha por
+  // estabelecimento (no proprio navegador).
+  const colorKeyStore = `sp_agenda_color_${establishmentId}`;
+  const [colorHex, setColorHex] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(colorKeyStore);
+      // versoes antigas guardavam uma "key" (ex.: "teal"); so aceitamos hex.
+      return saved && saved.startsWith("#") ? saved : DEFAULT_HEX;
+    } catch {
+      return DEFAULT_HEX;
+    }
+  });
+  const palette = useMemo(() => shadesFromHex(colorHex), [colorHex]);
+  const pickColor = (hex: string) => {
+    setColorHex(hex);
+    try {
+      localStorage.setItem(colorKeyStore, hex);
+    } catch {
+      /* ignora */
+    }
+  };
 
   const url = useMemo(() => {
     const base = `${window.location.origin}/agenda/${establishmentId}`;
@@ -376,14 +487,16 @@ export function AgendaShareModal({
       }
       if (cancelled) return;
       const canvas = document.createElement("canvas");
-      drawBanner(canvas, data, img);
+      drawBanner(canvas, data, img, palette);
       canvasRef.current = canvas;
       setPreviewUrl(canvas.toDataURL("image/png"));
     })();
     return () => {
       cancelled = true;
     };
-  }, [data]);
+    // redesenha quando os dados OU a cor escolhida mudam
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, colorHex]);
 
   const estName = data?.establishmentName || establishmentName;
   const proName = data?.professionalName ?? professionalName ?? null;
@@ -516,6 +629,53 @@ export function AgendaShareModal({
           >
             ›
           </button>
+        </div>
+
+        {/* escolha da cor do banner da agenda */}
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-ink/60">Cor da agenda</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {BASE_COLORS.map((hex) => {
+              const active = hex.toLowerCase() === colorHex.toLowerCase();
+              return (
+                <button
+                  key={hex}
+                  type="button"
+                  onClick={() => pickColor(hex)}
+                  aria-label={`Cor ${hex}`}
+                  aria-pressed={active}
+                  className={`h-8 w-8 rounded-full border-2 transition ${
+                    active
+                      ? "border-ink ring-2 ring-ink/20"
+                      : "border-white shadow-sm hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: hex }}
+                />
+              );
+            })}
+
+            {/* seletor livre: QUALQUER cor */}
+            <label
+              title="Escolher qualquer cor"
+              className="relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-ink/30 text-ink/50 transition hover:border-ink/60"
+              style={{
+                background:
+                  "conic-gradient(#ef4444,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#ef4444)",
+              }}
+            >
+              <span className="text-sm font-bold text-white drop-shadow">+</span>
+              <input
+                type="color"
+                value={colorHex}
+                onChange={(e) => pickColor(e.target.value)}
+                className="absolute inset-0 cursor-pointer opacity-0"
+                aria-label="Escolher qualquer cor"
+              />
+            </label>
+          </div>
+          <p className="mt-1.5 text-[11px] text-ink/40">
+            Toque no <strong>+</strong> para escolher qualquer cor.
+          </p>
         </div>
 
         {/* preview do banner */}

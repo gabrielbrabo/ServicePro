@@ -85,6 +85,23 @@ export function EstablishmentPanel({
   const [qrProOpen, setQrProOpen] = useState(false); // QR pessoal (link ?prof=)
   const [agendaOpen, setAgendaOpen] = useState(false); // banner da agenda (estab.)
   const [agendaProOpen, setAgendaProOpen] = useState(false); // banner da agenda (pessoal)
+  // dica (mostrada 1x) explicando o icone que divulga a agenda -> o usuario
+  // descobre pra que serve sem precisar de um rotulo fixo ocupando espaco.
+  const [showAgendaHint, setShowAgendaHint] = useState(() => {
+    try {
+      return localStorage.getItem("sp_agenda_hint_dismissed") !== "1";
+    } catch {
+      return true;
+    }
+  });
+  const dismissAgendaHint = () => {
+    setShowAgendaHint(false);
+    try {
+      localStorage.setItem("sp_agenda_hint_dismissed", "1");
+    } catch {
+      /* ignora */
+    }
+  };
   // quantidade de profissionais agendaveis (define se o link pessoal aparece)
   const [proCount, setProCount] = useState(0);
   useEffect(() => {
@@ -333,6 +350,23 @@ export function EstablishmentPanel({
           para não roubar espaço vertical e não quebrar no mobile. As URLs
           longas saíram (já vêm no Copiar/QR). */}
       <div className="mt-3 rounded-xl bg-teal-700 px-3 py-2 text-white">
+        {/* dica 1x: explica o icone de divulgar agenda (some ao tocar em Entendi) */}
+        {showAgendaHint && (
+          <div className="mb-2 flex items-start gap-2 rounded-lg bg-white/10 px-2.5 py-2 text-xs leading-relaxed text-teal-50">
+            <span className="min-w-0">
+              💡 O ícone <span aria-hidden="true">📅</span> abre a divulgação da
+              sua <strong>agenda</strong> — gera um banner pronto pra postar nas
+              redes sociais.
+            </span>
+            <button
+              type="button"
+              onClick={dismissAgendaHint}
+              className="ml-auto shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold text-teal-100/90 transition hover:bg-white/10 hover:text-white"
+            >
+              Entendi
+            </button>
+          </div>
+        )}
         {/* Link do estabelecimento */}
         <div className="flex items-center gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">

@@ -378,23 +378,6 @@ export const getMyReferrals = async (
       .sort({ createdAt: -1 })
       .lean();
 
-    // DEBUG: compara o afiliado do painel com os afiliados realmente gravados
-    // nas assinaturas -> revela se o painel esta logado num afiliado diferente
-    // daquele que o link vinculou (ou se ha afiliado duplicado).
-    const anySubs = await Subscription.find({ affiliate: { $ne: null } })
-      .select("affiliate")
-      .lean();
-    const distinctIds = [...new Set(anySubs.map((s) => String(s.affiliate)))];
-    const donos = await Affiliate.find({ _id: { $in: distinctIds } })
-      .select("code")
-      .lean();
-    console.log(
-      `[aff-debug-panel] VOCE esta no painel do afiliado id=${affiliate._id} ` +
-        `code=${affiliate.code} -> tem ${subs.length} indicado(s). ` +
-        `Os indicados de teste pertencem a: ` +
-        donos.map((d) => `code=${d.code} (id=${d._id})`).join(", ")
-    );
-
     // rede de seguranca: reconcilia comissoes direto na API do gateway (caso o
     // webhook nao tenha chegado). Idempotente por paymentId. Limita a chamada.
     for (const s of subs.slice(0, 30)) {

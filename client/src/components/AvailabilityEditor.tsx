@@ -32,6 +32,7 @@ const ADVANCE_PRESETS = [
 ];
 
 const FUTURE_PRESETS = [
+  { label: "7 dias", value: 7 },
   { label: "15 dias", value: 15 },
   { label: "30 dias", value: 30 },
   { label: "60 dias", value: 60 },

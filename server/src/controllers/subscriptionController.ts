@@ -273,18 +273,7 @@ export const subscribe = async (
           `[affiliate-split] est=${est._id} wallet=${affiliateWalletId} ` +
             `percent=${affiliatePercent} priceCents=${priceCents}`
         );
-      } else {
-        console.log(
-          `[aff-debug] NAO aplicou: affEncontrado=${!!aff} ` +
-            `wallet=${aff?.asaasWalletId || "VAZIO"} ` +
-            `selfReferral=${!!selfReferral} ` +
-            `refByAff=${owner.referredByAffiliate}`
-        );
       }
-    } else {
-      console.log(
-        `[aff-debug] owner.referredByAffiliate VAZIO -> o link NAO vinculou o dono no cadastro`
-      );
     }
 
     const provider = getPaymentProvider();
