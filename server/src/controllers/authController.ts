@@ -6,7 +6,14 @@ import { Affiliate } from "../models/Affiliate";
 import { signToken } from "../utils/token";
 import { AuthRequest } from "../middleware/auth";
 import { env } from "../config/env";
-import { sendEmail, verifyEmailHtml } from "../config/email";
+import {
+  sendEmail,
+  verifyEmailHtml,
+  passwordResetHtml,
+  passwordResetGoogleHtml,
+  passwordChangedHtml,
+} from "../config/email";
+import { validatePassword } from "../utils/passwordPolicy";
 import { OAuth2Client } from "google-auth-library";
 import { Establishment } from "../models/Establishment";
 import { deleteS3ByUrl } from "../config/s3";
@@ -165,6 +172,7 @@ const publicUser = (
     councilNumber?: string;
     whatsappOptIn?: boolean;
     emailVerified: boolean;
+    authProvider?: string;
   },
   hasEstablishments?: boolean
 ) => ({
@@ -181,6 +189,8 @@ const publicUser = (
   councilNumber: u.councilNumber,
   whatsappOptIn: u.whatsappOptIn,
   emailVerified: u.emailVerified,
+  // "google" = conta sem senha propria (front esconde "alterar senha")
+  authProvider: u.authProvider || "local",
   ...(hasEstablishments !== undefined ? { hasEstablishments } : {}),
 });
 
@@ -488,4 +498,275 @@ export const deleteSavedCard = async (
 ): Promise<void> => {
   await User.updateOne({ _id: req.userId }, { $unset: { savedCard: "" } });
   res.json({ removed: true });
+};
+
+// ---------------------------------------------------------------------------
+// Recuperacao e troca de senha
+// ---------------------------------------------------------------------------
+
+const RESET_TTL_MINUTES = 30;
+
+// data/hora em pt-BR (fuso de Brasilia) para os e-mails
+const nowLabel = (): string =>
+  new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+
+// "gabriel@gmail.com" -> "ga*****@gmail.com" (mostra na tela de nova senha)
+const maskEmail = (email: string): string => {
+  const [local, domain] = email.split("@");
+  if (!domain) return email;
+  const keep = local.slice(0, Math.min(2, local.length));
+  return `${keep}${"*".repeat(Math.max(3, local.length - keep.length))}@${domain}`;
+};
+
+// aviso de senha alterada (fire-and-forget: nunca bloqueia a resposta)
+const notifyPasswordChanged = (user: { name: string; email: string }): void => {
+  void sendEmail({
+    to: user.email,
+    subject: "Sua senha foi alterada — ServiçosPro",
+    html: passwordChangedHtml({
+      name: user.name,
+      whenLabel: nowLabel(),
+      forgotUrl: `${appUrl()}/esqueci-senha`,
+    }),
+  });
+};
+
+// gera o token, grava o hash e envia o link. Falha silenciosa.
+// area = de onde veio o pedido: o link e o "voltar ao login" levam para a
+// tela certa (login do app x login do afiliado/representante)
+const sendPasswordResetEmail = async (
+  user: {
+    _id: unknown;
+    name: string;
+    email: string;
+    password?: string;
+  },
+  area: "app" | "affiliate" = "app"
+): Promise<void> => {
+  const loginPath = area === "affiliate" ? "/afiliado/login" : "/login";
+  const areaQuery = area === "affiliate" ? "?area=afiliado" : "";
+  try {
+    // conta so-Google nao tem senha: manda orientacao em vez de link
+    if (!user.password) {
+      await sendEmail({
+        to: user.email,
+        subject: "Acesso à sua conta — ServiçosPro",
+        html: passwordResetGoogleHtml({
+          name: user.name,
+          loginUrl: `${appUrl()}${loginPath}`,
+        }),
+      });
+      return;
+    }
+
+    // reaproveita o gerador do e-mail de verificacao (32 bytes + sha256).
+    // Um pedido novo sobrescreve o anterior: so o ultimo link funciona.
+    const { token, tokenHash } = generateEmailToken();
+    const expiry = new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000);
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { resetTokenHash: tokenHash, resetTokenExpiry: expiry } }
+    );
+
+    await sendEmail({
+      to: user.email,
+      subject: "Redefinir senha — ServiçosPro",
+      html: passwordResetHtml({
+        name: user.name,
+        resetUrl: `${appUrl()}/redefinir-senha/${token}${areaQuery}`,
+        minutes: RESET_TTL_MINUTES,
+      }),
+    });
+  } catch (err) {
+    console.error("sendPasswordResetEmail:", err);
+  }
+};
+
+// POST /api/auth/forgot-password  (PUBLICO)  body: { email, area? }
+// area: "affiliate" quando o pedido vem da area do afiliado/representante
+// Resposta SEMPRE generica: nao revela se o e-mail tem conta (evita que
+// alguem descubra quem e cliente do app testando e-mails).
+export const forgotPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const generic = {
+    message:
+      "Se houver uma conta com este e-mail, enviaremos um link para redefinir a senha.",
+  };
+  try {
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ message: "Informe um e-mail valido" });
+      return;
+    }
+
+    const area = req.body?.area === "affiliate" ? "affiliate" : "app";
+
+    const user = await User.findOne({ email }).select("+password");
+    // fire-and-forget: o tempo de resposta nao depende do envio do e-mail
+    if (user) {
+      void sendPasswordResetEmail(
+        {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          password: user.password,
+        },
+        area
+      );
+    }
+    res.json(generic);
+  } catch (err) {
+    console.error("forgotPassword:", err);
+    res.json(generic);
+  }
+};
+
+// GET /api/auth/reset-password/:token  (PUBLICO)
+// valida o link antes de mostrar o formulario (evita digitar a senha a toa)
+export const validateResetToken = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const tokenHash = hashEmailToken(String(req.params.token || ""));
+    const user = await User.findOne({
+      resetTokenHash: tokenHash,
+      resetTokenExpiry: { $gt: new Date() },
+    }).select("email");
+
+    if (!user) {
+      res
+        .status(410)
+        .json({ message: "Este link expirou ou ja foi usado. Peca um novo." });
+      return;
+    }
+    res.json({ valid: true, email: maskEmail(user.email) });
+  } catch (err) {
+    console.error("validateResetToken:", err);
+    res.status(500).json({ message: "Erro ao validar o link" });
+  }
+};
+
+// POST /api/auth/reset-password  (PUBLICO)  body: { token, password }
+export const resetPassword = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { token, password } = req.body || {};
+    if (typeof token !== "string" || !token) {
+      res.status(400).json({ message: "Link invalido" });
+      return;
+    }
+    const policyError = validatePassword(password);
+    if (policyError) {
+      res.status(400).json({ message: policyError });
+      return;
+    }
+
+    // consome o token de forma ATOMICA: dois envios simultaneos do mesmo link
+    // nao conseguem usa-lo duas vezes
+    const tokenHash = hashEmailToken(token);
+    const user = await User.findOneAndUpdate(
+      { resetTokenHash: tokenHash, resetTokenExpiry: { $gt: new Date() } },
+      { $unset: { resetTokenHash: 1, resetTokenExpiry: 1 } },
+      { new: true }
+    ).select("+password");
+
+    if (!user) {
+      res
+        .status(410)
+        .json({ message: "Este link expirou ou ja foi usado. Peca um novo." });
+      return;
+    }
+
+    user.password = password; // o pre("save") faz o hash
+    user.passwordChangedAt = new Date(); // derruba sessoes antigas
+    // quem abriu o link do e-mail provou ser dono dele
+    if (!user.emailVerified) {
+      user.emailVerified = true;
+      user.emailTokenHash = undefined;
+      user.emailTokenExpiry = undefined;
+    }
+    await user.save();
+
+    notifyPasswordChanged(user);
+    res.json({ message: "Senha redefinida. Entre com a nova senha." });
+  } catch (err) {
+    console.error("resetPassword:", err);
+    res.status(500).json({ message: "Erro ao redefinir a senha" });
+  }
+};
+
+// POST /api/auth/change-password  (protegido)
+// body: { currentPassword, newPassword }
+// Devolve um token NOVO: o atual deixa de valer (assim como os de outros
+// dispositivos), entao o front precisa trocar o que esta guardado.
+// Erros usam 400 (nunca 401) — o front limpa a sessao ao receber 401.
+export const changePassword = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+
+    const user = await User.findById(req.userId).select("+password");
+    if (!user) {
+      res.status(404).json({ message: "Usuario nao encontrado" });
+      return;
+    }
+    if (!user.password) {
+      res.status(400).json({
+        message: "Sua conta usa login com Google e nao tem senha propria.",
+      });
+      return;
+    }
+    if (typeof currentPassword !== "string" || !currentPassword) {
+      res.status(400).json({ message: "Informe a senha atual" });
+      return;
+    }
+    if (!(await user.comparePassword(currentPassword))) {
+      res.status(400).json({ message: "Senha atual incorreta" });
+      return;
+    }
+
+    const policyError = validatePassword(newPassword);
+    if (policyError) {
+      res.status(400).json({ message: policyError });
+      return;
+    }
+    if (await user.comparePassword(newPassword)) {
+      res
+        .status(400)
+        .json({ message: "A nova senha precisa ser diferente da atual" });
+      return;
+    }
+
+    user.password = newPassword;
+    user.passwordChangedAt = new Date();
+    // um link de "esqueci a senha" pendente deixa de valer
+    user.resetTokenHash = undefined;
+    user.resetTokenExpiry = undefined;
+    await user.save();
+
+    notifyPasswordChanged(user);
+
+    res.json({
+      message: "Senha alterada com sucesso",
+      token: signToken(user._id.toString()),
+    });
+  } catch (err) {
+    console.error("changePassword:", err);
+    res.status(500).json({ message: "Erro ao alterar a senha" });
+  }
 };

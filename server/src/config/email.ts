@@ -305,3 +305,83 @@ export const reviewRequestClientHtml = (args: {
     ${ctaButton(args.reviewUrl, "\u2b50 Avaliar agora")}
     `
   );
+
+// ---------------------------------------------------------------------------
+// Seguranca da conta: recuperacao e troca de senha
+// ---------------------------------------------------------------------------
+
+// escapa texto vindo do usuario (nome) antes de montar o HTML
+const esc = (s: string): string =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+// link de redefinicao (usuario com senha)
+export const passwordResetHtml = (args: {
+  name: string;
+  resetUrl: string;
+  minutes: number;
+}): string =>
+  shell(
+    "Redefinir sua senha",
+    `
+    <p style="color: #334155; line-height: 1.6;">
+      Olá, ${esc(args.name)}! Recebemos um pedido para redefinir a senha da
+      sua conta no ServiçosPro.
+    </p>
+    ${ctaButton(args.resetUrl, "Criar nova senha")}
+    <p style="color: #94a3b8; font-size: 13px; line-height: 1.6;">
+      Se o botão não funcionar, copie e cole este link no navegador:<br>
+      <span style="color: #0f766e; word-break: break-all;">${args.resetUrl}</span>
+    </p>
+    <p style="color: #94a3b8; font-size: 13px; line-height: 1.6;">
+      O link vale por ${args.minutes} minutos e só pode ser usado uma vez.
+      Se não foi você, ignore este e-mail — sua senha continua a mesma.
+    </p>
+    `
+  );
+
+// conta criada com Google (sem senha): orienta a entrar com o Google
+export const passwordResetGoogleHtml = (args: {
+  name: string;
+  loginUrl: string;
+}): string =>
+  shell(
+    "Sua conta usa o Google",
+    `
+    <p style="color: #334155; line-height: 1.6;">
+      Olá, ${esc(args.name)}! Recebemos um pedido para redefinir a senha, mas
+      sua conta foi criada com o Google e não tem senha própria.
+    </p>
+    <p style="color: #334155; line-height: 1.6;">
+      Para entrar, use o botão <strong>"Entrar com Google"</strong>.
+    </p>
+    ${ctaButton(args.loginUrl, "Ir para o login")}
+    <p style="color: #94a3b8; font-size: 13px; line-height: 1.6;">
+      Se não foi você que pediu, ignore este e-mail.
+    </p>
+    `
+  );
+
+// aviso de que a senha foi alterada (alerta contra acesso indevido)
+export const passwordChangedHtml = (args: {
+  name: string;
+  whenLabel: string;
+  forgotUrl: string;
+}): string =>
+  shell(
+    "Sua senha foi alterada",
+    `
+    <p style="color: #334155; line-height: 1.6;">
+      Olá, ${esc(args.name)}! A senha da sua conta no ServiçosPro foi alterada
+      em <strong>${args.whenLabel}</strong>. Por segurança, as sessões em
+      outros dispositivos foram encerradas.
+    </p>
+    <p style="color: #334155; line-height: 1.6;">
+      <strong>Não foi você?</strong> Redefina a senha agora mesmo:
+    </p>
+    ${ctaButton(args.forgotUrl, "Redefinir senha")}
+    `
+  );

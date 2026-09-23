@@ -65,6 +65,10 @@ import { Subscription as SubscriptionDiag } from "./models/Subscription";
 export const createApp = (): Application => {
   const app = express();
 
+  // atras do proxy do Render: faz req.ip ser o IP real do cliente (usado no
+  // limitador de tentativas de login/recuperacao de senha)
+  app.set("trust proxy", 1);
+
   app.use(cors({ origin: env.clientUrl }));
   // guarda o corpo bruto (rawBody) para validar a assinatura HMAC do webhook
   app.use(

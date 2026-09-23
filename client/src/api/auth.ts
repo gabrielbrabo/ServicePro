@@ -15,6 +15,8 @@ export interface User {
   councilNumber?: string;
   whatsappOptIn?: boolean;
   emailVerified?: boolean;
+  // "google" = conta criada com Google, sem senha propria
+  authProvider?: "local" | "google";
   hasEstablishments?: boolean;
 }
 
@@ -71,5 +73,36 @@ export const authApi = {
   google: (credential: string, ref?: string) =>
     api
       .post<{ token: string; user: User }>("/auth/google", { credential, ref })
+      .then((r) => r.data),
+
+  // --- recuperacao / troca de senha ---
+
+  // resposta sempre generica (nao revela se o e-mail tem conta)
+  // area "affiliate": o link do e-mail volta para o login do afiliado
+  forgotPassword: (email: string, area: "app" | "affiliate" = "app") =>
+    api
+      .post<{ message: string }>("/auth/forgot-password", { email, area })
+      .then((r) => r.data),
+
+  // confere se o link ainda vale antes de mostrar o formulario
+  validateResetToken: (token: string) =>
+    api
+      .get<{ valid: boolean; email: string }>(
+        `/auth/reset-password/${encodeURIComponent(token)}`
+      )
+      .then((r) => r.data),
+
+  resetPassword: (token: string, password: string) =>
+    api
+      .post<{ message: string }>("/auth/reset-password", { token, password })
+      .then((r) => r.data),
+
+  // devolve um token novo (o atual deixa de valer apos a troca)
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api
+      .post<{ message: string; token: string }>("/auth/change-password", {
+        currentPassword,
+        newPassword,
+      })
       .then((r) => r.data),
 };

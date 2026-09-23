@@ -14,7 +14,16 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    // na area do afiliado/representante, o login certo e o dele
+    let affiliateArea = false;
+    try {
+      affiliateArea = localStorage.getItem("sp_area") === "affiliate";
+    } catch {
+      /* sem localStorage: usa o login do app */
+    }
+    return (
+      <Navigate to={affiliateArea ? "/afiliado/login" : "/login"} replace />
+    );
   }
 
   return <>{children}</>;

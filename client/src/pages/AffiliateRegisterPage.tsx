@@ -4,12 +4,14 @@ import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
 import { affiliateApi, Affiliate } from "../api/affiliate";
+import { useAuth } from "../context/AuthContext";
 
 // Cadastro aberto do afiliado/representante do ServiçosPro. Abre a conta de
 // recebimento (subconta Asaas). O link de indicação só é liberado depois que a
 // conta Asaas é aprovada — por isso o pós-cadastro orienta a ativar/enviar docs.
 export function AffiliateRegisterPage() {
   const navigate = useNavigate();
+  const { adoptSession } = useAuth();
 
   const [form, setForm] = useState({
     name: "",
@@ -75,7 +77,13 @@ export function AffiliateRegisterPage() {
         addressNumber: form.addressNumber,
         province: form.province,
       });
-      localStorage.setItem("token", token);
+      // guarda o token e carrega o usuario no AuthContext (perfil funciona)
+      try {
+        localStorage.setItem("sp_area", "affiliate");
+      } catch {
+        /* ignora */
+      }
+      await adoptSession(token).catch(() => undefined);
       setCreated(affiliate);
     } catch (err) {
       const ax = err as AxiosError<{ message: string }>;

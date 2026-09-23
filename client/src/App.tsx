@@ -18,6 +18,8 @@ import { EstablishmentPage } from "./pages/EstablishmentPage";
 import { WaitlistToast } from "./components/WaitlistToast";
 import { InviteAcceptPage } from "./pages/InviteAcceptPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
@@ -90,6 +92,9 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
               <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+              {/* recuperacao de senha: pedido (so deslogado) e link do e-mail (sempre) */}
+              <Route path="/esqueci-senha" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
+              <Route path="/redefinir-senha/:token" element={<ResetPasswordPage />} />
               <Route path="/buscar" element={<SearchPage />} />
               <Route path="/servico/:id" element={<P><ServiceDetailPage /></P>} />
               <Route path="/painel" element={<P><ProviderDashboard /></P>} />
@@ -100,6 +105,7 @@ export default function App() {
               {/* Programa de afiliados/representantes — area propria (sistema a parte) */}
               <Route path="/seja-afiliado" element={<AffiliateRegisterPage />} />
               <Route path="/afiliado/login" element={<AffiliateLoginPage />} />
+              <Route path="/afiliado/esqueci-senha" element={<ForgotPasswordPage area="affiliate" />} />
               <Route path="/afiliado" element={<AffiliateDashboardPage />} />
 
               {/* pagina publica do estabelecimento (link de divulgacao) */}

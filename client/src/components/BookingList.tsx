@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { scheduleApi, Booking } from "../api/schedule";
 import { formatDateShort, formatTime, formatPrice } from "../lib/time";
 import { ensureSocket } from "../lib/socket";
@@ -136,13 +136,77 @@ export function BookingList({
   // atualiza contadores do sininho e das abas apos qualquer acao
   const { refresh: refreshBadges, bookingsVersion } = useNotifications();
 
+  // Regra da agenda: os NAO concluidos (pendentes/confirmados/reservas) vem
+  // TODOS; os concluidos/cancelados carregam de 15 em 15 por rolagem infinita.
+  const finishedOffsetRef = useRef(0);
+  const [finishedHasMore, setFinishedHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+
   const load = useCallback(() => {
     setLoading(true);
-    scheduleApi
-      .listBookings(role, establishmentId)
-      .then(setBookings)
+    finishedOffsetRef.current = 0;
+    loadingMoreRef.current = false;
+    Promise.all([
+      scheduleApi.listActiveBookings(role, establishmentId),
+      scheduleApi.listFinishedBookings(role, establishmentId, 0, 15),
+    ])
+      .then(([active, fin]) => {
+        setBookings([...active, ...fin.items]);
+        finishedOffsetRef.current = fin.nextOffset;
+        setFinishedHasMore(fin.hasMore);
+      })
+      .catch(() => {
+        setBookings([]);
+        setFinishedHasMore(false);
+      })
       .finally(() => setLoading(false));
   }, [role, establishmentId]);
+
+  // carrega o proximo lote de concluidos e agrega aos ja carregados
+  const loadMoreFinished = useCallback(() => {
+    if (loadingMoreRef.current || !finishedHasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    scheduleApi
+      .listFinishedBookings(
+        role,
+        establishmentId,
+        finishedOffsetRef.current,
+        15
+      )
+      .then((fin) => {
+        setBookings((prev) => [...prev, ...fin.items]);
+        finishedOffsetRef.current = fin.nextOffset;
+        setFinishedHasMore(fin.hasMore);
+      })
+      .catch(() => {})
+      .finally(() => {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      });
+  }, [role, establishmentId, finishedHasMore]);
+
+  // sentinel: dispara o proximo lote de concluidos ao chegar no fim da lista
+  const obsRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (obsRef.current) {
+        obsRef.current.disconnect();
+        obsRef.current = null;
+      }
+      if (!node) return;
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) loadMoreFinished();
+        },
+        { rootMargin: "240px" }
+      );
+      io.observe(node);
+      obsRef.current = io;
+    },
+    [loadMoreFinished]
+  );
 
   useEffect(load, [load]);
 
@@ -798,6 +862,16 @@ export function BookingList({
             </div>
           );
         })}
+
+        {/* rolagem infinita: carrega +15 concluidos ao chegar aqui */}
+        {finishedHasMore && (
+          <div
+            ref={sentinelRef}
+            className="py-4 text-center text-sm text-ink/40"
+          >
+            {loadingMore ? "Carregando mais..." : ""}
+          </div>
+        )}
       </div>
 
       {rescheduling && (

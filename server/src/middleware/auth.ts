@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyToken } from "../utils/token";
+import { verifyToken, issuedBeforePasswordChange } from "../utils/token";
 import { User } from "../models/User";
 
 // Estende o Request do Express para carregar o usuario autenticado
@@ -22,9 +22,14 @@ export const protect = async (
     const token = header.split(" ")[1];
     const decoded = verifyToken(token);
 
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select("_id passwordChangedAt");
     if (!user) {
       res.status(401).json({ message: "Usuario nao encontrado" });
+      return;
+    }
+    // senha trocada depois deste login: sessao encerrada
+    if (issuedBeforePasswordChange(decoded.iat, user.passwordChangedAt)) {
+      res.status(401).json({ message: "Sessao expirada. Entre novamente." });
       return;
     }
 
@@ -47,8 +52,14 @@ export const optionalProtect = async (
     const header = req.headers.authorization;
     if (header && header.startsWith("Bearer ")) {
       const decoded = verifyToken(header.split(" ")[1]);
-      const user = await User.findById(decoded.id).select("_id");
-      if (user) req.userId = decoded.id;
+      const user = await User.findById(decoded.id).select(
+        "_id passwordChangedAt"
+      );
+      if (
+        user &&
+        !issuedBeforePasswordChange(decoded.iat, user.passwordChangedAt)
+      )
+        req.userId = decoded.id;
     }
   } catch {
     // token invalido: segue como visitante

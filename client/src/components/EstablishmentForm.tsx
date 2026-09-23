@@ -139,6 +139,11 @@ export function EstablishmentForm({
     SEGMENT_LIST.find((s) => s.key === form.segment)?.priceMonthly ?? 0;
   const annualPrice = planPrice * 10;
   const annualMonthly = annualPrice / 12;
+  // economia do anual: 12 meses cheios - o que paga no anual (2 meses gratis)
+  const annualFull = planPrice * 12;
+  const annualSaved = annualFull - annualPrice;
+  const annualPercent =
+    annualFull > 0 ? Math.round((annualSaved / annualFull) * 100) : 0;
   const money = (n: number) =>
     n.toLocaleString("pt-BR", {
       minimumFractionDigits: 0,
@@ -512,18 +517,71 @@ export function EstablishmentForm({
                     : "border-ink/15 hover:border-teal-500"
                 }`}
               >
-                <span className="absolute right-2 top-2 rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold text-teal-600">
-                  2 MESES GRÁTIS
+                <span className="absolute right-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-ink">
+                  -{annualPercent}%
                 </span>
-                <p className="font-semibold text-ink">Anual</p>
-                <p className="mt-2 text-sm font-semibold text-teal-600">
+                <p className="font-semibold text-ink">
+                  Anual{" "}
+                  <span className="text-xs font-medium text-teal-600">
+                    · mais vantajoso
+                  </span>
+                </p>
+                <p className="mt-2 text-xs text-ink/40 line-through">
+                  R$ {money(annualFull)}/ano
+                </p>
+                <p className="text-sm font-semibold text-teal-600">
                   R$ {money(annualPrice)}/ano
                 </p>
                 <p className="mt-0.5 text-xs text-ink/50">
                   equivale a R$ {money(annualMonthly)}/mês
                 </p>
+                <p className="mt-2 rounded-lg bg-teal-500/10 px-2 py-1 text-xs font-semibold text-teal-700">
+                  Economize R$ {money(annualSaved)} por ano
+                </p>
               </button>
             </div>
+
+            {/* incentivo: quem esta no mensal ve quanto deixa de economizar */}
+            {form.billingCycle === "mensal" && planPrice > 0 && (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, billingCycle: "anual" }))}
+                className="mt-3 block w-full rounded-xl border border-dashed border-teal-500/40 bg-teal-500/5 px-4 py-3 text-left text-sm transition hover:bg-teal-500/10"
+              >
+                <span className="font-semibold text-teal-700">
+                  💡 No anual você economiza R$ {money(annualSaved)} por ano
+                </span>
+                <span className="mt-0.5 block text-ink/60">
+                  Sai por R$ {money(annualMonthly)}/mês em vez de R${" "}
+                  {money(planPrice)}/mês — 2 meses grátis.{" "}
+                  <span className="font-semibold text-teal-600 underline">
+                    Mudar para anual
+                  </span>
+                </span>
+              </button>
+            )}
+
+            {form.billingCycle === "anual" && planPrice > 0 && (
+              <ul className="mt-3 space-y-1.5 text-sm text-ink/70">
+                <li className="flex items-start gap-2">
+                  <span className="text-teal-600">✓</span>
+                  <span>
+                    <b>2 meses grátis</b>: paga 10 e usa 12 meses
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-teal-600">✓</span>
+                  <span>
+                    <b>{annualPercent}% de desconto</b> — R$ {money(annualSaved)}{" "}
+                    a menos no ano
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-teal-600">✓</span>
+                  <span>Uma cobrança só por ano — sem se preocupar todo mês</span>
+                </li>
+              </ul>
+            )}
           </div>
 
           {/* método */}

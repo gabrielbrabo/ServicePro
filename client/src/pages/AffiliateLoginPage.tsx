@@ -1,16 +1,21 @@
 import { useState, FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
 import { GoogleLoginButton } from "../components/GoogleLoginButton";
 import { affiliateApi } from "../api/affiliate";
+import { useAuth } from "../context/AuthContext";
 
 // Login da área do afiliado/representante — separada da do estabelecimento.
 // Aceita e-mail/senha OU Google. Se a conta ainda não for afiliado, manda pro
 // cadastro; se a conta é Google, o back orienta a usar o botão do Google.
 export function AffiliateLoginPage() {
   const navigate = useNavigate();
+  const { adoptSession } = useAuth();
+  // aviso vindo da redefinicao de senha
+  const notice =
+    (useLocation().state as { notice?: string } | null)?.notice || "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,12 +27,13 @@ export function AffiliateLoginPage() {
     setLoading(true);
     try {
       const { token } = await affiliateApi.login({ email, password });
-      localStorage.setItem("token", token);
       try {
         localStorage.setItem("sp_area", "affiliate");
       } catch {
         /* ignora */
       }
+      // carrega o usuario no AuthContext (senao /perfil manda para o login)
+      await adoptSession(token);
       navigate("/afiliado");
     } catch (err) {
       const ax = err as AxiosError<{ message: string; notAffiliate?: boolean }>;
@@ -47,6 +53,12 @@ export function AffiliateLoginPage() {
       title="Área do afiliado/representante"
       subtitle="Acompanhe seus indicados e suas comissões."
     >
+      {notice && (
+        <p className="mb-5 rounded-xl bg-teal-50 px-4 py-3 text-sm font-medium text-teal-700">
+          {notice}
+        </p>
+      )}
+
       {/* Google: entra e vai pro painel do afiliado (cadastra se ainda não for) */}
       <GoogleLoginButton
         onSuccess={() => {
@@ -87,6 +99,15 @@ export function AffiliateLoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <div className="-mt-2 text-right">
+          <Link
+            to="/afiliado/esqueci-senha"
+            state={{ email }}
+            className="text-sm font-medium text-teal-600 hover:underline"
+          >
+            Esqueceu a senha?
+          </Link>
+        </div>
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
           Entrar

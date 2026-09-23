@@ -3,6 +3,10 @@ import { Establishment } from "../api/establishment";
 import { useAuth } from "../context/AuthContext";
 import { documentApi, EmittedDocument } from "../api/emittedDocument";
 
+// Assinatura digital (ICP-Brasil / Clicksign) temporariamente DESATIVADA.
+// Para religar a funcionalidade depois, basta trocar para true.
+const SIGNATURE_ENABLED: boolean = false;
+
 type DocType = "atestado" | "declaracao" | "receita" | "pedido_exame";
 type ReceitaType = "comum" | "controle_especial" | "azul" | "amarela";
 
@@ -762,18 +766,20 @@ export function PatientDocuments({
         </div>
       )}
 
-      <label className="mt-5 block max-w-sm">
-        <span className="mb-1 block text-xs font-medium text-ink/60">
-          E-mail de quem vai assinar (assinatura digital)
-        </span>
-        <input
-          type="email"
-          value={signerEmail}
-          onChange={(e) => setSignerEmail(e.target.value)}
-          placeholder="profissional@exemplo.com"
-          className={inputCls}
-        />
-      </label>
+      {SIGNATURE_ENABLED && (
+        <label className="mt-5 block max-w-sm">
+          <span className="mb-1 block text-xs font-medium text-ink/60">
+            E-mail de quem vai assinar (assinatura digital)
+          </span>
+          <input
+            type="email"
+            value={signerEmail}
+            onChange={(e) => setSignerEmail(e.target.value)}
+            placeholder="profissional@exemplo.com"
+            className={inputCls}
+          />
+        </label>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button
@@ -790,20 +796,23 @@ export function PatientDocuments({
         >
           Imprimir
         </button>
-        <button
-          onClick={signDoc}
-          disabled={!canGenerate || signing}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-teal-500/40 bg-teal-500/10 px-6 font-semibold text-teal-700 transition hover:bg-teal-500/20 disabled:opacity-50"
-        >
-          {signing ? "Enviando..." : "Assinar digitalmente"}
-        </button>
+        {SIGNATURE_ENABLED && (
+          <button
+            onClick={signDoc}
+            disabled={!canGenerate || signing}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-teal-500/40 bg-teal-500/10 px-6 font-semibold text-teal-700 transition hover:bg-teal-500/20 disabled:opacity-50"
+          >
+            {signing ? "Enviando..." : "Assinar digitalmente"}
+          </button>
+        )}
       </div>
       <p className="mt-2 text-xs text-ink/40">
         "Baixar PDF" gera o arquivo no servidor. "Imprimir" abre a janela de
-        impressão. "Assinar digitalmente" envia o documento para assinatura
-        ICP-Brasil (o profissional recebe um e-mail para assinar).
+        impressão.
+        {SIGNATURE_ENABLED &&
+          ' "Assinar digitalmente" envia o documento para assinatura ICP-Brasil (o profissional recebe um e-mail para assinar).'}
       </p>
-      {signMsg && (
+      {SIGNATURE_ENABLED && signMsg && (
         <p className="mt-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-800">
           {signMsg}
         </p>

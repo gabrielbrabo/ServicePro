@@ -853,7 +853,7 @@ export const listSessions = async (
     }
 
     const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
-    const limit = 10;
+    const limit = 15;
     const skip = (page - 1) * limit;
 
     const [sessions, total] = await Promise.all([

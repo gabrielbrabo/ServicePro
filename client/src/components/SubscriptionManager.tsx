@@ -16,6 +16,20 @@ const brl = (cents: number) =>
 const priceForCycle = (plan: Plan, cycle: "mensal" | "anual") =>
   cycle === "anual" ? plan.monthlyCents * 10 : plan.monthlyCents;
 
+// vantagem do anual (mesma regra do back: paga 10 meses, usa 12)
+const annualSavings = (plan: Plan) => {
+  const fullYear = plan.monthlyCents * 12; // 12x o mensal
+  const annual = priceForCycle(plan, "anual"); // o que paga no anual
+  const saved = fullYear - annual;
+  return {
+    fullYear,
+    annual,
+    saved,
+    perMonth: Math.round(annual / 12), // quanto "sai por mes" no anual
+    percent: fullYear > 0 ? Math.round((saved / fullYear) * 100) : 0,
+  };
+};
+
 const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   active: { text: "Ativa", cls: "bg-teal-500/10 text-teal-700" },
   trialing: { text: "Em teste", cls: "bg-teal-500/10 text-teal-700" },
@@ -423,12 +437,33 @@ export function SubscriptionManager({
               {plan.description && (
                 <p className="mt-0.5 text-xs text-ink/60">{plan.description}</p>
               )}
-              <p className="mt-2 text-lg font-bold text-teal-600">
-                {brl(priceForCycle(plan, cycle))}
-                <span className="text-xs font-normal text-ink/50">
-                  /{cycle === "anual" ? "ano" : "mês"}
-                </span>
-              </p>
+              {cycle === "anual" ? (
+                <>
+                  {/* anual: preco cheio riscado + economia em destaque */}
+                  <p className="mt-2 text-sm text-ink/40 line-through">
+                    {brl(annualSavings(plan).fullYear)}/ano
+                  </p>
+                  <p className="text-lg font-bold text-teal-600">
+                    {brl(annualSavings(plan).annual)}
+                    <span className="text-xs font-normal text-ink/50">/ano</span>
+                  </p>
+                  <p className="text-xs text-ink/60">
+                    Equivale a{" "}
+                    <b className="text-ink/80">
+                      {brl(annualSavings(plan).perMonth)}/mês
+                    </b>
+                  </p>
+                  <div className="mt-3 rounded-lg bg-teal-500/10 px-3 py-2 text-sm font-semibold text-teal-700">
+                    🎉 Você economiza {brl(annualSavings(plan).saved)} por ano (
+                    {annualSavings(plan).percent}% de desconto)
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-lg font-bold text-teal-600">
+                  {brl(priceForCycle(plan, cycle))}
+                  <span className="text-xs font-normal text-ink/50">/mês</span>
+                </p>
+              )}
             </div>
           ) : (
             <p className="mt-3 text-sm text-ink/50">
@@ -447,10 +482,63 @@ export function SubscriptionManager({
                   cycle === c ? "bg-white text-ink shadow-sm" : "text-ink/60"
                 }`}
               >
-                {c === "mensal" ? "Mensal" : "Anual (2 meses grátis)"}
+                {c === "mensal" ? (
+                  "Mensal"
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    Anual
+                    {plan && (
+                      <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-ink">
+                        -{annualSavings(plan).percent}%
+                      </span>
+                    )}
+                  </span>
+                )}
               </button>
             ))}
           </div>
+
+          {/* incentivo ao anual */}
+          {plan && cycle === "mensal" && (
+            <button
+              type="button"
+              onClick={() => setCycle("anual")}
+              className="mt-3 block w-full rounded-xl border border-dashed border-teal-500/40 bg-teal-500/5 px-4 py-3 text-left text-sm transition hover:bg-teal-500/10"
+            >
+              <span className="font-semibold text-teal-700">
+                💡 Economize {brl(annualSavings(plan).saved)} por ano no plano anual
+              </span>
+              <span className="mt-0.5 block text-ink/60">
+                Sai por {brl(annualSavings(plan).perMonth)}/mês em vez de{" "}
+                {brl(plan.monthlyCents)}/mês — 2 meses grátis.{" "}
+                <span className="font-semibold text-teal-600 underline">
+                  Mudar para anual
+                </span>
+              </span>
+            </button>
+          )}
+
+          {plan && cycle === "anual" && (
+            <ul className="mt-3 space-y-1.5 text-sm text-ink/70">
+              <li className="flex items-start gap-2">
+                <span className="text-teal-600">✓</span>
+                <span>
+                  <b>2 meses grátis</b>: paga 10 e usa 12 meses
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-teal-600">✓</span>
+                <span>
+                  <b>{annualSavings(plan).percent}% de desconto</b> em relação ao
+                  mensal
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-teal-600">✓</span>
+                <span>Uma cobrança só por ano — sem se preocupar todo mês</span>
+              </li>
+            </ul>
+          )}
 
           {/* metodo */}
           <div className="mt-4">

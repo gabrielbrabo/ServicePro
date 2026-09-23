@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   cashApi,
   CashSession,
@@ -130,16 +130,65 @@ export function CashRegister({
       .finally(() => setLoading(false));
   }, [establishmentId]);
 
+  // fechamentos: rolagem infinita de 15 em 15
+  const historyPageRef = useRef(1);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const loadingMoreHistoryRef = useRef(false);
+
   const loadHistory = useCallback(() => {
     setLoadingHistory(true);
+    historyPageRef.current = 1;
     cashApi
-      .history(establishmentId)
-      .then((data) => setHistory(data.sessions))
+      .history(establishmentId, 1)
+      .then((data) => {
+        setHistory(data.sessions);
+        setHistoryHasMore(data.hasMore);
+      })
       .catch(() => {
         /* histórico é secundário */
       })
       .finally(() => setLoadingHistory(false));
   }, [establishmentId]);
+
+  const loadMoreHistory = useCallback(() => {
+    if (loadingMoreHistoryRef.current || !historyHasMore) return;
+    loadingMoreHistoryRef.current = true;
+    setLoadingMoreHistory(true);
+    const next = historyPageRef.current + 1;
+    cashApi
+      .history(establishmentId, next)
+      .then((data) => {
+        setHistory((prev) => [...prev, ...data.sessions]);
+        historyPageRef.current = next;
+        setHistoryHasMore(data.hasMore);
+      })
+      .catch(() => {})
+      .finally(() => {
+        loadingMoreHistoryRef.current = false;
+        setLoadingMoreHistory(false);
+      });
+  }, [establishmentId, historyHasMore]);
+
+  const historyObsRef = useRef<IntersectionObserver | null>(null);
+  const historySentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (historyObsRef.current) {
+        historyObsRef.current.disconnect();
+        historyObsRef.current = null;
+      }
+      if (!node) return;
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) loadMoreHistory();
+        },
+        { rootMargin: "240px" }
+      );
+      io.observe(node);
+      historyObsRef.current = io;
+    },
+    [loadMoreHistory]
+  );
 
   const loadReceivables = useCallback(() => {
     cashApi
@@ -896,6 +945,14 @@ export function CashRegister({
                     </button>
                   );
                 })}
+                {historyHasMore && (
+                  <div
+                    ref={historySentinelRef}
+                    className="py-3 text-center text-xs text-ink/40"
+                  >
+                    {loadingMoreHistory ? "Carregando mais..." : ""}
+                  </div>
+                )}
               </div>
             )}
           </div>

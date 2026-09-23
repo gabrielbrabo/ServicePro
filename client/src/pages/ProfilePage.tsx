@@ -4,6 +4,7 @@ import { authApi } from "../api/auth";
 import { PageContainer } from "../components/NavBar";
 import { Avatar } from "../components/Avatar";
 import { ImageUpload } from "../components/ImageUpload";
+import { ChangePasswordCard } from "../components/ChangePasswordCard";
 
 // monta "CRO-SP 12345" a partir das partes do registro
 function formatCouncil(u?: {
@@ -362,6 +363,9 @@ export function ProfilePage() {
             </>
           )}
         </div>
+
+        {/* troca de senha (exige a senha atual) */}
+        <ChangePasswordCard user={user} />
       </div>
     </PageContainer>
   );

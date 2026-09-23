@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useEstablishments } from "../context/EstablishmentContext";
 import { Logo } from "./Logo";
@@ -257,6 +257,7 @@ function MobileEstablishmentList({ onDone }: { onDone: () => void }) {
 export function NavBar() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const onPanel = pathname.startsWith("/painel");
@@ -271,6 +272,13 @@ export function NavBar() {
       return false;
     }
   })();
+
+  // sair: na area do afiliado volta para o login DELE (nao o do app)
+  const handleLogout = () => {
+    const wasAffiliate = affiliateArea;
+    logout();
+    if (wasAffiliate) navigate("/afiliado/login", { replace: true });
+  };
 
   const { badges } = useNotifications();
 
@@ -356,7 +364,7 @@ export function NavBar() {
                 </span>
               </Link>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/80 transition hover:bg-sand"
               >
                 Sair
@@ -485,7 +493,7 @@ export function NavBar() {
                   </span>
                 </Link>
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="shrink-0 rounded-lg border border-ink/15 px-3 py-1.5 text-sm font-medium text-ink/80 transition hover:bg-sand"
                 >
                   Sair

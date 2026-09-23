@@ -78,34 +78,82 @@ export function documentTitle(input: DocPdfInput): string {
 
 const MARGIN = 56;
 
+// paleta do documento (identidade visual)
+const INK = "#0f1b1a";
+const MUTED = "#6b7280";
+const ACCENT = "#0E7C72";
+const ACCENT_DK = "#084A44";
+const HAIRLINE = "#e5e7eb";
+
+// faixa de cor no topo da pagina
+function drawTopBand(doc: PDFKit.PDFDocument) {
+  doc.save();
+  doc.rect(0, 0, doc.page.width, 10).fill(ACCENT);
+  doc.rect(0, 10, doc.page.width, 2).fill(ACCENT_DK);
+  doc.restore();
+}
+
+// monograma (inicial do estabelecimento) num circulo teal, centralizado
+function drawMonogram(doc: PDFKit.PDFDocument, name: string) {
+  const cx = doc.page.width / 2;
+  const cy = MARGIN + 14;
+  const r = 15;
+  doc.save();
+  doc.circle(cx, cy, r).fill(ACCENT);
+  const initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  doc
+    .fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(15)
+    .text(initial, cx - r, cy - 7, { width: r * 2, align: "center" });
+  doc.restore();
+}
+
 // desenha cabecalho (estabelecimento) + titulo; retorna nada (usa cursor)
 function drawHeader(doc: PDFKit.PDFDocument, input: DocPdfInput, title: string) {
   const left = MARGIN;
   const right = doc.page.width - MARGIN;
+  const width = right - left;
 
-  doc.font("Helvetica-Bold").fontSize(16).fillColor("#111111");
-  doc.text(input.establishmentName || "", left, MARGIN, {
-    width: right - left,
+  drawMonogram(doc, input.establishmentName || "");
+
+  doc.font("Helvetica-Bold").fontSize(17).fillColor(INK);
+  doc.text(input.establishmentName || "", left, MARGIN + 38, {
+    width,
     align: "center",
   });
-  doc.font("Helvetica").fontSize(9).fillColor("#444444");
-  if (input.addressLine) {
-    doc.text(input.addressLine, { width: right - left, align: "center" });
+  const contacts = [input.addressLine, input.phone].filter(Boolean).join("   ·   ");
+  if (contacts) {
+    doc.font("Helvetica").fontSize(9.5).fillColor(MUTED);
+    doc.text(contacts, { width, align: "center" });
   }
-  if (input.phone) {
-    doc.text(input.phone, { width: right - left, align: "center" });
-  }
-  doc.moveDown(0.6);
+  doc.moveDown(0.9);
+
   const y = doc.y;
-  doc.moveTo(left, y).lineTo(right, y).strokeColor("#111111").lineWidth(1.5).stroke();
-  doc.moveDown(1.4);
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(1.5).strokeColor(ACCENT).stroke();
+  doc
+    .moveTo(left, y + 3)
+    .lineTo(right, y + 3)
+    .lineWidth(0.5)
+    .strokeColor(HAIRLINE)
+    .stroke();
+  doc.moveDown(1.8);
 
   doc
     .font("Helvetica-Bold")
     .fontSize(15)
-    .fillColor("#111111")
-    .text(title, { width: right - left, align: "center", characterSpacing: 1 });
-  doc.moveDown(1.2);
+    .fillColor(INK)
+    .text(title.toUpperCase(), left, doc.y, {
+      width,
+      align: "center",
+      characterSpacing: 1.5,
+    });
+  // sublinhado de destaque sob o titulo
+  const uy = doc.y + 4;
+  const uw = 54;
+  const ux = left + (width - uw) / 2;
+  doc.moveTo(ux, uy).lineTo(ux + uw, uy).lineWidth(2.5).strokeColor(ACCENT).stroke();
+  doc.moveDown(1.8);
 }
 
 // desenha rodape com local/data + linha de assinatura
@@ -120,11 +168,11 @@ function drawSignature(doc: PDFKit.PDFDocument, input: DocPdfInput) {
   )}.`;
   doc
     .font("Helvetica")
-    .fontSize(12)
-    .fillColor("#111111")
+    .fontSize(11.5)
+    .fillColor(INK)
     .text(dateTxt.trim(), left, doc.y, { width, align: "center" });
 
-  doc.moveDown(3.5);
+  doc.moveDown(3.4);
   // linha de assinatura centralizada (240pt)
   const lineW = 240;
   const lineX = left + (width - lineW) / 2;
@@ -132,14 +180,14 @@ function drawSignature(doc: PDFKit.PDFDocument, input: DocPdfInput) {
   doc
     .moveTo(lineX, lineY)
     .lineTo(lineX + lineW, lineY)
-    .strokeColor("#111111")
+    .strokeColor(INK)
     .lineWidth(1)
     .stroke();
-  doc.moveDown(0.4);
+  doc.moveDown(0.45);
   doc
     .font("Helvetica-Bold")
     .fontSize(12)
-    .fillColor("#111111")
+    .fillColor(INK)
     .text(input.issuer || "Profissional", left, doc.y, {
       width,
       align: "center",
@@ -147,10 +195,31 @@ function drawSignature(doc: PDFKit.PDFDocument, input: DocPdfInput) {
   if (input.council && input.council.trim()) {
     doc
       .font("Helvetica")
-      .fontSize(9)
-      .fillColor("#444444")
+      .fontSize(9.5)
+      .fillColor(MUTED)
       .text(input.council.trim(), { width, align: "center" });
   }
+}
+
+// rodape de marca fixado no rodape da pagina
+function drawFooter(doc: PDFKit.PDFDocument, input: DocPdfInput) {
+  const left = MARGIN;
+  const right = doc.page.width - MARGIN;
+  const width = right - left;
+  const y = doc.page.height - MARGIN + 12;
+  doc.save();
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(0.5).strokeColor(HAIRLINE).stroke();
+  doc
+    .font("Helvetica")
+    .fontSize(8)
+    .fillColor(MUTED)
+    .text(
+      `Documento emitido por ${input.establishmentName || ""}  ·  ServiçosPro`,
+      left,
+      y + 5,
+      { width, align: "center" }
+    );
+  doc.restore();
 }
 
 function bodyText(input: DocPdfInput): string {
@@ -179,9 +248,13 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
   if (input.type === "atestado" || input.type === "declaracao") {
     doc
       .font("Helvetica")
-      .fontSize(12)
-      .fillColor("#111111")
-      .text(bodyText(input), left, doc.y, { width, align: "justify" });
+      .fontSize(12.5)
+      .fillColor(INK)
+      .text(bodyText(input), left, doc.y, {
+        width,
+        align: "justify",
+        lineGap: 5,
+      });
     return;
   }
 
@@ -189,7 +262,7 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
     doc
       .font("Helvetica")
       .fontSize(12)
-      .fillColor("#111111")
+      .fillColor(INK)
       .text(`Paciente: ${input.patientName}`, left, doc.y, { width });
     doc.moveDown(0.8);
     const meds = (input.meds || []).filter((m) => m.name && m.name.trim());
@@ -197,13 +270,13 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
       doc
         .font("Helvetica-Bold")
         .fontSize(12)
-        .fillColor("#111111")
+        .fillColor(INK)
         .text(`${i + 1}. ${m.name.trim()}`, left, doc.y, { width });
       if (m.instructions && m.instructions.trim()) {
         doc
           .font("Helvetica")
           .fontSize(11)
-          .fillColor("#333333")
+          .fillColor(MUTED)
           .text(m.instructions.trim(), left + 16, doc.y, { width: width - 16 });
       }
       doc.moveDown(0.5);
@@ -215,7 +288,7 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
   doc
     .font("Helvetica")
     .fontSize(12)
-    .fillColor("#111111")
+    .fillColor(INK)
     .text(`Paciente: ${input.patientName}`, left, doc.y, { width });
   doc.moveDown(0.8);
   const exams = (input.exams || []).map((e) => e.trim()).filter(Boolean);
@@ -223,7 +296,7 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
     doc
       .font("Helvetica")
       .fontSize(12)
-      .fillColor("#111111")
+      .fillColor(INK)
       .text(`${i + 1}. ${e}`, left, doc.y, { width });
     doc.moveDown(0.2);
   });
@@ -232,7 +305,7 @@ function drawBody(doc: PDFKit.PDFDocument, input: DocPdfInput) {
     doc
       .font("Helvetica-Bold")
       .fontSize(12)
-      .fillColor("#111111")
+      .fillColor(INK)
       .text("Indicação clínica: ", left, doc.y, { continued: true });
     doc.font("Helvetica").text(input.examIndication.trim());
   }
@@ -246,19 +319,22 @@ function drawSheet(
   title: string,
   viaLabel?: string
 ) {
+  drawTopBand(doc);
   if (viaLabel) {
     doc
       .font("Helvetica")
-      .fontSize(9)
-      .fillColor("#555555")
-      .text(viaLabel, MARGIN, MARGIN - 24, {
+      .fontSize(8.5)
+      .fillColor(MUTED)
+      .text(viaLabel.toUpperCase(), MARGIN, MARGIN - 26, {
         width: doc.page.width - MARGIN * 2,
         align: "right",
+        characterSpacing: 0.5,
       });
   }
   drawHeader(doc, input, title);
   drawBody(doc, input);
   drawSignature(doc, input);
+  drawFooter(doc, input);
 }
 
 export function generateDocumentPdf(input: DocPdfInput): Promise<Buffer> {

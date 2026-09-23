@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { GoogleLoginButton } from "./GoogleLoginButton";
 
@@ -58,7 +59,12 @@ export function AuthModal({
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response
         ?.status;
-      if (mode === "login") {
+      const serverMsg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      if (status === 429 && serverMsg) {
+        // muitas tentativas: mostra o tempo de espera informado pelo back
+        setError(serverMsg);
+      } else if (mode === "login") {
         setError(
           status === 401
             ? "E-mail ou senha incorretos."
@@ -182,6 +188,19 @@ export function AuthModal({
               className="h-11 w-full rounded-xl border border-ink/15 px-3 text-sm outline-none focus:border-teal-500"
             />
           </label>
+
+          {mode === "login" && (
+            <div className="-mt-1 text-right">
+              <Link
+                to="/esqueci-senha"
+                state={{ email: email.trim() }}
+                onClick={onClose}
+                className="text-xs font-semibold text-teal-600 hover:underline"
+              >
+                Esqueceu a senha?
+              </Link>
+            </div>
+          )}
 
           {mode === "register" && (
             <label className="block">

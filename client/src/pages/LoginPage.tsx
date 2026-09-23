@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
@@ -9,6 +9,9 @@ import { GoogleLoginButton } from "../components/GoogleLoginButton";
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // aviso vindo de outra tela (ex.: "Senha redefinida. Entre com a nova senha.")
+  const notice =
+    (useLocation().state as { notice?: string } | null)?.notice || "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,6 +35,12 @@ export function LoginPage() {
 
   return (
     <AuthLayout title="Entrar" subtitle="Bem-vindo de volta ao ServiçosPro.">
+      {notice && (
+        <p className="mb-5 rounded-xl bg-teal-50 px-4 py-3 text-sm font-medium text-teal-700">
+          {notice}
+        </p>
+      )}
+
       <GoogleLoginButton
         onSuccess={() => navigate("/")}
         onError={(msg) => setError(msg)}
@@ -64,6 +73,15 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <div className="-mt-2 text-right">
+          <Link
+            to="/esqueci-senha"
+            state={{ email }}
+            className="text-sm font-medium text-teal-600 hover:underline"
+          >
+            Esqueceu a senha?
+          </Link>
+        </div>
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
           Entrar

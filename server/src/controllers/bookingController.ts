@@ -8,6 +8,7 @@ import { getIO } from "../socket";
 import { assertSlotIsBookable } from "../utils/slotValidation";
 import { notifyWaitlistOpening } from "../utils/waitlistNotify";
 import { professionalDoesService } from "../utils/serviceProfessional";
+import { pageParams, pageResult } from "../utils/pagination";
 import {
   computeBusySegments,
   bookingSegments,
@@ -634,21 +635,39 @@ export const listBookings = async (
     }
   }
 
-  // reservas automaticas ainda nao aceitas nao aparecem para o estabelecimento:
-  // so viram agendamento de verdade quando o cliente aceita (vira "pendente").
-  if (role === "provider") {
+  // Regra da agenda: agendamentos NAO concluidos (pendentes/confirmados/etc.)
+  // aparecem TODOS; os concluidos (e cancelados) carregam de 15 em 15 (rolagem
+  // infinita), para melhorar o desempenho. Sem "scope" = comportamento antigo.
+  const FINISHED_STATUS = ["concluido", "cancelado"];
+  const scope = String(req.query.scope || "");
+  const finished = scope === "finished";
+
+  if (scope === "active") {
+    filter.status = {
+      $nin:
+        role === "provider"
+          ? [...FINISHED_STATUS, "reservado"]
+          : FINISHED_STATUS,
+    };
+  } else if (finished) {
+    filter.status = { $in: FINISHED_STATUS };
+  } else if (role === "provider") {
+    // reservas automaticas ainda nao aceitas nao aparecem para o estabelecimento
     filter.status = { $ne: "reservado" };
   }
 
-  const bookings = await Booking.find(filter)
+  const pp = pageParams(req, 15);
+  let q = Booking.find(filter)
     .populate("service", "title price durationMinutes description photos")
     .populate("client", "name avatar phone")
     .populate(
       "establishment",
       "name professionals photo address location phone"
     )
-    .sort({ scheduledAt: 1 })
-    .lean();
+    // concluidos: mais recentes primeiro; ativos: ordem cronologica
+    .sort({ scheduledAt: finished ? -1 : 1 });
+  if (finished) q = q.skip(pp.offset).limit(pp.fetchLimit);
+  const bookings = await q.lean();
 
   // professional e subdoc de Establishment.professionals — nao ha populate.
   // Casa o id do profissional com o nome, dentro do establishment ja populado,
@@ -695,7 +714,12 @@ export const listBookings = async (
     };
   });
 
-  res.json(withNames);
+  if (finished) {
+    const { items, hasMore, nextOffset } = pageResult(withNames, pp);
+    res.json({ items, hasMore, nextOffset });
+  } else {
+    res.json(withNames);
+  }
 };
 
 // PATCH /api/bookings/:id/status  (protegido)

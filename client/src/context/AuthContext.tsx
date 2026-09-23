@@ -25,6 +25,9 @@ interface AuthContextType {
   logout: () => void;
   loginWithGoogle: (credential: string) => Promise<User>;
   updateUser: (patch: Partial<User>) => void;
+  // adota uma sessao obtida FORA deste contexto (login/cadastro do afiliado):
+  // guarda o token (se vier), carrega o usuario e liga o socket
+  adoptSession: (token?: string) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -131,13 +134,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user;
   };
 
+  // Login/cadastro do afiliado usam endpoints proprios (/affiliates/*) e so
+  // devolvem o token. Sem isto o contexto ficava com user = null e qualquer
+  // rota protegida (ex.: /perfil) mandava o afiliado para o login do app.
+  const adoptSession = async (token?: string): Promise<User> => {
+    if (token) localStorage.setItem("token", token);
+    const u = await authApi.me();
+    setUser(u);
+    connectSocket();
+    return u;
+  };
+
   // atualiza o user no estado apos editar o perfil (sem recarregar a pagina)
   const updateUser = (patch: Partial<User>) => {
     setUser((u) => (u ? { ...u, ...patch } : u));
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, updateUser, adoptSession }}>
       {children}
     </AuthContext.Provider>
   );

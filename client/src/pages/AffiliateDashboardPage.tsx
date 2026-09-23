@@ -4,7 +4,8 @@ import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/NavBar";
 import { Avatar } from "../components/Avatar";
 import { EstablishmentAvatar } from "../components/EstablishmentAvatar";
-import { authApi, User } from "../api/auth";
+import { User } from "../api/auth";
+import { useAuth } from "../context/AuthContext";
 import {
   affiliateApi,
   Affiliate,
@@ -189,6 +190,7 @@ function Header({
 
 export function AffiliateDashboardPage() {
   const navigate = useNavigate();
+  const { adoptSession, logout: authLogout } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [aff, setAff] = useState<Affiliate | null>(null);
   const [summary, setSummary] = useState<AffiliateSummary | null>(null);
@@ -202,7 +204,9 @@ export function AffiliateDashboardPage() {
   const load = useCallback(() => {
     return Promise.all([
       affiliateApi.referrals(),
-      authApi.me().catch(() => null),
+      // carrega o usuario E sincroniza o AuthContext: sem isso, abrir o perfil
+      // (rota protegida) mandava o afiliado para o login do app
+      adoptSession().catch(() => null),
       affiliateApi.wallet().catch(() => null),
     ])
       .then(([data, u, w]) => {
@@ -224,6 +228,8 @@ export function AffiliateDashboardPage() {
           ?.status;
         navigate(status === 404 ? "/seja-afiliado" : "/afiliado/login");
       });
+    // adoptSession muda a cada render do provider; so o navigate importa aqui
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
   useEffect(() => {
@@ -246,14 +252,10 @@ export function AffiliateDashboardPage() {
     }
   };
 
+  // sai pelo AuthContext (limpa token, area, socket e o user do contexto)
   const logout = () => {
-    localStorage.removeItem("token");
-    try {
-      localStorage.removeItem("sp_area");
-    } catch {
-      /* ignora */
-    }
-    navigate("/afiliado/login");
+    authLogout();
+    navigate("/afiliado/login", { replace: true });
   };
 
   // abre o perfil do usuario (mesma tela das contas de cliente/dono)

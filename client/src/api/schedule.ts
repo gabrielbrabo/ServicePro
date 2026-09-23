@@ -322,6 +322,36 @@ export const scheduleApi = {
       })
       .then((r) => r.data),
 
+  // agendamentos NAO concluidos (pendentes/confirmados/etc.): traz TODOS
+  listActiveBookings: (role: "client" | "provider", establishmentId?: string) =>
+    api
+      .get<Booking[]>("/bookings", {
+        params: { role, establishment: establishmentId, scope: "active" },
+      })
+      .then((r) => r.data),
+
+  // concluidos (e cancelados): paginado de 15 em 15 (rolagem infinita)
+  listFinishedBookings: (
+    role: "client" | "provider",
+    establishmentId: string | undefined,
+    offset = 0,
+    limit = 15
+  ) =>
+    api
+      .get<{ items: Booking[]; hasMore: boolean; nextOffset: number }>(
+        "/bookings",
+        {
+          params: {
+            role,
+            establishment: establishmentId,
+            scope: "finished",
+            offset,
+            limit,
+          },
+        }
+      )
+      .then((r) => r.data),
+
   updateStatus: (
     id: string,
     status: Booking["status"],

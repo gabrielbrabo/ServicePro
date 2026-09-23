@@ -29,6 +29,12 @@ export interface IUser extends Document {
   emailVerified: boolean;
   emailTokenHash?: string; // hash do token de verificacao (nunca o token cru)
   emailTokenExpiry?: Date;
+  // recuperacao de senha ("esqueci a senha"): so o hash do token fica no banco
+  resetTokenHash?: string;
+  resetTokenExpiry?: Date;
+  // quando a senha mudou pela ultima vez: tokens JWT emitidos ANTES disso sao
+  // recusados no middleware (derruba sessoes em outros dispositivos)
+  passwordChangedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidate: string): Promise<boolean>;
@@ -65,6 +71,10 @@ const userSchema = new Schema<IUser>(
     emailVerified: { type: Boolean, default: false },
     emailTokenHash: { type: String, select: false },
     emailTokenExpiry: { type: Date, select: false },
+    // recuperacao de senha
+    resetTokenHash: { type: String, select: false, index: true, sparse: true },
+    resetTokenExpiry: { type: Date, select: false },
+    passwordChangedAt: { type: Date },
     // localizacao do usuario
     country: { type: String, trim: true, default: "Brasil" },
     state: { type: String, trim: true },
