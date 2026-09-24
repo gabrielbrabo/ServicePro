@@ -1,3 +1,5 @@
+// monitoramento de erros: tem que vir ANTES de tudo
+import "./instrument";
 import http from "http";
 import { createApp } from "./app";
 import { connectDB } from "./config/db";

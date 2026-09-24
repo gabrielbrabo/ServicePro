@@ -75,6 +75,7 @@ const sections: LegalSection[] = [
         "Google: login com a conta Google, quando você escolhe essa opção.",
         "Clicksign: assinatura digital de documentos, quando o estabelecimento usa esse recurso.",
         "Serviços de mapas e endereços (OpenStreetMap/Photon): sugestão e localização de endereços.",
+        "Sentry: monitoramento de erros técnicos da plataforma, sem envio de dados pessoais como nome, e-mail, senha, documentos ou dados de saúde.",
         "Autoridades públicas, quando houver obrigação legal ou ordem judicial.",
       ],
     ],

@@ -1,6 +1,7 @@
 import express, { Application } from "express";
 import cors from "cors";
 import { env } from "./config/env";
+import { Sentry } from "./instrument";
 
 import authRoutes from "./routes/authRoutes";
 import establishmentRoutes from "./routes/establishmentRoutes";
@@ -185,6 +186,8 @@ export const createApp = (): Application => {
   });
 
   app.use(notFound);
+  // envia ao Sentry os erros que chegam ao handler do Express (sem DSN: nada)
+  if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
 
   return app;

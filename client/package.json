@@ -11,6 +11,7 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.1.1",
     "@react-oauth/google": "^0.13.5",
+    "@sentry/react": "^11.0.0",
     "@types/google.maps": "^3.65.4",
     "axios": "^1.7.2",
     "react": "^18.3.1",
