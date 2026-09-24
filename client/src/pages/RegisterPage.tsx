@@ -5,6 +5,7 @@ import { AuthLayout } from "./AuthLayout";
 import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
 import { GoogleLoginButton } from "../components/GoogleLoginButton";
+import { TermsCheckbox } from "../components/TermsCheckbox";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -24,6 +25,8 @@ export function RegisterPage() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // aceite dos Termos de Uso + Politica de Privacidade (LGPD)
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   // 🌍 Load states (IBGE)
   useEffect(() => {
@@ -73,6 +76,10 @@ export function RegisterPage() {
       setError("Selecione seu estado e cidade");
       return;
     }
+    if (!acceptTerms) {
+      setError("Para criar a conta, aceite os Termos de Uso e a Política de Privacidade");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -94,6 +101,7 @@ export function RegisterPage() {
         state: form.state,
         city: form.city,
         ref,
+        acceptTerms,
       });
 
       // vinculo consumido: limpa para nao reaproveitar em outro cadastro
@@ -218,6 +226,7 @@ export function RegisterPage() {
           value={form.password}
           onChange={update("password")}
         />
+        <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
           Criar conta

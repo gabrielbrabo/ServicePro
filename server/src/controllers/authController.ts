@@ -14,6 +14,7 @@ import {
   passwordChangedHtml,
 } from "../config/email";
 import { validatePassword } from "../utils/passwordPolicy";
+import { LEGAL_VERSION, legalAcceptance } from "../config/legal";
 import { OAuth2Client } from "google-auth-library";
 import { Establishment } from "../models/Establishment";
 import { deleteS3ByUrl } from "../config/s3";
@@ -62,10 +63,18 @@ const sendVerificationEmail = async (user: {
 
 // POST /api/auth/register
 export const register = async (req: Request, res: Response): Promise<void> => {
-  const { name, email, password, phone, country, state, city, ref } = req.body;
+  const { name, email, password, phone, country, state, city, ref, acceptTerms } =
+    req.body;
 
   if (!name || !email || !password) {
     res.status(400).json({ message: "Nome, email e senha sao obrigatorios" });
+    return;
+  }
+  // LGPD: cadastro so com aceite expresso dos Termos e da Politica
+  if (acceptTerms !== true) {
+    res.status(400).json({
+      message: "Para criar a conta, aceite os Termos de Uso e a Politica de Privacidade",
+    });
     return;
   }
 
@@ -95,6 +104,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     state,
     city,
     referredByAffiliate,
+    ...legalAcceptance(req),
   });
 
   // envia a confirmacao (nao bloqueia o cadastro se falhar)
@@ -173,6 +183,7 @@ const publicUser = (
     whatsappOptIn?: boolean;
     emailVerified: boolean;
     authProvider?: string;
+    termsVersion?: string;
   },
   hasEstablishments?: boolean
 ) => ({
@@ -191,6 +202,8 @@ const publicUser = (
   emailVerified: u.emailVerified,
   // "google" = conta sem senha propria (front esconde "alterar senha")
   authProvider: u.authProvider || "local",
+  // true = ainda nao aceitou a versao vigente dos termos (front pede o aceite)
+  mustAcceptTerms: u.termsVersion !== LEGAL_VERSION,
   ...(hasEstablishments !== undefined ? { hasEstablishments } : {}),
 });
 
@@ -768,5 +781,33 @@ export const changePassword = async (
   } catch (err) {
     console.error("changePassword:", err);
     res.status(500).json({ message: "Erro ao alterar a senha" });
+  }
+};
+
+// POST /api/auth/accept-terms  (protegido)
+// Aceite dos Termos de Uso + Politica de Privacidade vigentes. Usado por
+// contas criadas antes dos termos, contas Google e quando a versao muda.
+export const acceptTerms = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (req.body?.accept !== true) {
+      res.status(400).json({ message: "Aceite os termos para continuar" });
+      return;
+    }
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: legalAcceptance(req) },
+      { new: true }
+    );
+    if (!user) {
+      res.status(404).json({ message: "Usuario nao encontrado" });
+      return;
+    }
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    console.error("acceptTerms:", err);
+    res.status(500).json({ message: "Erro ao registrar o aceite" });
   }
 };

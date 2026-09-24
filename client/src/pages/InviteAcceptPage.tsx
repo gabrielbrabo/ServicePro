@@ -4,6 +4,7 @@ import { inviteApi, InviteInfo } from "../api/invite";
 import { authApi } from "../api/auth";
 import { connectSocket } from "../lib/socket";
 import { Logo } from "../components/Logo";
+import { TermsCheckbox } from "../components/TermsCheckbox";
 
 export function InviteAcceptPage() {
   const { token = "" } = useParams();
@@ -15,6 +16,7 @@ export function InviteAcceptPage() {
 
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,12 +43,18 @@ export function InviteAcceptPage() {
       setError("Crie uma senha de ao menos 6 caracteres.");
       return;
     }
+    // conta nova: aceite dos Termos/Politica (conta existente aceita no app)
+    if (!info.hasAccount && !acceptTerms) {
+      setError("Aceite os Termos de Uso e a Política de Privacidade.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const res = await inviteApi.accept(token, {
         name: name.trim() || undefined,
         password: info.hasAccount ? undefined : password,
+        acceptTerms: info.hasAccount ? undefined : acceptTerms,
       });
       // loga o funcionario: guarda o token e conecta, igual ao AuthContext
       localStorage.setItem("token", res.token);
@@ -137,6 +145,13 @@ export function InviteAcceptPage() {
                     className="w-full rounded-xl border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500"
                     onKeyDown={(e) => e.key === "Enter" && accept()}
                   />
+                  <div className="mt-3">
+                    <TermsCheckbox
+                      checked={acceptTerms}
+                      onChange={setAcceptTerms}
+                      id="invite-terms"
+                    />
+                  </div>
                 </div>
               )}
 

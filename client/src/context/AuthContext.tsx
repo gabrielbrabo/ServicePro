@@ -21,6 +21,7 @@ interface AuthContextType {
     state?: string;
     city?: string;
     ref?: string;
+    acceptTerms: boolean;
   }) => Promise<void>;
   logout: () => void;
   loginWithGoogle: (credential: string) => Promise<User>;
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     state?: string;
     city?: string;
     ref?: string;
+    acceptTerms: boolean;
   }) => {
     // garante que a indicacao (?ref) do link do afiliado vai pro back mesmo
     // que a pagina de cadastro nao a tenha passado explicitamente.

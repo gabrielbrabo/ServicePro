@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { GoogleLoginButton } from "./GoogleLoginButton";
+import { TermsCheckbox } from "./TermsCheckbox";
 
 type Mode = "login" | "register";
 
@@ -23,6 +24,8 @@ export function AuthModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
+  // aceite dos Termos/Politica — obrigatorio so para criar conta
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,10 @@ export function AuthModal({
       setError("A senha precisa ter ao menos 6 caracteres.");
       return;
     }
+    if (mode === "register" && !acceptTerms) {
+      setError("Aceite os Termos de Uso e a Política de Privacidade.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -53,6 +60,7 @@ export function AuthModal({
           email: email.trim(),
           password,
           phone: phone.trim() || undefined,
+          acceptTerms,
         });
       }
       onSuccess();
@@ -215,6 +223,14 @@ export function AuthModal({
                 className="h-11 w-full rounded-xl border border-ink/15 px-3 text-sm outline-none focus:border-teal-500"
               />
             </label>
+          )}
+
+          {mode === "register" && (
+            <TermsCheckbox
+              checked={acceptTerms}
+              onChange={setAcceptTerms}
+              id="modal-terms"
+            />
           )}
 
           {error && (

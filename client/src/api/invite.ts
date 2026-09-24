@@ -42,7 +42,10 @@ export const inviteApi = {
     api.get<InviteInfo>(`/invites/${token}`).then((r) => r.data),
 
   // publico: aceita (cria conta ou vincula) e devolve token de login
-  accept: (token: string, data: { name?: string; password?: string }) =>
+  accept: (
+    token: string,
+    data: { name?: string; password?: string; acceptTerms?: boolean }
+  ) =>
     api
       .post<AcceptInviteResult>(`/invites/${token}/accept`, data)
       .then((r) => r.data),

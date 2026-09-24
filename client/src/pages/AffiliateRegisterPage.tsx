@@ -5,6 +5,7 @@ import { Button, Input, FieldError } from "../components/ui";
 import { AxiosError } from "axios";
 import { affiliateApi, Affiliate } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
+import { TermsCheckbox } from "../components/TermsCheckbox";
 
 // Cadastro aberto do afiliado/representante do ServiçosPro. Abre a conta de
 // recebimento (subconta Asaas). O link de indicação só é liberado depois que a
@@ -26,6 +27,8 @@ export function AffiliateRegisterPage() {
     province: "",
   });
   const [error, setError] = useState("");
+  // aceite dos Termos de Uso + Politica de Privacidade (LGPD)
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<Affiliate | null>(null);
   const [copied, setCopied] = useState(false);
@@ -62,6 +65,10 @@ export function AffiliateRegisterPage() {
       setError("Preencha o endereço completo (CEP, endereço, número e bairro)");
       return;
     }
+    if (!acceptTerms) {
+      setError("Aceite os Termos de Uso e a Política de Privacidade");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -76,6 +83,7 @@ export function AffiliateRegisterPage() {
         address: form.address,
         addressNumber: form.addressNumber,
         province: form.province,
+        acceptTerms,
       });
       // guarda o token e carrega o usuario no AuthContext (perfil funciona)
       try {
@@ -278,6 +286,7 @@ export function AffiliateRegisterPage() {
           conta e enviar documentos — o link de indicação é liberado após a
           aprovação.
         </p>
+        <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
           Criar conta de afiliado

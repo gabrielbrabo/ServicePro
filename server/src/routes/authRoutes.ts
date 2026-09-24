@@ -9,6 +9,7 @@ import {
   validateResetToken,
   resetPassword,
   changePassword,
+  acceptTerms,
 } from "../controllers/authController";
 import { AuthRequest } from "../middleware/auth";
 import { createLimiter, clientIp, bodyEmail } from "../utils/rateLimit";
@@ -65,6 +66,8 @@ router.post("/verify-email/:token", verifyEmail);
 // protegida: reenviar para o usuario logado
 router.post("/resend-verification", protect, resendVerification);
 router.get("/me", protect, me);
+// protegida: aceite dos Termos de Uso + Politica de Privacidade (LGPD)
+router.post("/accept-terms", protect, acceptTerms);
 router.patch("/me", protect, updateMe);
 // cartao salvo do cliente (pagamento pelo app)
 router.get("/saved-card", protect, getSavedCard);

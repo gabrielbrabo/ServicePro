@@ -10,6 +10,7 @@ import { signToken } from "../utils/token";
 import { getPaymentProvider } from "../services/payments";
 import { env } from "../config/env";
 import crypto from "crypto";
+import { legalAcceptance } from "../config/legal";
 
 // link publico de indicacao do afiliado/representante (aponta para o front)
 const appUrl = (): string => env.appUrl.replace(/\/$/, "");
@@ -131,6 +132,7 @@ export const registerAffiliate = async (
       addressNumber,
       province,
       incomeValue,
+      acceptTerms,
     } = req.body as {
       name?: string;
       email?: string;
@@ -143,6 +145,7 @@ export const registerAffiliate = async (
       addressNumber?: string;
       province?: string;
       incomeValue?: number;
+      acceptTerms?: boolean;
     };
 
     if (!cpfCnpj || !phone) {
@@ -206,6 +209,11 @@ export const registerAffiliate = async (
           country: "Brasil",
         });
       }
+    }
+
+    // aceite dos Termos/Politica (LGPD) marcado no formulario do afiliado
+    if (acceptTerms === true) {
+      await User.updateOne({ _id: user._id }, { $set: legalAcceptance(req) });
     }
 
     // 2) ja e afiliado? devolve o que existe (idempotente)

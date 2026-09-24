@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Types } from "mongoose";
 import { Establishment } from "../models/Establishment";
 import { User } from "../models/User";
+import { legalAcceptance } from "../config/legal";
 import {
   Invite,
   generateInviteToken,
@@ -192,7 +193,7 @@ export const acceptInvite = async (
 ): Promise<void> => {
   try {
     const { token } = req.params;
-    const { name, password } = req.body;
+    const { name, password, acceptTerms } = req.body;
     const tokenHash = hashInviteToken(token);
 
     const invite = await Invite.findOne({ tokenHash, status: "pendente" });
@@ -238,6 +239,11 @@ export const acceptInvite = async (
         email: invite.email,
         password, // hash automatico no pre-save
       });
+    }
+
+    // aceite dos Termos/Politica (LGPD) marcado na tela do convite
+    if (acceptTerms === true) {
+      await User.updateOne({ _id: user._id }, { $set: legalAcceptance(req) });
     }
 
     // profissional: vincula o subdoc a este login. Secretaria: nao ha subdoc.

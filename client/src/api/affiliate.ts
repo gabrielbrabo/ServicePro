@@ -69,6 +69,8 @@ export const affiliateApi = {
     addressNumber?: string;
     province?: string;
     incomeValue?: number;
+    // aceite dos Termos de Uso + Politica de Privacidade
+    acceptTerms?: boolean;
   }) =>
     api
       .post<AffiliateAuthResponse>("/affiliates/register", data)

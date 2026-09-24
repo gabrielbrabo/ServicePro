@@ -35,6 +35,11 @@ export interface IUser extends Document {
   // quando a senha mudou pela ultima vez: tokens JWT emitidos ANTES disso sao
   // recusados no middleware (derruba sessoes em outros dispositivos)
   passwordChangedAt?: Date;
+  // aceite dos Termos de Uso + Politica de Privacidade (LGPD)
+  termsAcceptedAt?: Date;
+  termsVersion?: string;
+  termsAcceptIp?: string;
+  termsAcceptUA?: string;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidate: string): Promise<boolean>;
@@ -75,6 +80,11 @@ const userSchema = new Schema<IUser>(
     resetTokenHash: { type: String, select: false, index: true, sparse: true },
     resetTokenExpiry: { type: Date, select: false },
     passwordChangedAt: { type: Date },
+    // aceite dos termos: data/versao visiveis; IP e navegador so para prova
+    termsAcceptedAt: { type: Date },
+    termsVersion: { type: String },
+    termsAcceptIp: { type: String, select: false },
+    termsAcceptUA: { type: String, select: false },
     // localizacao do usuario
     country: { type: String, trim: true, default: "Brasil" },
     state: { type: String, trim: true },

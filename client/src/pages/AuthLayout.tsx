@@ -292,6 +292,17 @@ export function AuthLayout({
               ))}
             </div>
           </footer>
+
+          {/* documentos legais — visiveis em todas as telas de acesso */}
+          <p className="mt-6 text-center text-xs text-ink/40">
+            <a href="/termos" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 hover:underline">
+              Termos de Uso
+            </a>
+            {" · "}
+            <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 hover:underline">
+              Política de Privacidade
+            </a>
+          </p>
         </div>
       </main>
     </div>

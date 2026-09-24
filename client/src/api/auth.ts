@@ -17,6 +17,8 @@ export interface User {
   emailVerified?: boolean;
   // "google" = conta criada com Google, sem senha propria
   authProvider?: "local" | "google";
+  // true = precisa aceitar a versao vigente dos Termos/Politica (TermsGate)
+  mustAcceptTerms?: boolean;
   hasEstablishments?: boolean;
 }
 
@@ -36,7 +38,15 @@ export const authApi = {
     city?: string;
     // indicacao: codigo do afiliado/representante que trouxe o usuario
     ref?: string;
+    // aceite dos Termos de Uso + Politica de Privacidade (obrigatorio)
+    acceptTerms: boolean;
   }) => api.post<AuthResponse>("/auth/register", data).then((r) => r.data),
+
+  // aceite dos Termos/Politica vigentes (contas antigas, Google, nova versao)
+  acceptTerms: () =>
+    api
+      .post<{ user: User }>("/auth/accept-terms", { accept: true })
+      .then((r) => r.data.user),
 
   login: (data: { email: string; password: string }) =>
     api.post<AuthResponse>("/auth/login", data).then((r) => r.data),

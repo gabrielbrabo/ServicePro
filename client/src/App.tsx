@@ -20,6 +20,9 @@ import { InviteAcceptPage } from "./pages/InviteAcceptPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { TermsPage } from "./pages/TermsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { TermsGate } from "./components/TermsGate";
 import { ProfilePage } from "./pages/ProfilePage";
 import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
@@ -95,6 +98,9 @@ export default function App() {
               {/* recuperacao de senha: pedido (so deslogado) e link do e-mail (sempre) */}
               <Route path="/esqueci-senha" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
               <Route path="/redefinir-senha/:token" element={<ResetPasswordPage />} />
+              {/* documentos legais (publicos) */}
+              <Route path="/termos" element={<TermsPage />} />
+              <Route path="/privacidade" element={<PrivacyPage />} />
               <Route path="/buscar" element={<SearchPage />} />
               <Route path="/servico/:id" element={<P><ServiceDetailPage /></P>} />
               <Route path="/painel" element={<P><ProviderDashboard /></P>} />
@@ -135,6 +141,8 @@ export default function App() {
 
             {/* aviso in-app de vaga liberada (lista de espera) — vive em todas as rotas */}
             <WaitlistToast />
+            {/* pede o aceite dos Termos/Politica a quem ainda nao aceitou */}
+            <TermsGate />
           </BrowserRouter>
         </NotificationProvider>
       </EstablishmentProvider>
