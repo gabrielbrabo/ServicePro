@@ -110,6 +110,7 @@ export function AffiliateRegisterPage() {
     if (!created.approved) {
       return (
         <AuthLayout
+          variant="affiliate"
           title="Quase lá! Ative sua conta"
           subtitle="Falta ativar sua conta de recebimento para liberar seu link."
         >
@@ -146,6 +147,7 @@ export function AffiliateRegisterPage() {
     // conta já aprovada (ex.: ambiente dev): mostra o link direto
     return (
       <AuthLayout
+        variant="affiliate"
         title="Você é afiliado/representante!"
         subtitle="Compartilhe seu link e ganhe 25% de cada indicado, para sempre."
       >
@@ -179,6 +181,7 @@ export function AffiliateRegisterPage() {
 
   return (
     <AuthLayout
+      variant="affiliate"
       title="Seja afiliado/representante"
       subtitle="Indique estabelecimentos e ganhe 25% de cada plano, para sempre."
     >

@@ -50,6 +50,7 @@ export function AffiliateLoginPage() {
 
   return (
     <AuthLayout
+      variant="affiliate"
       title="Área do afiliado/representante"
       subtitle="Acompanhe seus indicados e suas comissões."
     >

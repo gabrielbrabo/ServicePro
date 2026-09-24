@@ -39,6 +39,7 @@ export function ForgotPasswordPage({
 
   return (
     <AuthLayout
+      variant={area === "affiliate" ? "affiliate" : "app"}
       title="Esqueceu a senha?"
       subtitle="Informe seu e-mail e enviaremos um link para criar uma nova."
     >

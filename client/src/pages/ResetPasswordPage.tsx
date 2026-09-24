@@ -71,6 +71,7 @@ export function ResetPasswordPage() {
 
   return (
     <AuthLayout
+      variant={isAffiliate ? "affiliate" : "app"}
       title="Criar nova senha"
       subtitle={
         maskedEmail
