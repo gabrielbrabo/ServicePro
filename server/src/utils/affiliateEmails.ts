@@ -1,4 +1,4 @@
-import { sendEmail } from "../config/email";
+import { sendEmail, emailBrandHeader } from "../config/email";
 import { env } from "../config/env";
 
 // E-mails do programa de afiliados/representantes. Padrao fire-and-forget: nunca
@@ -24,6 +24,7 @@ const ctaButton = (href: string, label: string): string => `
 
 const shell = (heading: string, inner: string): string => `
   <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+    ${emailBrandHeader}
     <h2 style="color: #0f766e; margin-bottom: 8px;">${heading}</h2>
     ${inner}
     <p style="color: #94a3b8; font-size: 13px; margin-top: 24px;">

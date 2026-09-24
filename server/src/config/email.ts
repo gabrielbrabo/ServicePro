@@ -55,6 +55,23 @@ export const sendEmail = async ({
   }
 };
 
+// Cabecalho da marca (icone "S" + nome) no topo de todos os e-mails.
+// PNG hospedado no front (Gmail/Outlook nao exibem SVG). O CLIENT_URL precisa
+// apontar para o dominio publico (servicospro.com) para a imagem carregar.
+export const emailBrandHeader = `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
+      <tr>
+        <td style="vertical-align: middle;">
+          <img src="${env.clientUrl.replace(/\/$/, "")}/icon-192.png" width="36" height="36"
+               alt="ServiçosPro" style="display: block; border-radius: 10px;" />
+        </td>
+        <td style="vertical-align: middle; padding-left: 10px; font-family: system-ui, sans-serif;
+                   font-size: 20px; font-weight: 800; color: #0F1B1A;">
+          Serviços<span style="color: #0E7C72;">Pro</span>
+        </td>
+      </tr>
+    </table>`;
+
 // template do convite de funcionario
 export const inviteEmailHtml = (args: {
   establishmentName: string;
@@ -64,6 +81,7 @@ export const inviteEmailHtml = (args: {
   const { establishmentName, professionalName, inviteUrl } = args;
   return `
   <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+    ${emailBrandHeader}
     <h2 style="color: #0f766e; margin-bottom: 8px;">Você foi convidado</h2>
     <p style="color: #334155; line-height: 1.6;">
       Olá, ${professionalName}! O estabelecimento
@@ -99,6 +117,7 @@ export const verifyEmailHtml = (args: {
   const { name, verifyUrl } = args;
   return `
   <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+    ${emailBrandHeader}
     <h2 style="color: #0f766e; margin-bottom: 8px;">Confirme seu e-mail</h2>
     <p style="color: #334155; line-height: 1.6;">
       Olá, ${name}! Falta pouco para concluir seu cadastro no ServiçosPro.
@@ -179,6 +198,7 @@ const detailBlock = (args: BookingEmailArgs): string => {
 
 const shell = (heading: string, inner: string): string => `
   <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+    ${emailBrandHeader}
     <h2 style="color: #0f766e; margin-bottom: 8px;">${heading}</h2>
     ${inner}
     <p style="color: #94a3b8; font-size: 13px; margin-top: 24px;">
