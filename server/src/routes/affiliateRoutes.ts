@@ -6,6 +6,8 @@ import {
   getMyReferrals,
   getMyWallet,
   getMyReferrer,
+  checkReferral,
+  linkMyReferrer,
 } from "../controllers/affiliateController";
 import { protect, optionalProtect } from "../middleware/auth";
 import { createLimiter, clientIp, bodyEmail } from "../utils/rateLimit";
@@ -33,5 +35,9 @@ router.get("/me/wallet", protect, getMyWallet);
 // se o usuario logado ja foi indicado por um afiliado (e por quem) -> usado no
 // cadastro de estabelecimento para travar o campo de link de indicacao.
 router.get("/my-referrer", protect, getMyReferrer);
+// confere um link de indicacao (nome do afiliado) antes de usar
+router.get("/check-ref", protect, checkReferral);
+// informa DEPOIS do cadastro quem indicou (uma unica vez)
+router.post("/my-referrer", protect, linkMyReferrer);
 
 export default router;

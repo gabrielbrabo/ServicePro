@@ -11,6 +11,8 @@ import { getPaymentProvider } from "../services/payments";
 import { env } from "../config/env";
 import crypto from "crypto";
 import { legalAcceptance } from "../config/legal";
+import { Establishment } from "../models/Establishment";
+import { resolveReferral, setUserReferrer } from "../utils/referral";
 
 // link publico de indicacao do afiliado/representante (aponta para o front)
 const appUrl = (): string => env.appUrl.replace(/\/$/, "");
@@ -557,5 +559,112 @@ export const getMyReferrer = async (
   } catch (err) {
     console.error("getMyReferrer:", err);
     res.status(500).json({ message: "Erro ao verificar indicacao" });
+  }
+};
+
+// GET /api/affiliates/check-ref?ref=<link ou codigo>  (protegido)
+// Confere o link de indicacao antes do cadastro do estabelecimento: o front
+// mostra o nome do afiliado e bloqueia link invalido.
+export const checkReferral = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const r = await resolveReferral(req.query.ref, String(req.userId));
+    if (!r.ok) {
+      res.status(400).json({ valid: false, message: r.message });
+      return;
+    }
+    res.json({ valid: true, affiliateName: r.affiliateName, code: r.code });
+  } catch (err) {
+    console.error("checkReferral:", err);
+    res.status(500).json({ message: "Erro ao verificar o link" });
+  }
+};
+
+// POST /api/affiliates/my-referrer  (protegido)  body: { ref }
+// O dono informa DEPOIS do cadastro quem o indicou. Vale uma unica vez (quem ja
+// tem indicacao nao troca). Vincula as assinaturas dos estabelecimentos dele
+// que ainda nao tem afiliado e aplica o split nas PROXIMAS cobrancas.
+export const linkMyReferrer = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = String(req.userId);
+    const user = await User.findById(userId).select("referredByAffiliate");
+    if (!user) {
+      res.status(404).json({ message: "Usuario nao encontrado" });
+      return;
+    }
+    if (user.referredByAffiliate) {
+      res.status(409).json({
+        message: "Sua conta já está vinculada a um afiliado/representante.",
+      });
+      return;
+    }
+
+    const r = await resolveReferral(req.body?.ref, userId);
+    if (!r.ok) {
+      res.status(400).json({ message: r.message });
+      return;
+    }
+
+    const linked = await setUserReferrer(userId, r.affiliateId);
+    if (!linked) {
+      res.status(409).json({
+        message: "Sua conta já está vinculada a um afiliado/representante.",
+      });
+      return;
+    }
+
+    // assinaturas dos estabelecimentos do dono ainda sem afiliado
+    const ests = await Establishment.find({ owner: userId }).select("_id");
+    const subs = await Subscription.find({
+      establishment: { $in: ests.map((e) => e._id) },
+      $or: [{ affiliate: null }, { affiliate: { $exists: false } }],
+    });
+
+    const provider = getPaymentProvider();
+    let splitsApplied = 0;
+    for (const sub of subs) {
+      sub.affiliate = r.affiliateId;
+      // dinheiro so flui se o afiliado tem carteira e a assinatura esta ativa
+      // no gateway; senao fica so a atribuicao (aparece no painel dele)
+      if (
+        r.walletId &&
+        sub.providerSubscriptionId &&
+        sub.status !== "canceled" &&
+        provider.updateSubscriptionSplit
+      ) {
+        try {
+          const commissionCents = Math.round((sub.priceCents * r.percent) / 100);
+          await provider.updateSubscriptionSplit(
+            sub.providerSubscriptionId,
+            r.walletId,
+            commissionCents
+          );
+          sub.affiliateWalletId = r.walletId;
+          splitsApplied++;
+        } catch (e) {
+          console.error(
+            `linkMyReferrer: split nao aplicado na assinatura ${sub._id}:`,
+            (e as Error).message
+          );
+        }
+      }
+      await sub.save();
+    }
+
+    res.json({
+      referred: true,
+      affiliateName: r.affiliateName,
+      code: r.code,
+      subscriptionsLinked: subs.length,
+      splitsApplied,
+    });
+  } catch (err) {
+    console.error("linkMyReferrer:", err);
+    res.status(500).json({ message: "Erro ao vincular a indicacao" });
   }
 };

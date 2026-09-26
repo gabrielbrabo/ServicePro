@@ -448,6 +448,20 @@ export const asaasProvider: PaymentProvider = {
     });
   },
 
+  // Split do afiliado adicionado DEPOIS (indicacao informada apos o cadastro).
+  // Mesmo formato da criacao: fixedValue = X% do bruto (empresa absorve a taxa).
+  // updatePendingPayments: a cobranca ja gerada e ainda nao paga tambem entra.
+  async updateSubscriptionSplit(
+    subscriptionId: string,
+    walletId: string,
+    fixedValueCents: number
+  ) {
+    await api(`/subscriptions/${subscriptionId}`, "PUT", {
+      split: [{ walletId, fixedValue: cents(fixedValueCents) }],
+      updatePendingPayments: true,
+    });
+  },
+
   // Cancela no FIM do periodo (endDate) mantendo o acesso ate la; sem data,
   // encerra de vez (DELETE).
   async cancelSubscription(subscriptionId: string, endDate?: Date) {

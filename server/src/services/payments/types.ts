@@ -202,6 +202,13 @@ export interface PaymentProvider {
     subscriptionId: string,
     newValueCents: number
   ): Promise<void>;
+  // aplica o split de comissao do afiliado numa assinatura JA existente
+  // (indicacao informada depois do cadastro). Vale para as proximas cobrancas.
+  updateSubscriptionSplit?(
+    subscriptionId: string,
+    walletId: string,
+    fixedValueCents: number
+  ): Promise<void>;
   // cancela no fim do periodo (endDate) ou de vez (sem data)
   cancelSubscription(subscriptionId: string, endDate?: Date): Promise<void>;
   // reativa uma assinatura cancelada, com a proxima cobranca em nextDueDate

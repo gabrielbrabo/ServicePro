@@ -69,6 +69,14 @@ export const noopProvider: PaymentProvider = {
     // no-op
   },
 
+  async updateSubscriptionSplit(
+    _subscriptionId: string,
+    _walletId: string,
+    _fixedValueCents: number
+  ) {
+    // no-op
+  },
+
   async cancelSubscription(_subscriptionId: string, _endDate?: Date) {
     // no-op
   },
