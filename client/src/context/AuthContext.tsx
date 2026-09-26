@@ -129,7 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const ref = readRef();
     const { token, user } = await authApi.google(credential, ref);
     localStorage.setItem("token", token);
-    clearRef();
+    // NAO apaga o sp_ref: se a conta Google ja existia, o back nao vincula a
+    // indicacao no login — o cadastro do estabelecimento ainda precisa dele
     markArea("app"); // area do afiliado sobrescreve isto ao abrir /afiliado
     setUser(user);
     connectSocket();

@@ -88,6 +88,22 @@ async function ensureSubaccount(input: {
     if (found) {
       accountId = found.accountId;
       walletId = found.walletId;
+      // O Asaas so devolve a apiKey da subconta na CRIACAO. Se ela ja foi
+      // criada antes por este sistema (outro cadastro de afiliado no mesmo
+      // banco), reaproveita a chave guardada para conseguir checar a aprovacao.
+      const prev = await Affiliate.findOne({
+        $or: [{ asaasAccountId: accountId }, { asaasWalletId: walletId }],
+        asaasApiKey: { $nin: [null, ""] },
+      }).select("+asaasApiKey");
+      if (prev?.asaasApiKey) {
+        apiKey = prev.asaasApiKey;
+      } else {
+        console.warn(
+          `ensureSubaccount: subconta Asaas ${accountId} reaproveitada SEM apiKey — ` +
+            "a aprovacao nao pode ser checada automaticamente; aprove o afiliado " +
+            "manualmente (approved=true) apos conferir a subconta no Asaas."
+        );
+      }
     }
   }
   if (!walletId && provider.createSubaccount) {

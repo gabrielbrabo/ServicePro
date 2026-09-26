@@ -62,16 +62,28 @@ export function EstablishmentForm({
   const [referralChoice, setReferralChoice] = useState<"yes" | "no" | null>(
     null
   );
+  // veio pelo link do afiliado: ja marca "Sim", preenche e confirma no back o
+  // nome de quem indicou (mostrado em destaque para o indicado nao trocar)
+  const [linkedRef, setLinkedRef] = useState<{ name: string } | null>(null);
+  const [editRef, setEditRef] = useState(false);
   useEffect(() => {
+    let saved = "";
     try {
-      const saved = localStorage.getItem("sp_ref");
-      if (saved) {
-        setReferredBy(saved);
-        setReferralChoice("yes"); // veio pelo link do afiliado
-      }
+      saved = localStorage.getItem("sp_ref") || "";
     } catch {
       // ambiente sem localStorage: ignora
     }
+    if (!saved) return;
+    setReferredBy(saved);
+    setReferralChoice("yes");
+    affiliateApi
+      .checkRef(saved)
+      .then((r) => {
+        if (r.valid && r.affiliateName) setLinkedRef({ name: r.affiliateName });
+      })
+      .catch(() => {
+        // link invalido/proprio link: deixa o campo aberto para corrigir
+      });
   }, []);
   // o dono logado JA foi indicado por um afiliado? Se sim, travamos o campo e
   // mostramos por quem foi indicado (nao da pra trocar de afiliado depois).
@@ -907,6 +919,31 @@ export function EstablishmentForm({
                 Sua conta já está vinculada a este afiliado/representante — ele
                 recebe a comissão das suas assinaturas.
               </span>
+            </div>
+          ) : linkedRef && !editRef && referralChoice === "yes" ? (
+            // chegou pelo link do afiliado: ja marcado e preenchido
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="mb-1 block text-sm font-medium text-ink/70">
+                    Indicação
+                  </span>
+                  <p className="text-sm text-ink">
+                    ✓ Você foi indicado por{" "}
+                    <strong>{linkedRef.name}</strong>
+                  </p>
+                  <span className="mt-1 block text-xs text-ink/45">
+                    Preenchido automaticamente pelo link de indicação.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditRef(true)}
+                  className="shrink-0 text-xs font-medium text-ink/40 hover:text-ink/70 hover:underline"
+                >
+                  Alterar
+                </button>
+              </div>
             </div>
           ) : (
             <fieldset className="rounded-xl border border-ink/10 p-4">

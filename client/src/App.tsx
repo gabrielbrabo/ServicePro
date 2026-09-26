@@ -73,6 +73,14 @@ function P({ children }: { children: React.ReactNode }) {
 
 // Captura o ?ref=<code> do link do afiliado/representante e guarda no
 // localStorage. Sobrevive entre visitas ate o cadastro do indicado enviar.
+// Roda ja no carregamento do modulo (antes de qualquer redirect da rota "/"
+// limpar a URL) e de novo no efeito, por garantia.
+try {
+  const ref0 = new URLSearchParams(window.location.search).get("ref");
+  if (ref0) localStorage.setItem("sp_ref", ref0);
+} catch {
+  // ignora
+}
 function RefCapture() {
   useEffect(() => {
     try {
