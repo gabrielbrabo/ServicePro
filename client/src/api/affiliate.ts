@@ -94,6 +94,27 @@ export const affiliateApi = {
   wallet: () =>
     api.get<AffiliateWallet>("/affiliates/me/wallet").then((r) => r.data),
 
+  // confere um link/codigo de indicacao (devolve o nome do afiliado)
+  checkRef: (ref: string) =>
+    api
+      .get<{ valid: boolean; affiliateName?: string; code?: string }>(
+        "/affiliates/check-ref",
+        { params: { ref } }
+      )
+      .then((r) => r.data),
+
+  // informa DEPOIS do cadastro quem indicou (uma unica vez)
+  linkReferrer: (ref: string) =>
+    api
+      .post<{
+        referred: boolean;
+        affiliateName: string;
+        code: string;
+        subscriptionsLinked: number;
+        splitsApplied: number;
+      }>("/affiliates/my-referrer", { ref })
+      .then((r) => r.data),
+
   // dono logado ja foi indicado por um afiliado? (para travar o campo no
   // cadastro de estabelecimento e mostrar por quem foi indicado)
   myReferrer: () =>

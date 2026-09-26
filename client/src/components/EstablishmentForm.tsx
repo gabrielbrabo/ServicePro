@@ -57,10 +57,18 @@ export function EstablishmentForm({
   // link/código de quem indicou (afiliado/representante). Pré-preenche a partir
   // do ?ref guardado no link do afiliado; o dono também pode colar manualmente.
   const [referredBy, setReferredBy] = useState("");
+  // escolha OBRIGATORIA: "yes" = fui indicado (link obrigatorio) | "no" = nao
+  // fui indicado. null = ainda nao escolheu (nao deixa concluir o cadastro).
+  const [referralChoice, setReferralChoice] = useState<"yes" | "no" | null>(
+    null
+  );
   useEffect(() => {
     try {
       const saved = localStorage.getItem("sp_ref");
-      if (saved) setReferredBy(saved);
+      if (saved) {
+        setReferredBy(saved);
+        setReferralChoice("yes"); // veio pelo link do afiliado
+      }
     } catch {
       // ambiente sem localStorage: ignora
     }
@@ -206,6 +214,33 @@ export function EstablishmentForm({
       return;
     }
 
+    // indicação: escolha obrigatória (a menos que a conta já esteja vinculada)
+    let refToSend: string | undefined;
+    if (!createdEst && !referrer?.referred) {
+      if (!referralChoice) {
+        setError(
+          "Informe se você foi indicado por um afiliado/representante"
+        );
+        return;
+      }
+      if (referralChoice === "yes") {
+        if (!referredBy.trim()) {
+          setError("Cole o link do afiliado/representante que indicou você");
+          return;
+        }
+        // confere o link antes de cadastrar (link errado = sem comissão)
+        try {
+          await affiliateApi.checkRef(referredBy.trim());
+          refToSend = referredBy.trim();
+        } catch (err) {
+          const msg = (err as { response?: { data?: { message?: string } } })
+            ?.response?.data?.message;
+          setError(msg || "Link de afiliado inválido. Confira o link.");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     setError("");
     try {
@@ -232,7 +267,7 @@ export function EstablishmentForm({
             ? { type: "Point", coordinates: [coords.lon, coords.lat] }
             : undefined,
           // indicação: link/código do afiliado/representante que indicou
-          ref: referredBy.trim() || undefined,
+          ref: refToSend,
         });
         setCreatedEst(est);
       }
@@ -874,22 +909,74 @@ export function EstablishmentForm({
               </span>
             </div>
           ) : (
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink/70">
-                Link de quem indicou{" "}
-                <span className="font-normal text-ink/40">(opcional)</span>
-              </span>
-              <input
-                value={referredBy}
-                onChange={(e) => setReferredBy(e.target.value)}
-                placeholder="Cole aqui o link do afiliado/representante que indicou você"
-                className={inputClass}
-              />
-              <span className="mt-1 block text-xs text-ink/40">
-                Se você chegou pelo link de um afiliado/representante, ele já vem
-                preenchido. Assim ele recebe a comissão da sua indicação.
-              </span>
-            </label>
+            <fieldset className="rounded-xl border border-ink/10 p-4">
+              <legend className="px-1 text-sm font-medium text-ink/70">
+                Indicação <span className="text-red-500">*</span>
+              </legend>
+              <p className="text-xs text-ink/50">
+                Você chegou ao ServiçosPro pela indicação de um
+                afiliado/representante?
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                    referralChoice === "yes"
+                      ? "border-teal-500 bg-teal-500/5 text-ink"
+                      : "border-ink/15 text-ink/70 hover:border-teal-500"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="referral"
+                    checked={referralChoice === "yes"}
+                    onChange={() => setReferralChoice("yes")}
+                    className="h-4 w-4 text-teal-500 focus:ring-teal-500"
+                  />
+                  Sim, fui indicado
+                </label>
+                <label
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                    referralChoice === "no"
+                      ? "border-teal-500 bg-teal-500/5 text-ink"
+                      : "border-ink/15 text-ink/70 hover:border-teal-500"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="referral"
+                    checked={referralChoice === "no"}
+                    onChange={() => setReferralChoice("no")}
+                    className="h-4 w-4 text-teal-500 focus:ring-teal-500"
+                  />
+                  Não fui indicado
+                </label>
+              </div>
+
+              {referralChoice === "yes" && (
+                <label className="mt-3 block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink/70">
+                    Link do afiliado/representante{" "}
+                    <span className="text-red-500">*</span>
+                  </span>
+                  <input
+                    value={referredBy}
+                    onChange={(e) => setReferredBy(e.target.value)}
+                    placeholder="Cole aqui o link de quem indicou você"
+                    className={inputClass}
+                  />
+                  <span className="mt-1 block text-xs text-ink/40">
+                    Se você chegou pelo link do afiliado, ele já vem preenchido.
+                    Conferimos o link antes de concluir o cadastro.
+                  </span>
+                </label>
+              )}
+              {referralChoice === "no" && (
+                <p className="mt-3 text-xs text-ink/50">
+                  Sem problemas. Se alguém indicou você e lembrar depois, dá para
+                  informar o link em <b>Minha assinatura</b>, no painel.
+                </p>
+              )}
+            </fieldset>
           )}
 
           <div className="flex gap-3">

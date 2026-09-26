@@ -6,6 +6,7 @@ import {
   SubscribePayload,
 } from "../api/subscription";
 import { useAuth } from "../context/AuthContext";
+import { affiliateApi } from "../api/affiliate";
 
 const brl = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", {
@@ -37,6 +38,101 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   canceled: { text: "Cancelada", cls: "bg-red-500/10 text-red-600" },
   none: { text: "Sem assinatura", cls: "bg-ink/5 text-ink/60" },
 };
+
+// Indicação informada DEPOIS do cadastro: quem marcou "não fui indicado" (ou
+// esqueceu) pode vincular o link do afiliado/representante uma única vez.
+function ReferralCard() {
+  const [info, setInfo] = useState<{
+    referred: boolean;
+    affiliateName?: string;
+  } | null>(null);
+  const [link, setLink] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    affiliateApi
+      .myReferrer()
+      .then(setInfo)
+      .catch(() => setInfo({ referred: false }));
+  }, []);
+
+  if (!info) return null;
+
+  if (info.referred) {
+    return (
+      <div className="rounded-2xl border border-ink/10 bg-white p-5">
+        <h3 className="font-display font-bold text-ink">Indicação</h3>
+        <p className="mt-1 text-sm text-ink/70">
+          Indicado pelo afiliado/representante{" "}
+          <b className="text-ink">{info.affiliateName}</b>.
+        </p>
+        {done && (
+          <p className="mt-2 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-700">
+            {done}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const save = async () => {
+    setError(null);
+    if (!link.trim()) {
+      setError("Cole o link do afiliado/representante.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await affiliateApi.linkReferrer(link.trim());
+      setInfo({ referred: true, affiliateName: res.affiliateName });
+      setDone(
+        "Indicação registrada. A comissão do afiliado vale a partir das próximas cobranças."
+      );
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      setError(msg || "Não foi possível registrar a indicação.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-ink/10 bg-white p-5">
+      <h3 className="font-display font-bold text-ink">
+        Foi indicado por alguém?
+      </h3>
+      <p className="mt-1 text-sm text-ink/60">
+        Se um afiliado/representante indicou o ServiçosPro para você, cole o
+        link dele aqui. Só é possível informar uma vez, e não pode ser trocado
+        depois.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="Cole aqui o link do afiliado/representante"
+          className="h-11 flex-1 rounded-xl border border-ink/15 bg-white px-3 text-sm outline-none focus:border-teal-500"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="h-11 rounded-xl bg-teal-500 px-5 text-sm font-semibold text-white transition hover:bg-teal-600 disabled:opacity-60"
+        >
+          {saving ? "Verificando..." : "Vincular indicação"}
+        </button>
+      </div>
+      {error && (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function SubscriptionManager({
   establishment,
@@ -663,6 +759,8 @@ export function SubscriptionManager({
           </button>
         </div>
       )}
+      {/* indicação de afiliado informada depois do cadastro */}
+      <ReferralCard />
     </div>
   );
 }
