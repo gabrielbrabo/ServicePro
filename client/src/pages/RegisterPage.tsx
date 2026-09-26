@@ -1,3 +1,4 @@
+import { readRef, clearRef } from "../lib/ref";
 import { useState, useEffect, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -85,12 +86,7 @@ export function RegisterPage() {
     try {
       // indicacao: se veio por link de afiliado/representante, envia o ?ref
       // guardado no localStorage para o back vincular a indicacao.
-      let ref: string | undefined;
-      try {
-        ref = localStorage.getItem("sp_ref") || undefined;
-      } catch {
-        ref = undefined;
-      }
+      const ref = readRef();
 
       await register({
         name: form.name,
@@ -105,11 +101,7 @@ export function RegisterPage() {
       });
 
       // vinculo consumido: limpa para nao reaproveitar em outro cadastro
-      try {
-        localStorage.removeItem("sp_ref");
-      } catch {
-        // ignora
-      }
+      clearRef();
 
       navigate("/");
     } catch (err) {

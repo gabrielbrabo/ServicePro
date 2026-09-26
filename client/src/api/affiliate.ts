@@ -4,10 +4,28 @@ import { api } from "../lib/api";
 export interface Affiliate {
   id: string;
   code: string;
-  link: string; // vazio enquanto a conta Asaas nao for aprovada
-  approved: boolean; // conta Asaas aprovada? so entao libera link e split
+  // modelo antigo: vazio ate a conta Asaas ser aprovada. Modelo novo
+  // (deferred): liberado na hora do cadastro.
+  link: string;
+  approved: boolean; // conta de recebimento (Asaas) aprovada?
   status: "active" | "suspended";
   commissionPercent: number;
+  // "deferred" = conta de recebimento aberta so no 1o indicado pagante
+  accountMode?: "upfront" | "deferred";
+  accountOpened?: boolean; // subconta Asaas ja aberta?
+  // o Asaas recusou abrir a conta (ex.: CEP invalido) — corrigir no painel
+  accountOpenError?: string;
+}
+
+// dados da conta de recebimento (corrigiveis antes de a conta ser aberta)
+export interface ReceivingData {
+  cpfCnpj: string;
+  phone: string;
+  birthDate: string;
+  postalCode: string;
+  address: string;
+  addressNumber: string;
+  province: string;
 }
 
 // Um indicado (assinatura de estabelecimento trazida pelo afiliado)
@@ -34,6 +52,8 @@ export interface AffiliateSummary {
   perPaymentEstimateCents: number;
   receivedTotalCents: number;
   receivedMonthCents: number;
+  // comissoes guardadas ate a conta de recebimento ser aprovada
+  pendingPayoutCents?: number;
 }
 
 export interface AffiliateWallet {
@@ -93,6 +113,21 @@ export const affiliateApi = {
 
   wallet: () =>
     api.get<AffiliateWallet>("/affiliates/me/wallet").then((r) => r.data),
+
+  receivingData: () =>
+    api
+      .get<ReceivingData & { editable: boolean; accountOpenError: string }>(
+        "/affiliates/me/receiving-data"
+      )
+      .then((r) => r.data),
+
+  updateReceivingData: (data: ReceivingData) =>
+    api
+      .put<{ saved: boolean; opened: boolean; accountOpenError: string }>(
+        "/affiliates/me/receiving-data",
+        data
+      )
+      .then((r) => r.data),
 
   // confere um link/codigo de indicacao (devolve o nome do afiliado)
   checkRef: (ref: string) =>

@@ -13,6 +13,13 @@ import crypto from "crypto";
 import { legalAcceptance } from "../config/legal";
 import { Establishment } from "../models/Establishment";
 import { resolveReferral, setUserReferrer } from "../utils/referral";
+import { validateReceivingData, onlyDigits } from "../utils/receivingData";
+import {
+  refreshApproval,
+  openAffiliateAccount,
+  settleDeferredAffiliate,
+  establishmentNameOf,
+} from "../utils/affiliateAccount";
 
 // link publico de indicacao do afiliado/representante (aponta para o front)
 const appUrl = (): string => env.appUrl.replace(/\/$/, "");
@@ -34,99 +41,26 @@ async function generateUniqueCode(): Promise<string> {
 const publicAffiliate = (a: IAffiliate) => ({
   id: a._id,
   code: a.code,
-  // link so vale/aparece apos a conta Asaas ser aprovada
-  link: a.approved ? refLink(a.code) : "",
+  // modelo antigo (upfront): link so apos a subconta ser aprovada.
+  // modelo novo (deferred): link liberado na hora — a subconta so e aberta
+  // quando o 1o indicado assina (sem custo para quem nao traz ninguem).
+  link:
+    a.status === "active" && (a.approved || a.accountMode === "deferred")
+      ? refLink(a.code)
+      : "",
   approved: a.approved,
   status: a.status,
   commissionPercent: a.commissionPercent,
+  accountMode: a.accountMode || "upfront",
+  // subconta de recebimento ja aberta no Asaas?
+  accountOpened: !!a.asaasWalletId,
+  // o Asaas recusou abrir a subconta (ex.: CEP invalido): o afiliado corrige
+  // os dados no painel. So aparece enquanto a conta nao foi aberta.
+  accountOpenError: a.asaasWalletId ? "" : a.accountOpenError || "",
 });
 
-// Consulta o status da conta Asaas do afiliado e marca approved=true quando
-// aprovada. Retorna o afiliado (atualizado). Falha silenciosa. Precisa da
-// asaasApiKey (subconta) selecionada no doc.
-async function refreshApproval(a: IAffiliate): Promise<IAffiliate> {
-  try {
-    if (a.approved) return a;
-    if (!a.asaasApiKey) return a;
-    const provider = getPaymentProvider();
-    if (!provider.getSubaccountStatus) return a;
-    const st = await provider.getSubaccountStatus(a.asaasApiKey);
-    if (st.approved) {
-      a.approved = true;
-      a.approvedAt = new Date();
-      await a.save();
-    }
-  } catch (e) {
-    console.error("refreshApproval:", (e as Error).message);
-  }
-  return a;
-}
-
-// cria (ou reusa) a subconta Asaas do afiliado. Com o adapter noop (dev) devolve
-// uma carteira ficticia; nada quebra. findSubaccount evita duplicar quando o
-// CPF/CNPJ ja tem conta no Asaas.
-async function ensureSubaccount(input: {
-  name: string;
-  email: string;
-  cpfCnpj: string;
-  phone: string;
-  incomeValue: number;
-  address: string;
-  addressNumber: string;
-  province: string;
-  postalCode: string;
-  birthDate?: string;
-  companyType?: string;
-}): Promise<{ accountId: string; walletId: string; apiKey: string }> {
-  const provider = getPaymentProvider();
-  let accountId = "";
-  let walletId = "";
-  let apiKey = "";
-
-  if (provider.findSubaccount && input.cpfCnpj) {
-    const found = await provider.findSubaccount(input.cpfCnpj);
-    if (found) {
-      accountId = found.accountId;
-      walletId = found.walletId;
-      // O Asaas so devolve a apiKey da subconta na CRIACAO. Se ela ja foi
-      // criada antes por este sistema (outro cadastro de afiliado no mesmo
-      // banco), reaproveita a chave guardada para conseguir checar a aprovacao.
-      const prev = await Affiliate.findOne({
-        $or: [{ asaasAccountId: accountId }, { asaasWalletId: walletId }],
-        asaasApiKey: { $nin: [null, ""] },
-      }).select("+asaasApiKey");
-      if (prev?.asaasApiKey) {
-        apiKey = prev.asaasApiKey;
-      } else {
-        console.warn(
-          `ensureSubaccount: subconta Asaas ${accountId} reaproveitada SEM apiKey — ` +
-            "a aprovacao nao pode ser checada automaticamente; aprove o afiliado " +
-            "manualmente (approved=true) apos conferir a subconta no Asaas."
-        );
-      }
-    }
-  }
-  if (!walletId && provider.createSubaccount) {
-    const created = await provider.createSubaccount({
-      name: input.name,
-      email: input.email,
-      cpfCnpj: input.cpfCnpj,
-      mobilePhone: input.phone,
-      incomeValue: input.incomeValue,
-      address: input.address,
-      addressNumber: input.addressNumber,
-      province: input.province,
-      postalCode: input.postalCode,
-      // pessoa fisica exige birthDate; pessoa juridica exige companyType
-      birthDate: input.companyType ? undefined : input.birthDate,
-      companyType: input.companyType,
-    });
-    accountId = created.accountId;
-    walletId = created.walletId;
-    apiKey = created.apiKey;
-  }
-  return { accountId, walletId, apiKey };
-}
+// refreshApproval / ensureSubaccount ficam em utils/affiliateAccount (usados
+// tambem pela assinatura do estabelecimento e pelo job de repasse).
 
 // POST /api/affiliates/register  (PUBLICO — optionalProtect)
 // Cadastro aberto do afiliado/representante. Cria (ou reusa, se ja logado) a
@@ -190,6 +124,21 @@ export const registerAffiliate = async (
       });
       return;
     }
+    // valida CPF/CNPJ, telefone, idade e CEP JA no cadastro: a subconta so e
+    // aberta no 1o indicado pagante e o erro nao pode aparecer so la
+    const invalid = await validateReceivingData({
+      cpfCnpj,
+      phone,
+      birthDate,
+      postalCode,
+      address,
+      addressNumber,
+      province,
+    });
+    if (invalid) {
+      res.status(400).json({ message: invalid });
+      return;
+    }
 
     // 1) resolve o usuario dono da conta de afiliado. A conta de afiliado SEMPRE
     // se junta a uma conta User: um dono/funcionario/cliente pode virar afiliado
@@ -242,30 +191,16 @@ export const registerAffiliate = async (
       return;
     }
 
-    // 3) abre a subconta Asaas (recebe o split de comissao)
-    const sub = await ensureSubaccount({
-      name: user.name,
-      email: user.email,
-      cpfCnpj,
-      phone,
-      incomeValue: Number(incomeValue) > 0 ? Number(incomeValue) : 1000,
-      address: address || "",
-      addressNumber: addressNumber || "",
-      province: province || "",
-      postalCode: postalCode || "",
-      birthDate,
-      companyType: isCnpj ? "LIMITED" : undefined,
-    });
-
-    // 4) cria a conta de afiliado/representante
+    // 3) cria a conta de afiliado/representante SEM abrir a subconta Asaas
+    // (modelo deferred): o Asaas cobra por subconta, entao ela so e aberta
+    // quando o 1o indicado assinar (utils/affiliateAccount). Os dados abaixo
+    // ficam guardados para essa abertura.
     const code = await generateUniqueCode();
     const affiliate = await Affiliate.create({
       user: user._id,
       code,
       status: "active",
-      asaasAccountId: sub.accountId,
-      asaasWalletId: sub.walletId,
-      asaasApiKey: sub.apiKey,
+      accountMode: "deferred",
       cpfCnpj,
       phone,
       birthDate: birthDate || "",
@@ -274,10 +209,6 @@ export const registerAffiliate = async (
       addressNumber: addressNumber || "",
       province: province || "",
     });
-
-    // ja checa a aprovacao (em dev/noop ja vem aprovada; em prod fica pendente
-    // ate o afiliado ativar a conta e enviar os documentos no Asaas)
-    await refreshApproval(affiliate);
 
     const token = signToken(user._id.toString());
     res.status(201).json({ token, affiliate: publicAffiliate(affiliate) });
@@ -361,6 +292,10 @@ export const getMyAffiliate = async (
       return;
     }
     await refreshApproval(affiliate);
+    // deferred aprovado: aplica splits pendentes e repassa comissoes guardadas
+    if (affiliate.accountMode === "deferred") {
+      void settleDeferredAffiliate(affiliate._id);
+    }
     res.json({ affiliate: publicAffiliate(affiliate) });
   } catch (err) {
     console.error("getMyAffiliate:", err);
@@ -397,6 +332,9 @@ export const getMyReferrals = async (
       return;
     }
     await refreshApproval(affiliate);
+    if (affiliate.accountMode === "deferred") {
+      void settleDeferredAffiliate(affiliate._id);
+    }
     const percent = affiliate.commissionPercent || 25;
 
     const subs = await Subscription.find({ affiliate: affiliate._id })
@@ -414,6 +352,8 @@ export const getMyReferrals = async (
         providerSubscriptionId: s.providerSubscriptionId,
         establishment: est?._id ? String(est._id) : null,
         planId: s.planId,
+        // define se a comissao ja veio no split ou fica "a repassar"
+        affiliateWalletId: s.affiliateWalletId || "",
       });
     }
 
@@ -447,12 +387,20 @@ export const getMyReferrals = async (
 
     // recebido de verdade (ledger): total acumulado e o do mes corrente.
     // Ignora comissoes revertidas (estorno/chargeback) para nao inflar.
-    const commissions = await AffiliateCommission.find({
+    const allCommissions = await AffiliateCommission.find({
       affiliate: affiliate._id,
       reversed: { $ne: true },
     })
-      .select("commissionCents paidAt")
+      .select("commissionCents paidAt payout")
       .lean();
+    // "recebido" = ja caiu na conta (split ou repasse). "a repassar" = entrou
+    // antes da conta do afiliado ser aprovada (sera transferido).
+    const isPendingPayout = (c: { payout?: string }) =>
+      c.payout === "pending" || c.payout === "transferring";
+    const commissions = allCommissions.filter((c) => !isPendingPayout(c));
+    const pendingPayoutCents = allCommissions
+      .filter(isPendingPayout)
+      .reduce((acc, c) => acc + (c.commissionCents || 0), 0);
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const receivedTotalCents = commissions.reduce(
@@ -485,9 +433,14 @@ export const getMyReferrals = async (
       // recebido de verdade (a partir do ledger de comissoes confirmadas)
       receivedTotalCents,
       receivedMonthCents,
+      // comissoes guardadas ate a conta de recebimento ser aprovada
+      pendingPayoutCents,
     };
 
-    res.json({ affiliate: publicAffiliate(affiliate), summary, referrals });
+    // a reconciliacao acima pode ter ABERTO a subconta agora: recarrega para o
+    // painel ja mostrar o estado novo
+    const fresh = (await Affiliate.findById(affiliate._id)) || affiliate;
+    res.json({ affiliate: publicAffiliate(fresh), summary, referrals });
   } catch (err) {
     console.error("getMyReferrals:", err);
     res.status(500).json({ message: "Erro ao carregar indicados" });
@@ -539,6 +492,8 @@ export const getMyWallet = async (
       // a subconta existe (tem carteira)? conseguimos ler o saldo (tem apiKey)?
       hasAccount: !!affiliate.asaasWalletId,
       canReadBalance: !!affiliate.asaasApiKey,
+      accountMode: affiliate.accountMode || "upfront",
+      approved: affiliate.approved,
       asaasLoginUrl: `${asaasWebBase}/login`,
       freeWithdrawalsPerMonth: FREE_WITHDRAWALS_PER_MONTH || null,
     });
@@ -642,13 +597,26 @@ export const linkMyReferrer = async (
     });
 
     const provider = getPaymentProvider();
+    // afiliado do modelo novo ainda sem subconta: abre agora se ja ha um
+    // indicado pagante (so entao o Asaas cobra pela subconta)
+    let walletId = r.walletId;
+    // so abre com indicado PAGANTE (status active = ja pagou)
+    const hasPaying = subs.some(
+      (x) => x.providerSubscriptionId && x.status === "active"
+    );
+    if (!walletId && hasPaying) {
+      const firstEst = subs.find((x) => x.status === "active")?.establishment;
+      walletId = await openAffiliateAccount(r.affiliateId, {
+        establishmentName: await establishmentNameOf(firstEst),
+      });
+    }
     let splitsApplied = 0;
     for (const sub of subs) {
       sub.affiliate = r.affiliateId;
       // dinheiro so flui se o afiliado tem carteira e a assinatura esta ativa
       // no gateway; senao fica so a atribuicao (aparece no painel dele)
       if (
-        r.walletId &&
+        walletId &&
         sub.providerSubscriptionId &&
         sub.status !== "canceled" &&
         provider.updateSubscriptionSplit
@@ -657,10 +625,10 @@ export const linkMyReferrer = async (
           const commissionCents = Math.round((sub.priceCents * r.percent) / 100);
           await provider.updateSubscriptionSplit(
             sub.providerSubscriptionId,
-            r.walletId,
+            walletId,
             commissionCents
           );
-          sub.affiliateWalletId = r.walletId;
+          sub.affiliateWalletId = walletId;
           splitsApplied++;
         } catch (e) {
           console.error(
@@ -682,5 +650,96 @@ export const linkMyReferrer = async (
   } catch (err) {
     console.error("linkMyReferrer:", err);
     res.status(500).json({ message: "Erro ao vincular a indicacao" });
+  }
+};
+
+// GET /api/affiliates/me/receiving-data  (protegido)
+// Dados da conta de recebimento (para corrigir quando o Asaas recusou abrir).
+export const getMyReceivingData = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const a = await Affiliate.findOne({ user: req.userId }).select("+cpfCnpj");
+    if (!a) {
+      res.status(404).json({ message: "Voce ainda nao e afiliado" });
+      return;
+    }
+    res.json({
+      cpfCnpj: a.cpfCnpj,
+      phone: a.phone,
+      birthDate: a.birthDate,
+      postalCode: a.postalCode,
+      address: a.address,
+      addressNumber: a.addressNumber,
+      province: a.province,
+      editable: !a.asaasWalletId,
+      accountOpenError: a.asaasWalletId ? "" : a.accountOpenError || "",
+    });
+  } catch (err) {
+    console.error("getMyReceivingData:", err);
+    res.status(500).json({ message: "Erro ao carregar os dados" });
+  }
+};
+
+// PUT /api/affiliates/me/receiving-data  (protegido)
+// Corrige os dados ANTES de a subconta existir e, se ja ha indicado pagante,
+// tenta abrir a conta na hora. Depois de aberta, os dados sao do Asaas.
+export const updateMyReceivingData = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const a = await Affiliate.findOne({ user: req.userId }).select("+cpfCnpj");
+    if (!a) {
+      res.status(404).json({ message: "Voce ainda nao e afiliado" });
+      return;
+    }
+    if (a.asaasWalletId) {
+      res.status(409).json({
+        message:
+          "Sua conta de recebimento já foi aberta. Altere os dados direto no Asaas.",
+      });
+      return;
+    }
+    const b = (req.body || {}) as Record<string, string | undefined>;
+    const data = {
+      cpfCnpj: onlyDigits(b.cpfCnpj),
+      phone: String(b.phone || "").trim(),
+      birthDate: String(b.birthDate || "").trim(),
+      postalCode: onlyDigits(b.postalCode),
+      address: String(b.address || "").trim(),
+      addressNumber: String(b.addressNumber || "").trim(),
+      province: String(b.province || "").trim(),
+    };
+    const invalid = await validateReceivingData(data);
+    if (invalid) {
+      res.status(400).json({ message: invalid });
+      return;
+    }
+    Object.assign(a, data, { accountOpenError: "" });
+    await a.save();
+
+    // ja tem indicado pagante? abre a conta agora
+    let opened = false;
+    let error = "";
+    const paying = await Subscription.findOne({
+      affiliate: a._id,
+      status: "active",
+    }).select("establishment");
+    if (paying) {
+      const wallet = await openAffiliateAccount(a._id, {
+        establishmentName: await establishmentNameOf(paying.establishment),
+      });
+      opened = !!wallet;
+      if (!opened) {
+        const again = await Affiliate.findById(a._id).select("accountOpenError");
+        error = again?.accountOpenError || "";
+      }
+    }
+    res.json({ saved: true, opened, accountOpenError: error });
+  } catch (err) {
+    console.error("updateMyReceivingData:", err);
+    res.status(500).json({ message: "Erro ao salvar os dados" });
   }
 };

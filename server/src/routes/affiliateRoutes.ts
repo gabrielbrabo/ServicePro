@@ -8,6 +8,8 @@ import {
   getMyReferrer,
   checkReferral,
   linkMyReferrer,
+  getMyReceivingData,
+  updateMyReceivingData,
 } from "../controllers/affiliateController";
 import { protect, optionalProtect } from "../middleware/auth";
 import { createLimiter, clientIp, bodyEmail } from "../utils/rateLimit";
@@ -37,6 +39,9 @@ router.get("/me/wallet", protect, getMyWallet);
 router.get("/my-referrer", protect, getMyReferrer);
 // confere um link de indicacao (nome do afiliado) antes de usar
 router.get("/check-ref", protect, checkReferral);
+// dados da conta de recebimento (corrigir antes de a subconta ser aberta)
+router.get("/me/receiving-data", protect, getMyReceivingData);
+router.put("/me/receiving-data", protect, updateMyReceivingData);
 // informa DEPOIS do cadastro quem indicou (uma unica vez)
 router.post("/my-referrer", protect, linkMyReferrer);
 

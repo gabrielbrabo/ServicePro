@@ -1,3 +1,4 @@
+import { readRef, clearRef } from "../lib/ref";
 import { useEffect, useState, FormEvent } from "react";
 import { catalogApi, Category } from "../api/catalog";
 import { establishmentApi, Establishment } from "../api/establishment";
@@ -67,12 +68,8 @@ export function EstablishmentForm({
   const [linkedRef, setLinkedRef] = useState<{ name: string } | null>(null);
   const [editRef, setEditRef] = useState(false);
   useEffect(() => {
-    let saved = "";
-    try {
-      saved = localStorage.getItem("sp_ref") || "";
-    } catch {
-      // ambiente sem localStorage: ignora
-    }
+    // so vale se veio pelo link ha pouco tempo (lib/ref: validade de 30 dias)
+    const saved = readRef() || "";
     if (!saved) return;
     setReferredBy(saved);
     setReferralChoice("yes");
@@ -94,7 +91,11 @@ export function EstablishmentForm({
   useEffect(() => {
     affiliateApi
       .myReferrer()
-      .then(setReferrer)
+      .then((r) => {
+        setReferrer(r);
+        // conta ja vinculada a um afiliado: o ?ref guardado nao serve mais
+        if (r.referred) clearRef();
+      })
       .catch(() => setReferrer({ referred: false }));
   }, []);
   // negócio já criado (para retentar o pagamento sem duplicar o cadastro)
@@ -282,6 +283,8 @@ export function EstablishmentForm({
           ref: refToSend,
         });
         setCreatedEst(est);
+        // negocio criado: a indicacao ja foi enviada/consumida
+        clearRef();
       }
 
       // cria a assinatura (o plano é a área). Se falhar, o erro APARECE.

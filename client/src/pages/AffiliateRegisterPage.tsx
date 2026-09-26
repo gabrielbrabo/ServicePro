@@ -7,6 +7,7 @@ import { affiliateApi, Affiliate } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 import { TermsCheckbox } from "../components/TermsCheckbox";
 import { GoogleLoginButton } from "../components/GoogleLoginButton";
+import { lookupCep } from "../lib/cep";
 
 // Cadastro aberto do afiliado/representante do ServiçosPro. Abre a conta de
 // recebimento (subconta Asaas). O link de indicação só é liberado depois que a
@@ -126,6 +127,23 @@ export function AffiliateRegisterPage() {
     }
   };
 
+  // CEP: preenche endereco/bairro e avisa se o CEP nao existe (o Asaas recusa
+  // CEP invalido na hora de abrir a conta de recebimento)
+  const [cepHint, setCepHint] = useState("");
+  const onCepBlur = async () => {
+    setCepHint("");
+    const r = await lookupCep(form.postalCode);
+    if (r === null) {
+      setCepHint("CEP não encontrado. Confira os números.");
+    } else if (r) {
+      setForm((f) => ({
+        ...f,
+        address: r.address || f.address,
+        province: r.province || f.province,
+      }));
+    }
+  };
+
   const copyLink = async () => {
     if (!created) return;
     try {
@@ -139,8 +157,8 @@ export function AffiliateRegisterPage() {
 
   // pós-cadastro
   if (created) {
-    // conta ainda NÃO aprovada: orienta a ativar e enviar documentos
-    if (!created.approved) {
+    // modelo antigo com conta ainda NÃO aprovada (sem link): orienta a ativar
+    if (!created.link) {
       return (
         <AuthLayout
           variant="affiliate"
@@ -152,8 +170,12 @@ export function AffiliateRegisterPage() {
               <p className="font-semibold text-ink">Como liberar seu link</p>
               <ol className="mt-2 space-y-1">
                 <li>
-                  <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong> (no
-                  endereço que você cadastrou) e confirme o acesso.
+                  <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong>{" "}
+                  enviado para{" "}
+                  <strong className="break-all">
+                    {user?.email || form.email || "o e-mail do seu cadastro"}
+                  </strong>{" "}
+                  e confirme o acesso.
                 </li>
                 <li>
                   <strong>2.</strong> Envie os <strong>documentos</strong> para a
@@ -177,7 +199,7 @@ export function AffiliateRegisterPage() {
       );
     }
 
-    // conta já aprovada (ex.: ambiente dev): mostra o link direto
+    // link liberado: mostra direto para já começar a divulgar
     return (
       <AuthLayout
         variant="affiliate"
@@ -315,13 +337,18 @@ export function AffiliateRegisterPage() {
           onChange={update("birthDate")}
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            id="postalCode"
-            label="CEP"
-            required
-            value={form.postalCode}
-            onChange={update("postalCode")}
-          />
+          <div>
+            <Input
+              id="postalCode"
+              label="CEP"
+              inputMode="numeric"
+              required
+              value={form.postalCode}
+              onChange={update("postalCode")}
+              onBlur={onCepBlur}
+            />
+            {cepHint && <p className="mt-1 text-xs text-red-600">{cepHint}</p>}
+          </div>
           <Input
             id="province"
             label="Bairro"
@@ -347,10 +374,10 @@ export function AffiliateRegisterPage() {
           />
         </div>
         <p className="text-xs text-ink/50">
-          Com esses dados abrimos sua conta de recebimento no Asaas. Depois do
-          cadastro você recebe um <strong>e-mail do Asaas</strong> para ativar a
-          conta e enviar documentos — o link de indicação é liberado após a
-          aprovação.
+          Seu link de indicação é liberado <strong>na hora</strong>. Guardamos
+          esses dados para abrir sua conta de recebimento no Asaas quando o seu{" "}
+          <strong>primeiro indicado pagar</strong> — aí você recebe um e-mail do
+          Asaas para ativá-la e sacar suas comissões.
         </p>
         {!termsDone && (
           <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />

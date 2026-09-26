@@ -1,3 +1,4 @@
+import { readRef, clearRef } from "../lib/ref";
 import {
   createContext,
   useContext,
@@ -33,21 +34,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// lê o ?ref guardado no cadastro por link de afiliado/representante
-function readRef(): string | undefined {
-  try {
-    return localStorage.getItem("sp_ref") || undefined;
-  } catch {
-    return undefined;
-  }
-}
-function clearRef(): void {
-  try {
-    localStorage.removeItem("sp_ref");
-  } catch {
-    // ignora
-  }
-}
+// ?ref do link do afiliado: validade + limpeza ficam em lib/ref
 
 // area atual (app do cliente/dono x painel do afiliado). Usada no refresh para
 // devolver o usuario para onde ele estava, em vez de sempre cair no app.
@@ -111,6 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // que a pagina de cadastro nao a tenha passado explicitamente.
     const ref = data.ref ?? readRef();
     const { token, user } = await authApi.register({ ...data, ref });
+    // indicacao consumida (o back ja vinculou a conta nova ao afiliado)
+    clearRef();
     localStorage.setItem("token", token);
     markArea("app");
     setUser(user);
@@ -119,6 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem("token");
+    // outra pessoa no mesmo navegador nao herda a indicacao
+    clearRef();
     clearArea();
     disconnectSocket();
     setUser(null);

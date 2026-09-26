@@ -7,6 +7,7 @@ import { initSocket } from "./socket";
 import { env } from "./config/env";
 import { startReservationJob } from "./jobs/reservationJob";
 import { startReminderJob } from "./jobs/reminderJob";
+import { startAffiliatePayoutJob } from "./jobs/affiliatePayoutJob";
 import { migrateReviewIndex } from "./utils/reviewIndexMigration";
 
 const start = async (): Promise<void> => {
@@ -24,6 +25,7 @@ const start = async (): Promise<void> => {
 
   startReservationJob();
   startReminderJob();
+  startAffiliatePayoutJob();
 };
 
 start();

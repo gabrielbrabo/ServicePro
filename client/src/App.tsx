@@ -1,3 +1,4 @@
+import { captureRefFromUrl } from "./lib/ref";
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -75,17 +76,11 @@ function P({ children }: { children: React.ReactNode }) {
 // localStorage. Sobrevive entre visitas ate o cadastro do indicado enviar.
 // Roda ja no carregamento do modulo (antes de qualquer redirect da rota "/"
 // limpar a URL) e de novo no efeito, por garantia.
-try {
-  const ref0 = new URLSearchParams(window.location.search).get("ref");
-  if (ref0) localStorage.setItem("sp_ref", ref0);
-} catch {
-  // ignora
-}
+captureRefFromUrl();
 function RefCapture() {
   useEffect(() => {
     try {
-      const ref = new URLSearchParams(window.location.search).get("ref");
-      if (ref) localStorage.setItem("sp_ref", ref);
+      captureRefFromUrl();
     } catch {
       // ambiente sem localStorage/URLSearchParams: ignora
     }

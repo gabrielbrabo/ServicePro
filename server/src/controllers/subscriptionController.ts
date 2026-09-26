@@ -1,4 +1,9 @@
 import { Request, Response } from "express";
+import {
+  openAffiliateAccount,
+  commissionPayoutFor,
+  settleDeferredAffiliate,
+} from "../utils/affiliateAccount";
 import { Types } from "mongoose";
 import { AuthRequest } from "../middleware/auth";
 import { Establishment } from "../models/Establishment";
@@ -252,11 +257,27 @@ export const subscribe = async (
       const aff = await Affiliate.findOne({
         _id: owner.referredByAffiliate,
         status: "active",
-      }).select("asaasWalletId commissionPercent user approved +asaasApiKey");
+      }).select(
+        "asaasWalletId commissionPercent user approved accountMode +asaasApiKey"
+      );
       // anti-autoindicacao: o afiliado nao recebe comissao por indicar o proprio
       // estabelecimento (mesma conta como afiliado e como dono).
       const selfReferral =
         aff && aff.user && aff.user.toString() === est.owner.toString();
+
+      // modelo novo (deferred) sem subconta ainda: a assinatura sai SEM split
+      // e so com a ATRIBUICAO. A subconta so e aberta quando o 1o pagamento
+      // CONFIRMAR (creditAffiliate) — assim o custo de abertura no Asaas so
+      // existe quando entra dinheiro. Essa 1a comissao fica "a repassar".
+      if (
+        aff &&
+        !aff.asaasWalletId &&
+        !selfReferral &&
+        aff.accountMode === "deferred"
+      ) {
+        affiliateId = aff._id;
+        affiliatePercent = aff.commissionPercent || 25;
+      }
 
       if (aff && aff.asaasWalletId && !selfReferral) {
         // Aplica o split sempre que o afiliado tem carteira. NAO dependemos mais
@@ -1010,6 +1031,15 @@ async function creditAffiliate(
     });
     const type: "paid" | "renewed" = prior > 0 ? "renewed" : "paid";
 
+    // 1o pagamento confirmado de um indicado de afiliado deferred sem
+    // subconta: abre a conta de recebimento AGORA (so agora gera custo)
+    if (aff.accountMode === "deferred" && !aff.asaasWalletId) {
+      await openAffiliateAccount(aff._id, { establishmentName });
+    }
+
+    // sem split aplicado (afiliado deferred com conta ainda nao aprovada):
+    // a comissao fica "a repassar" e e transferida quando a conta aprovar
+    const payout = commissionPayoutFor(aff, sub);
     await AffiliateCommission.create({
       affiliate: aff._id,
       subscription: sub._id,
@@ -1020,6 +1050,7 @@ async function creditAffiliate(
       commissionCents,
       type,
       paidAt: new Date(),
+      payout,
     });
 
     const plan = getPlan(sub.planId);
@@ -1030,8 +1061,11 @@ async function creditAffiliate(
         planName: plan?.name || sub.planId,
         commissionCents,
         renewed: type === "renewed",
+        pending: payout === "pending",
       });
     }
+    // conta ja aprovada? repassa/ajusta na hora (senao o job tenta depois)
+    if (payout === "pending") void settleDeferredAffiliate(aff._id);
   } else if (event.type === "payment_overdue") {
     if (to) sendNonRenewalEmail({ to, establishmentName });
   } else if (event.type === "payment_refunded") {
@@ -1058,6 +1092,7 @@ export async function reconcileAffiliateForSubscription(sub: {
   providerSubscriptionId?: string;
   establishment?: Types.ObjectId | string | null;
   planId: string;
+  affiliateWalletId?: string | null;
 }): Promise<void> {
   try {
     if (!sub.affiliate || !sub.providerSubscriptionId) return;
@@ -1077,6 +1112,12 @@ export async function reconcileAffiliateForSubscription(sub: {
     const establishmentName = est?.name || "Estabelecimento";
     const to = owner?.email || "";
     const plan = getPlan(sub.planId);
+
+    // indicado ja pagou e o afiliado deferred ainda nao tem subconta (webhook
+    // nao chegou): abre a conta de recebimento
+    if (aff.accountMode === "deferred" && !aff.asaasWalletId) {
+      await openAffiliateAccount(aff._id, { establishmentName });
+    }
 
     for (const p of payments) {
       if (!p.paymentId) continue;
@@ -1100,6 +1141,7 @@ export async function reconcileAffiliateForSubscription(sub: {
         commissionCents,
         type,
         paidAt: new Date(),
+        payout: commissionPayoutFor(aff, sub),
       });
       if (to) {
         sendCommissionReceivedEmail({
@@ -1108,6 +1150,7 @@ export async function reconcileAffiliateForSubscription(sub: {
           planName: plan?.name || sub.planId,
           commissionCents,
           renewed: type === "renewed",
+          pending: commissionPayoutFor(aff, sub) === "pending",
         });
       }
     }

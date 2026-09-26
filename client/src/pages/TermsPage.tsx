@@ -88,7 +88,8 @@ const sections: LegalSection[] = [
     title: "Programa de afiliados e representantes",
     blocks: [
       "O afiliado divulga o ServiçosPro usando o seu link de indicação. Quando um estabelecimento indicado assina um plano, o afiliado recebe comissão sobre os pagamentos dessa assinatura, no percentual informado no painel do afiliado, enquanto a assinatura estiver ativa e paga.",
-      "A comissão é repassada automaticamente pelo parceiro de pagamentos a uma conta de recebimento em nome do afiliado, que precisa ser aprovada (verificação de identidade e documentos) antes de o link ser liberado. Saques, prazos e tarifas dessa conta seguem as regras do parceiro de pagamentos.",
+      "O link de indicação é liberado no cadastro. A conta de recebimento em nome do afiliado é aberta no parceiro de pagamentos (Asaas) com os dados informados no cadastro quando o primeiro estabelecimento indicado paga a assinatura; o afiliado recebe um e-mail do parceiro para ativá-la e enviar os documentos de verificação.",
+      "Com a conta aprovada, a comissão é repassada automaticamente a cada pagamento. As comissões de pagamentos confirmados antes da aprovação ficam registradas e são transferidas para a conta do afiliado assim que ela for aprovada. Saques, prazos e tarifas dessa conta seguem as regras do parceiro de pagamentos.",
       "Não há comissão sobre pagamentos não realizados, estornados ou cancelados. A participação no programa não gera vínculo empregatício, societário ou de representação exclusiva.",
       "É proibido usar spam, propaganda enganosa, se passar pelo ServiçosPro ou indicar a si mesmo de forma fraudulenta. Nesses casos, a conta de afiliado pode ser suspensa e as comissões indevidas, canceladas.",
     ],

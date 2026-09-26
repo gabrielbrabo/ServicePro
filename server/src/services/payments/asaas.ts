@@ -462,6 +462,21 @@ export const asaasProvider: PaymentProvider = {
     });
   },
 
+  // Transferencia entre contas Asaas (conta principal -> carteira da subconta).
+  // Repasse de comissoes que entraram sem split (subconta ainda nao aprovada).
+  async transferToWallet(input: {
+    walletId: string;
+    valueCents: number;
+    externalRef?: string;
+  }) {
+    const data = await api("/transfers", "POST", {
+      value: cents(input.valueCents),
+      walletId: input.walletId,
+      ...(input.externalRef ? { externalReference: input.externalRef } : {}),
+    });
+    return { transferId: String(data.id || ""), status: String(data.status || "") };
+  },
+
   // Cancela no FIM do periodo (endDate) mantendo o acesso ate la; sem data,
   // encerra de vez (DELETE).
   async cancelSubscription(subscriptionId: string, endDate?: Date) {

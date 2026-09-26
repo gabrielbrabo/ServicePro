@@ -77,6 +77,14 @@ export const noopProvider: PaymentProvider = {
     // no-op
   },
 
+  async transferToWallet(_input: {
+    walletId: string;
+    valueCents: number;
+    externalRef?: string;
+  }) {
+    return { transferId: "noop-transfer", status: "DONE" };
+  },
+
   async cancelSubscription(_subscriptionId: string, _endDate?: Date) {
     // no-op
   },

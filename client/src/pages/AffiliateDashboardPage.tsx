@@ -6,6 +6,7 @@ import { Avatar } from "../components/Avatar";
 import { EstablishmentAvatar } from "../components/EstablishmentAvatar";
 import { User } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
+import { AffiliateReceivingFix } from "../components/AffiliateReceivingFix";
 import {
   affiliateApi,
   Affiliate,
@@ -272,9 +273,10 @@ export function AffiliateDashboardPage() {
 
   const asaasUrl = wallet?.asaasLoginUrl || "https://www.asaas.com/login";
 
-  // Conta Asaas ainda não aprovada: NÃO libera o link — orienta a ativar/enviar
-  // documentos e conferir de novo.
-  if (!aff.approved) {
+  // Modelo antigo com conta Asaas ainda não aprovada: NÃO libera o link —
+  // orienta a ativar/enviar documentos e conferir de novo. (No modelo novo o
+  // link já vem liberado e a conta é tratada no card de recebimento.)
+  if (!aff.link) {
     return (
       <div className="min-h-screen bg-ink/5">
         <Header user={user} onLogout={logout} onProfile={goProfile} />
@@ -293,8 +295,10 @@ export function AffiliateDashboardPage() {
             </p>
             <ol className="mt-4 space-y-2 text-sm text-ink/70">
               <li>
-                <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong> (no
-                endereço que você usou no cadastro) e confirme o acesso.
+                <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong>{" "}
+                enviado para{" "}
+                <strong className="break-all text-ink">{user?.email || "o e-mail do seu cadastro"}</strong>{" "}
+                e confirme o acesso.
               </li>
               <li>
                 <strong>2.</strong> Envie os <strong>documentos</strong> pedidos
@@ -362,7 +366,93 @@ export function AffiliateDashboardPage() {
           </div>
         </section>
 
+        {/* O Asaas recusou abrir a conta (ex.: CEP inválido): corrigir dados */}
+        {aff.accountMode === "deferred" && !aff.accountOpened && aff.accountOpenError && (
+          <AffiliateReceivingFix reason={aff.accountOpenError} onDone={recheck} />
+        )}
+
+        {/* Modelo novo: conta de recebimento ainda não aberta / não aprovada */}
+        {aff.accountMode === "deferred" && !aff.accountOpened && !aff.accountOpenError && (
+          <section className="rounded-2xl border border-teal-500/20 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-500/10 text-lg">
+                🏦
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-bold text-ink">
+                  Sua conta de recebimento
+                </h2>
+                <p className="mt-0.5 text-sm text-ink/60">
+                  Ela é aberta <strong>automaticamente</strong> no Asaas quando
+                  o seu <strong>primeiro indicado pagar</strong> o plano. Aí
+                  você recebe um e-mail do Asaas em{" "}
+                  <strong className="break-all">{user?.email || "seu e-mail"}</strong>{" "}
+                  para ativá-la e poder sacar.
+                  Até lá, é só divulgar o seu link.
+                </p>
+                {(summary.pendingPayoutCents || 0) > 0 && (
+                  <p className="mt-3 rounded-xl bg-teal-500/5 px-4 py-3 text-sm text-ink">
+                    Comissões guardadas para você:{" "}
+                    <strong className="text-teal-700">
+                      {brl(summary.pendingPayoutCents || 0)}
+                    </strong>{" "}
+                    — sua conta está sendo aberta.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+        {aff.accountMode === "deferred" && aff.accountOpened && !aff.approved && (
+          <section className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-5 sm:p-6">
+            <span className="inline-block rounded-full bg-amber-400/20 px-3 py-1 text-xs font-semibold text-amber-700">
+              Ação necessária
+            </span>
+            <h2 className="mt-2 font-display text-lg font-bold text-ink">
+              Ative sua conta de recebimento
+            </h2>
+            <p className="mt-1 text-sm text-ink/70">
+              Seu primeiro indicado pagou e abrimos sua conta no Asaas. Abra o{" "}
+              <strong>e-mail do Asaas</strong> enviado para{" "}
+              <strong className="break-all text-ink">{user?.email || "o e-mail do seu cadastro"}</strong>
+              , crie o acesso e envie os{" "}
+              <strong>documentos</strong>. Assim que for aprovada, repassamos
+              tudo o que está guardado para você.
+            </p>
+            <p className="mt-1 text-xs text-ink/50">
+              Não achou? Procure por “Asaas” na caixa de spam ou em Promoções.
+            </p>
+            {(summary.pendingPayoutCents || 0) > 0 && (
+              <p className="mt-3 rounded-xl bg-white/70 px-4 py-3 text-sm text-ink">
+                Aguardando a ativação:{" "}
+                <strong className="text-teal-700">
+                  {brl(summary.pendingPayoutCents || 0)}
+                </strong>
+              </p>
+            )}
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <a
+                href={asaasUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
+              >
+                Abrir o Asaas ↗
+              </a>
+              <button
+                type="button"
+                onClick={recheck}
+                disabled={checking}
+                className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-semibold text-ink/70 transition hover:bg-ink/5 disabled:opacity-60"
+              >
+                {checking ? "Verificando..." : "Já ativei — verificar"}
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* Saldo + saque no Asaas */}
+        {(aff.accountMode !== "deferred" || aff.approved) && (
         <section className="rounded-2xl border border-ink/10 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -389,7 +479,17 @@ export function AffiliateDashboardPage() {
               ? ` Você tem ${wallet.freeWithdrawalsPerMonth} saque(s) grátis por mês.`
               : " As taxas de transferência seguem as condições do Asaas."}
           </p>
+          {(summary.pendingPayoutCents || 0) > 0 && (
+            <p className="mt-3 rounded-xl bg-teal-500/5 px-4 py-3 text-sm text-ink/70">
+              Repasse em andamento:{" "}
+              <strong className="text-teal-700">
+                {brl(summary.pendingPayoutCents || 0)}
+              </strong>{" "}
+              de comissões que entraram antes da aprovação da sua conta.
+            </p>
+          )}
         </section>
+        )}
 
         {/* Convide um estabelecimento */}
         <section className="rounded-2xl border border-teal-500/20 bg-white p-5 shadow-sm sm:p-6">
@@ -423,7 +523,11 @@ export function AffiliateDashboardPage() {
           <StatCard
             label="Recebido este mês"
             value={brl(summary.receivedMonthCents)}
-            hint={`Total recebido: ${brl(summary.receivedTotalCents)}`}
+            hint={
+              (summary.pendingPayoutCents || 0) > 0
+                ? `Total recebido: ${brl(summary.receivedTotalCents)} · a repassar: ${brl(summary.pendingPayoutCents || 0)}`
+                : `Total recebido: ${brl(summary.receivedTotalCents)}`
+            }
             accent
           />
           <StatCard

@@ -209,6 +209,14 @@ export interface PaymentProvider {
     walletId: string,
     fixedValueCents: number
   ): Promise<void>;
+  // transfere da conta PRINCIPAL para a carteira (walletId) de uma conta Asaas
+  // vinculada (ex.: subconta do afiliado). Usado para repassar comissoes que
+  // entraram sem split. Devolve o id da transferencia.
+  transferToWallet?(input: {
+    walletId: string;
+    valueCents: number;
+    externalRef?: string;
+  }): Promise<{ transferId: string; status: string }>;
   // cancela no fim do periodo (endDate) ou de vez (sem data)
   cancelSubscription(subscriptionId: string, endDate?: Date): Promise<void>;
   // reativa uma assinatura cancelada, com a proxima cobranca em nextDueDate

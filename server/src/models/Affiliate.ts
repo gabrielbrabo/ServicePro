@@ -5,6 +5,10 @@ import { Schema, model, Document, Types } from "mongoose";
 // seus indicados via split do Asaas, direto numa SUBCONTA propria (asaasWalletId),
 // de onde ele saca dentro do Asaas.
 export type AffiliateStatus = "active" | "suspended";
+// "upfront"  = modelo antigo: subconta Asaas aberta NO CADASTRO (paga na hora).
+// "deferred" = subconta aberta so quando o 1o indicado ASSINA (afiliado que
+//              nao traz ninguem nao gera custo de abertura de conta).
+export type AffiliateAccountMode = "upfront" | "deferred";
 
 export interface IAffiliate extends Document {
   _id: Types.ObjectId;
@@ -22,6 +26,11 @@ export interface IAffiliate extends Document {
   // conta Asaas aprovada (KYC/documentos)? So libera o link e o split depois.
   approved: boolean;
   approvedAt: Date | null;
+  accountMode: AffiliateAccountMode;
+  // quando a subconta foi aberta (deferred) + trava contra abertura em dobro
+  accountOpenedAt: Date | null;
+  accountOpeningAt: Date | null;
+  accountOpenError: string;
   // dados de KYC exigidos pelo Asaas para abrir a subconta
   cpfCnpj: string;
   phone: string;
@@ -63,6 +72,15 @@ const affiliateSchema = new Schema<IAffiliate>(
     // aprovacao da conta Asaas (KYC). So libera link/split apos aprovada.
     approved: { type: Boolean, default: false, index: true },
     approvedAt: { type: Date, default: null },
+    // docs antigos (sem o campo) = "upfront" (ja tem subconta)
+    accountMode: {
+      type: String,
+      enum: ["upfront", "deferred"],
+      default: "upfront",
+    },
+    accountOpenedAt: { type: Date, default: null },
+    accountOpeningAt: { type: Date, default: null },
+    accountOpenError: { type: String, default: "" },
     // KYC (nao expor por padrao)
     cpfCnpj: { type: String, default: "", select: false },
     phone: { type: String, default: "" },

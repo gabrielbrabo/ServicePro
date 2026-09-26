@@ -5,8 +5,8 @@
 // aqui E no back (server/src/config/legal.ts). Todos os usuarios verao o
 // pedido de aceite da nova versao no proximo acesso.
 
-export const LEGAL_VERSION = "2026-09-24";
-export const LEGAL_UPDATED_LABEL = "24 de setembro de 2026";
+export const LEGAL_VERSION = "2026-09-26";
+export const LEGAL_UPDATED_LABEL = "26 de setembro de 2026";
 
 export const COMPANY = {
   brand: "ServiçosPro",
