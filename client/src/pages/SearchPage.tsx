@@ -12,6 +12,89 @@ import {
   GeoCoords,
 } from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
+import { useEstablishments } from "../context/EstablishmentContext";
+import { Link } from "react-router-dom";
+
+// Faixa discreta para quem ainda nao tem negocio cadastrado: avisa que o
+// cadastro fica no "Painel Pro" (no mobile ele fica escondido no menu).
+// Uma linha so, para nao empurrar a lista de estabelecimentos. Pode ser
+// fechada e volta depois de alguns dias.
+const PRO_HINT_KEY = "sp_pro_hint_hidden_until";
+const PRO_HINT_DAYS = 5;
+
+function ProHintBar() {
+  const { user } = useAuth();
+  const { status } = useEstablishments();
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return Number(localStorage.getItem(PRO_HINT_KEY) || 0) > Date.now();
+    } catch {
+      return false;
+    }
+  });
+
+  let affiliateArea = false;
+  try {
+    affiliateArea = localStorage.getItem("sp_area") === "affiliate";
+  } catch {
+    /* ignora */
+  }
+
+  // visitante (sem login) ou logado sem nenhum negocio
+  const show = !user || status === "none";
+  if (hidden || affiliateArea || !show) return null;
+
+  const dismiss = () => {
+    setHidden(true);
+    try {
+      localStorage.setItem(
+        PRO_HINT_KEY,
+        String(Date.now() + PRO_HINT_DAYS * 24 * 60 * 60 * 1000)
+      );
+    } catch {
+      /* ignora */
+    }
+  };
+
+  const to = user ? "/painel" : "/register";
+
+  // Mobile first: icone + 2 linhas curtas + botao "Cadastrar" (telas < 360px
+  // escondem o icone para o texto caber)
+  // bem visivel ao toque. ~56px de altura, nao empurra a lista.
+  return (
+    <div className="relative mt-3 flex items-center gap-2.5 rounded-2xl border border-teal-500/25 bg-gradient-to-r from-teal-500/10 to-teal-500/5 py-2 pl-2.5 pr-8">
+      <span
+        aria-hidden="true"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-500 text-base text-white shadow-sm max-[359px]:hidden"
+      >
+        🏪
+      </span>
+      <Link to={to} className="min-w-0 flex-1 leading-tight">
+        <p className="truncate text-sm font-bold text-ink">Tem um negócio?</p>
+        <p className="truncate text-xs text-ink/60">
+          {user ? "Cadastre no " : "Anuncie no "}
+          <span className="font-semibold text-teal-700 dark:text-teal-300">
+            Painel Pro
+          </span>
+        </p>
+      </Link>
+      <Link
+        to={to}
+        className="shrink-0 rounded-full bg-teal-500 px-3 py-2 text-xs font-bold text-white shadow-sm transition active:scale-95 hover:bg-teal-600"
+      >
+        Cadastrar
+      </Link>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Fechar aviso"
+        className="absolute right-0.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-xs text-ink/35 transition hover:bg-ink/5 hover:text-ink/70"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 // Categorias em destaque (recolhido). FIXAS: 2 beleza + 4 saude + 2 gerais.
 // (Antes havia rodizio trimestral; agora ficam FIXAS nas atuais. Para trocar
@@ -181,6 +264,8 @@ export function SearchPage() {
         Encontre o serviço que você precisa e agende com os melhores
         estabelecimentos perto de você.
       </p>
+
+      <ProHintBar />
 
       {/* Campos de busca */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
