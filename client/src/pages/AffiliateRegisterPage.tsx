@@ -6,13 +6,20 @@ import { AxiosError } from "axios";
 import { affiliateApi, Affiliate } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 import { TermsCheckbox } from "../components/TermsCheckbox";
+import { GoogleLoginButton } from "../components/GoogleLoginButton";
 
 // Cadastro aberto do afiliado/representante do ServiçosPro. Abre a conta de
 // recebimento (subconta Asaas). O link de indicação só é liberado depois que a
 // conta Asaas é aprovada — por isso o pós-cadastro orienta a ativar/enviar docs.
+// Pode começar com a conta Google: entra com o Google e só completa os dados de
+// recebimento (sem senha). Quem já está logado também pula e-mail/senha.
 export function AffiliateRegisterPage() {
   const navigate = useNavigate();
-  const { adoptSession } = useAuth();
+  const { user, adoptSession, logout } = useAuth();
+  // ja logado (Google ou conta existente): o back usa a conta da sessao
+  const loggedIn = Boolean(user);
+  // aceite ja registrado na conta (o TermsGate cuida de quem ainda nao aceitou)
+  const termsDone = loggedIn && !user?.mustAcceptTerms;
 
   const [form, setForm] = useState({
     name: "",
@@ -42,7 +49,7 @@ export function AffiliateRegisterPage() {
     e.preventDefault();
     setError("");
 
-    if (form.password.length < 6) {
+    if (!loggedIn && form.password.length < 6) {
       setError("A senha precisa de pelo menos 6 caracteres");
       return;
     }
@@ -65,7 +72,7 @@ export function AffiliateRegisterPage() {
       setError("Preencha o endereço completo (CEP, endereço, número e bairro)");
       return;
     }
-    if (!acceptTerms) {
+    if (!termsDone && !acceptTerms) {
       setError("Aceite os Termos de Uso e a Política de Privacidade");
       return;
     }
@@ -73,9 +80,10 @@ export function AffiliateRegisterPage() {
     setLoading(true);
     try {
       const { token, affiliate } = await affiliateApi.register({
-        name: form.name,
-        email: form.email,
-        password: form.password,
+        // logado: o back usa a conta da sessao (dispensa e-mail/senha)
+        ...(loggedIn
+          ? {}
+          : { name: form.name, email: form.email, password: form.password }),
         phone: form.phone,
         cpfCnpj: form.cpfCnpj,
         birthDate: form.birthDate || undefined,
@@ -83,7 +91,7 @@ export function AffiliateRegisterPage() {
         address: form.address,
         addressNumber: form.addressNumber,
         province: form.province,
-        acceptTerms,
+        acceptTerms: termsDone ? undefined : acceptTerms,
       });
       // guarda o token e carrega o usuario no AuthContext (perfil funciona)
       try {
@@ -98,6 +106,23 @@ export function AffiliateRegisterPage() {
       setError(ax.response?.data?.message || "Não foi possível concluir o cadastro");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // entrou com o Google: se ja for afiliado vai direto ao painel; senao fica
+  // aqui e completa so os dados de recebimento
+  const handleGoogle = async () => {
+    setError("");
+    try {
+      await affiliateApi.me();
+      try {
+        localStorage.setItem("sp_area", "affiliate");
+      } catch {
+        /* ignora */
+      }
+      navigate("/afiliado");
+    } catch {
+      /* ainda nao e afiliado: segue no formulario */
     }
   };
 
@@ -193,38 +218,79 @@ export function AffiliateRegisterPage() {
       title="Seja afiliado/representante"
       subtitle="Indique estabelecimentos e ganhe 25% de cada plano, para sempre."
     >
-      <p className="mb-5 rounded-xl bg-teal-500/5 px-4 py-3 text-sm text-ink/70">
-        Já é dono ou funcionário no ServiçosPro? Use o{" "}
-        <strong>mesmo e-mail</strong> e a <strong>senha atual</strong> da sua
-        conta — ela vira também sua conta de afiliado/representante.
-      </p>
+      {loggedIn && user ? (
+        // conta da sessao (Google ou existente): so faltam os dados abaixo
+        <div className="mb-5 flex items-center gap-3 rounded-xl bg-teal-500/5 px-4 py-3 ring-1 ring-teal-500/15">
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="text-ink/60">Cadastrando com a conta</p>
+            <p className="truncate font-semibold text-ink">
+              {user.name} · {user.email}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="shrink-0 text-sm font-medium text-teal-600 hover:underline"
+          >
+            Trocar
+          </button>
+        </div>
+      ) : (
+        <>
+          <GoogleLoginButton
+            onSuccess={handleGoogle}
+            onError={(msg) => setError(msg)}
+          />
+          <p className="mt-2 text-center text-xs text-ink/45">
+            Com o Google você não precisa criar senha.
+          </p>
+
+          <div className="my-5 flex items-center gap-3">
+            <span className="h-px flex-1 bg-ink/10" />
+            <span className="text-xs font-medium uppercase tracking-wide text-ink/40">
+              ou com e-mail
+            </span>
+            <span className="h-px flex-1 bg-ink/10" />
+          </div>
+
+          <p className="mb-5 rounded-xl bg-teal-500/5 px-4 py-3 text-sm text-ink/70">
+            Já é dono ou funcionário no ServiçosPro? Use o{" "}
+            <strong>mesmo e-mail</strong> e a <strong>senha atual</strong> da
+            sua conta — ela vira também sua conta de afiliado/representante.
+          </p>
+        </>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          id="name"
-          label="Nome completo"
-          required
-          value={form.name}
-          onChange={update("name")}
-        />
-        <Input
-          id="email"
-          label="E-mail"
-          type="email"
-          autoComplete="email"
-          required
-          value={form.email}
-          onChange={update("email")}
-        />
-        <Input
-          id="password"
-          label="Senha (a atual, se você já tem conta)"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={form.password}
-          onChange={update("password")}
-        />
+        {!loggedIn && (
+          <>
+            <Input
+              id="name"
+              label="Nome completo"
+              required
+              value={form.name}
+              onChange={update("name")}
+            />
+            <Input
+              id="email"
+              label="E-mail"
+              type="email"
+              autoComplete="email"
+              required
+              value={form.email}
+              onChange={update("email")}
+            />
+            <Input
+              id="password"
+              label="Senha (a atual, se você já tem conta)"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={form.password}
+              onChange={update("password")}
+            />
+          </>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             id="phone"
@@ -286,7 +352,9 @@ export function AffiliateRegisterPage() {
           conta e enviar documentos — o link de indicação é liberado após a
           aprovação.
         </p>
-        <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
+        {!termsDone && (
+          <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
+        )}
         <FieldError>{error}</FieldError>
         <Button type="submit" loading={loading}>
           Criar conta de afiliado
