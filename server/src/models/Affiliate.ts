@@ -31,6 +31,10 @@ export interface IAffiliate extends Document {
   accountOpenedAt: Date | null;
   accountOpeningAt: Date | null;
   accountOpenError: string;
+  // e-mail usado na subconta Asaas ("" = o e-mail da conta do usuario). O
+  // Asaas exige e-mail unico: se o afiliado ja tem conta Asaas com o mesmo
+  // e-mail, ele informa outro aqui.
+  asaasEmail: string;
   // dados de KYC exigidos pelo Asaas para abrir a subconta
   cpfCnpj: string;
   phone: string;
@@ -81,6 +85,7 @@ const affiliateSchema = new Schema<IAffiliate>(
     accountOpenedAt: { type: Date, default: null },
     accountOpeningAt: { type: Date, default: null },
     accountOpenError: { type: String, default: "" },
+    asaasEmail: { type: String, default: "", trim: true, lowercase: true },
     // KYC (nao expor por padrao)
     cpfCnpj: { type: String, default: "", select: false },
     phone: { type: String, default: "" },

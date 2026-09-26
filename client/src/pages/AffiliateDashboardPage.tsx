@@ -297,7 +297,7 @@ export function AffiliateDashboardPage() {
               <li>
                 <strong>1.</strong> Abra o <strong>e-mail do Asaas</strong>{" "}
                 enviado para{" "}
-                <strong className="break-all text-ink">{user?.email || "o e-mail do seu cadastro"}</strong>{" "}
+                <strong className="break-all text-ink">{aff.asaasEmail || user?.email || "o e-mail do seu cadastro"}</strong>{" "}
                 e confirme o acesso.
               </li>
               <li>
@@ -368,7 +368,11 @@ export function AffiliateDashboardPage() {
 
         {/* O Asaas recusou abrir a conta (ex.: CEP inválido): corrigir dados */}
         {aff.accountMode === "deferred" && !aff.accountOpened && aff.accountOpenError && (
-          <AffiliateReceivingFix reason={aff.accountOpenError} onDone={recheck} />
+          <AffiliateReceivingFix
+            reason={aff.accountOpenError}
+            loginEmail={user?.email}
+            onDone={recheck}
+          />
         )}
 
         {/* Modelo novo: conta de recebimento ainda não aberta / não aprovada */}
@@ -386,7 +390,7 @@ export function AffiliateDashboardPage() {
                   Ela é aberta <strong>automaticamente</strong> no Asaas quando
                   o seu <strong>primeiro indicado pagar</strong> o plano. Aí
                   você recebe um e-mail do Asaas em{" "}
-                  <strong className="break-all">{user?.email || "seu e-mail"}</strong>{" "}
+                  <strong className="break-all">{aff.asaasEmail || user?.email || "seu e-mail"}</strong>{" "}
                   para ativá-la e poder sacar.
                   Até lá, é só divulgar o seu link.
                 </p>
@@ -414,7 +418,7 @@ export function AffiliateDashboardPage() {
             <p className="mt-1 text-sm text-ink/70">
               Seu primeiro indicado pagou e abrimos sua conta no Asaas. Abra o{" "}
               <strong>e-mail do Asaas</strong> enviado para{" "}
-              <strong className="break-all text-ink">{user?.email || "o e-mail do seu cadastro"}</strong>
+              <strong className="break-all text-ink">{aff.asaasEmail || user?.email || "o e-mail do seu cadastro"}</strong>
               , crie o acesso e envie os{" "}
               <strong>documentos</strong>. Assim que for aprovada, repassamos
               tudo o que está guardado para você.

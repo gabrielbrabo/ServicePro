@@ -181,7 +181,8 @@ export async function openAffiliateAccount(
       const isCnpj = digits.length > 11;
       const sub = await ensureSubaccount({
         name: user?.name || "Afiliado",
-        email: user?.email || "",
+        // e-mail proprio para a conta de recebimento, se o afiliado informou
+        email: aff.asaasEmail || user?.email || "",
         cpfCnpj: aff.cpfCnpj,
         phone: aff.phone,
         incomeValue: 1000,
@@ -206,6 +207,8 @@ export async function openAffiliateAccount(
       );
 
       if (user?.email) {
+        // nosso aviso vai para o e-mail de login; o do Asaas vai para o
+        // e-mail da conta de recebimento
         sendAffiliateAccountOpenedEmail({
           to: user.email,
           establishmentName: ctx.establishmentName || "Um estabelecimento",

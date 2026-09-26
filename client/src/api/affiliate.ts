@@ -15,6 +15,8 @@ export interface Affiliate {
   accountOpened?: boolean; // subconta Asaas ja aberta?
   // o Asaas recusou abrir a conta (ex.: CEP invalido) — corrigir no painel
   accountOpenError?: string;
+  // e-mail da conta de recebimento no Asaas ("" = o mesmo do login)
+  asaasEmail?: string;
 }
 
 // dados da conta de recebimento (corrigiveis antes de a conta ser aberta)
@@ -26,6 +28,8 @@ export interface ReceivingData {
   address: string;
   addressNumber: string;
   province: string;
+  // opcional: e-mail proprio para a conta de recebimento ("" = o do login)
+  asaasEmail?: string;
 }
 
 // Um indicado (assinatura de estabelecimento trazida pelo afiliado)

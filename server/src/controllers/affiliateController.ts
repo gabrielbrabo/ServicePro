@@ -57,6 +57,8 @@ const publicAffiliate = (a: IAffiliate) => ({
   // o Asaas recusou abrir a subconta (ex.: CEP invalido): o afiliado corrige
   // os dados no painel. So aparece enquanto a conta nao foi aberta.
   accountOpenError: a.asaasWalletId ? "" : a.accountOpenError || "",
+  // e-mail da conta de recebimento no Asaas ("" = o mesmo do login)
+  asaasEmail: a.asaasEmail || "",
 });
 
 // refreshApproval / ensureSubaccount ficam em utils/affiliateAccount (usados
@@ -673,6 +675,8 @@ export const getMyReceivingData = async (
       address: a.address,
       addressNumber: a.addressNumber,
       province: a.province,
+      // e-mail da conta de recebimento ("" = o mesmo do login)
+      asaasEmail: a.asaasEmail || "",
       editable: !a.asaasWalletId,
       accountOpenError: a.asaasWalletId ? "" : a.accountOpenError || "",
     });
@@ -717,7 +721,14 @@ export const updateMyReceivingData = async (
       res.status(400).json({ message: invalid });
       return;
     }
-    Object.assign(a, data, { accountOpenError: "" });
+    // e-mail opcional para a conta de recebimento (o Asaas exige e-mail unico;
+    // quem ja tem conta Asaas com o e-mail do login informa outro)
+    const asaasEmail = String(b.asaasEmail || "").trim().toLowerCase();
+    if (asaasEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(asaasEmail)) {
+      res.status(400).json({ message: "E-mail da conta de recebimento inválido." });
+      return;
+    }
+    Object.assign(a, data, { accountOpenError: "", asaasEmail });
     await a.save();
 
     // ja tem indicado pagante? abre a conta agora

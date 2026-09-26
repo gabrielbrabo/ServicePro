@@ -9,11 +9,16 @@ import { lookupCep } from "../lib/cep";
 // salvar, se já há indicado pagante, a conta é aberta na hora.
 export function AffiliateReceivingFix({
   reason,
+  loginEmail,
   onDone,
 }: {
   reason: string;
+  // e-mail de login (usado na conta de recebimento se nao informar outro)
+  loginEmail?: string;
   onDone: () => void;
 }) {
+  // o Asaas recusou por e-mail ja usado (a pessoa ja tem conta Asaas)
+  const emailProblem = /e-?mail/i.test(reason);
   const [form, setForm] = useState<ReceivingData | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -90,6 +95,22 @@ export function AffiliateReceivingFix({
             <Input id="fx-phone" label="Telefone (com DDD)" value={form.phone} onChange={set("phone")} required />
           </div>
           <Input id="fx-birth" label="Data de nascimento" type="date" value={form.birthDate} onChange={set("birthDate")} />
+          <div>
+            <Input
+              id="fx-asaas-email"
+              label="E-mail para a conta de recebimento (opcional)"
+              type="email"
+              value={form.asaasEmail || ""}
+              onChange={set("asaasEmail")}
+              placeholder={loginEmail || "seu e-mail"}
+              className={emailProblem ? "border-red-400" : ""}
+            />
+            <p className={`mt-1 text-xs ${emailProblem ? "text-red-600" : "text-ink/45"}`}>
+              {emailProblem
+                ? "Este e-mail já tem conta no Asaas. Informe outro e-mail para abrir sua conta de recebimento."
+                : "Deixe em branco para usar o e-mail do seu login. Use outro se você já tem conta no Asaas com ele."}
+            </p>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Input id="fx-cep" label="CEP" inputMode="numeric" value={form.postalCode} onChange={set("postalCode")} onBlur={onCepBlur} required />
