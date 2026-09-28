@@ -356,6 +356,9 @@ export const getMyReferrals = async (
         planId: s.planId,
         // define se a comissao ja veio no split ou fica "a repassar"
         affiliateWalletId: s.affiliateWalletId || "",
+        priceCents: s.priceCents,
+        discountPercent: s.discountPercent || 0,
+        discountChargesLeft: s.discountChargesLeft || 0,
       });
     }
 

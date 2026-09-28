@@ -111,6 +111,9 @@ export interface CreateSubscriptionInput {
   // sai repartida. splitPercent default 25.
   splitWalletId?: string;
   splitPercent?: number;
+  // base da comissao do split (so o PLANO). Sem = priceCents. Usado quando o
+  // valor recorrente inclui extras (assentos/galeria), que nao dao comissao.
+  splitBaseCents?: number;
 }
 
 export interface SubscriptionResult {

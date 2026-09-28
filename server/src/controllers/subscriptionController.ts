@@ -297,6 +297,12 @@ export const subscribe = async (
     const chargeCents = coupon
       ? applyPercent(priceCents, coupon.percent)
       : priceCents;
+    // extras ja contratados (funcionarios acima do incluido / espaco de
+    // galeria, ex.: comprados no periodo gratis ou antes de cancelar) entram
+    // na mensalidade/anuidade pelo preco cheio — o cupom vale so p/ o plano
+    const extrasCents =
+      seatsCycleTotalCents(existing?.extraSeats || 0, billingCycle) +
+      galleryCycleTotalCents(existing?.extraGallerySlots || 0, billingCycle);
 
     // afiliado/representante que indicou o dono: se ativo e com subconta, injeta
     // split (25%) na assinatura (o Asaas repassa a cada cobranca) e guarda o
@@ -374,7 +380,10 @@ export const subscribe = async (
     result = await provider.createSubscription({
       customerId,
       planId: plan.id,
-      priceCents: chargeCents,
+      // valor recorrente = plano (com desconto do cupom) + extras
+      priceCents: chargeCents + extrasCents,
+      // comissao do afiliado so sobre o plano efetivamente pago
+      splitBaseCents: chargeCents,
       firstDueDate: trialEndsAt || undefined,
       billingCycle,
       method,
@@ -1179,6 +1188,10 @@ export async function reconcileAffiliateForSubscription(sub: {
   establishment?: Types.ObjectId | string | null;
   planId: string;
   affiliateWalletId?: string | null;
+  // preco do plano e desconto: a comissao e so sobre o plano pago (sem extras)
+  priceCents?: number;
+  discountPercent?: number;
+  discountChargesLeft?: number;
 }): Promise<void> {
   try {
     if (!sub.affiliate || !sub.providerSubscriptionId) return;
@@ -1211,7 +1224,20 @@ export async function reconcileAffiliateForSubscription(sub: {
         paymentId: p.paymentId,
       }).select("_id");
       if (exists) continue;
-      const grossCents = p.valueCents || 0;
+      // so o plano (com desconto do cupom): extras de assento/galeria no valor
+      // da cobranca nao dao comissao
+      const grossCents = sub.priceCents
+        ? Math.min(
+            p.valueCents || 0,
+            effectivePlanCents(
+              {
+                discountPercent: sub.discountPercent || 0,
+                discountChargesLeft: sub.discountChargesLeft || 0,
+              },
+              sub.priceCents
+            )
+          )
+        : p.valueCents || 0;
       const commissionCents = Math.round((grossCents * percent) / 100);
       const prior = await AffiliateCommission.countDocuments({
         subscription: sub._id,

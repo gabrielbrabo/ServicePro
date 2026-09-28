@@ -309,7 +309,10 @@ export const asaasProvider: PaymentProvider = {
       // Asaas com a empresa. Com fixedValue o afiliado recebe exatamente X% do
       // bruto e a conta principal (empresa) absorve 100% da taxa do Asaas.
       const pct = input.splitPercent ?? 25;
-      const commissionCents = Math.round((input.priceCents * pct) / 100);
+      // comissao so sobre o plano (extras de assento/galeria nao entram)
+      const commissionCents = Math.round(
+        ((input.splitBaseCents ?? input.priceCents) * pct) / 100
+      );
       body.split = [
         {
           walletId: input.splitWalletId,
