@@ -38,6 +38,7 @@ import {
   effectivePlanCents,
   discountActive,
   describeCoupon,
+  discountChargesFor,
 } from "../utils/coupons";
 import { ICoupon } from "../models/Coupon";
 import {
@@ -429,7 +430,10 @@ export const subscribe = async (
       // desconto do cupom (-1 = para sempre); sem cupom zera o de antes
       couponCode: coupon ? coupon.code : existing?.couponCode || "",
       discountPercent: coupon ? coupon.percent : 0,
-      discountChargesLeft: coupon ? coupon.discountCharges : 0,
+      // anual: "N cobrancas" vale 1 anuidade
+      discountChargesLeft: coupon
+        ? discountChargesFor(coupon.discountCharges, billingCycle)
+        : 0,
       cardLast4: result.cardLast4 || "",
       cardBrand: result.cardBrand || "",
       // ATRIBUICAO (quem indicou) e gravada SEMPRE que houve afiliado -> o
@@ -1527,7 +1531,11 @@ export const redeemCoupon = async (
       try {
         sub.couponCode = coupon.code;
         sub.discountPercent = coupon.percent;
-        sub.discountChargesLeft = coupon.discountCharges;
+        // anual: "N cobrancas" vale 1 anuidade
+        sub.discountChargesLeft = discountChargesFor(
+          coupon.discountCharges,
+          sub.billingCycle
+        );
         if (provider.updateSubscriptionValue) {
           // vale ja na proxima cobranca (inclusive a ja gerada e nao paga)
           await provider.updateSubscriptionValue(

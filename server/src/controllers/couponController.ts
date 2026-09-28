@@ -10,6 +10,7 @@ import {
   applyPercent,
   normalizeCode,
   randomCode,
+  discountChargesFor,
 } from "../utils/coupons";
 
 // POST /api/coupons/check  (logado)  body: { code, planId, billingCycle }
@@ -34,15 +35,18 @@ export const checkCoupon = async (
       return;
     }
     const c = check.coupon;
+    // anual: "N cobrancas" vale 1 anuidade (mostra o que vai valer de fato)
+    const charges =
+      c.type === "discount" ? discountChargesFor(c.discountCharges, cycle) : 1;
     const plan = getPlan(planId);
     const fullCents = plan ? priceForCycle(plan, cycle) : 0;
     res.json({
       code: c.code,
       type: c.type,
-      label: describeCoupon(c),
+      label: describeCoupon({ ...c.toObject(), discountCharges: charges }),
       freeMonths: c.freeMonths,
       percent: c.percent,
-      discountCharges: c.discountCharges,
+      discountCharges: charges,
       appliesTo: c.appliesTo,
       fullCents,
       discountedCents:

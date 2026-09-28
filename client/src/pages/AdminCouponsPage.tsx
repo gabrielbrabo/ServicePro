@@ -197,6 +197,11 @@ export function AdminCouponsPage() {
                 <option value="n">Algumas cobranças</option>
                 <option value="forever">Para sempre</option>
               </select>
+              {duration === "n" && (
+                <span className="mt-1 block text-xs text-ink/50">
+                  No plano anual vale só para 1 anuidade.
+                </span>
+              )}
             </label>
             {duration === "n" && (
               <label className="block">

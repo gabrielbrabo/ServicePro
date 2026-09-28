@@ -52,6 +52,17 @@ export function applyPercent(cents: number, percent: number): number {
   return Math.max(v, 500);
 }
 
+// quantas cobrancas o desconto vale NESTE ciclo. No anual, "N cobrancas"
+// vira 1 anuidade (senao "3 cobrancas" seriam 3 anos); "para sempre" (-1) e
+// "so a 1a" (1) ficam iguais.
+export function discountChargesFor(
+  couponCharges: number,
+  cycle: "mensal" | "anual"
+): number {
+  if (couponCharges === -1) return -1;
+  return cycle === "anual" ? 1 : couponCharges;
+}
+
 // desconto do cupom ainda valendo nesta assinatura?
 export function discountActive(sub: Pick<ISubscription, "discountPercent" | "discountChargesLeft">): boolean {
   return (
