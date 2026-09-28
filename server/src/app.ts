@@ -60,6 +60,8 @@ import subscriptionRoutes, {
   paymentsWebhook,
 } from "./routes/subscriptionRoutes";
 import affiliateRoutes from "./routes/affiliateRoutes";
+import couponRoutes from "./routes/couponRoutes";
+import adminRoutes from "./routes/adminRoutes";
 import { Affiliate as AffiliateDiag } from "./models/Affiliate";
 import { Subscription as SubscriptionDiag } from "./models/Subscription";
 
@@ -144,6 +146,8 @@ export const createApp = (): Application => {
 
   // Programa de afiliados/representantes (cadastro, login proprio, painel)
   app.use("/api/affiliates", affiliateRoutes);
+  app.use("/api/coupons", couponRoutes);
+  app.use("/api/admin", adminRoutes);
 
   // DIAGNOSTICO TEMPORARIO (dev): lista afiliados + quantos indicados cada um
   // tem, pra achar codigos duplicados/dados de teste baguncados. REMOVER depois.

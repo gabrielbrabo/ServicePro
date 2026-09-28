@@ -31,6 +31,16 @@ import {
 } from "../config/seats";
 import { usedSeats, maxTeam } from "../utils/seatLimit";
 import {
+  findUsableCoupon,
+  consumeCoupon,
+  releaseCoupon,
+  applyPercent,
+  effectivePlanCents,
+  discountActive,
+  describeCoupon,
+} from "../utils/coupons";
+import { ICoupon } from "../models/Coupon";
+import {
   INCLUDED_GALLERY_SLOTS,
   GALLERY_PACK_SLOTS,
   GALLERY_PACK_MONTHLY_CENTS,
@@ -192,7 +202,9 @@ export const subscribe = async (
       email,
       card,
       holderInfo,
+      couponCode,
     } = req.body as {
+      couponCode?: string;
       planId?: string;
       billingCycle?: "mensal" | "anual";
       method?: "pix" | "cartao" | "boleto";
@@ -227,8 +239,21 @@ export const subscribe = async (
     // impede assinar duas vezes: se ja ha assinatura vigente, bloqueia
     // (se estiver cancelada mas ainda no periodo, o caminho e Reativar)
     const existing = await Subscription.findOne({ establishment: est._id });
+    // periodo gratis (cupom) SEM assinatura no gateway: pode assinar — a 1a
+    // cobranca fica para o fim do periodo gratis (nao perde os dias gratis)
+    const trialNoGateway =
+      !!existing &&
+      existing.status === "trialing" &&
+      !existing.providerSubscriptionId;
+    const trialEndsAt =
+      trialNoGateway &&
+      existing!.trialEndsAt &&
+      existing!.trialEndsAt.getTime() > Date.now()
+        ? existing!.trialEndsAt
+        : null;
     if (
       existing &&
+      !trialNoGateway &&
       (existing.status === "active" || existing.status === "trialing")
     ) {
       res.status(409).json({
@@ -246,6 +271,32 @@ export const subscribe = async (
       res.status(400).json({ message: "Dono nao encontrado" });
       return;
     }
+
+    // cupom de DESCONTO na assinatura (o de meses gratis usa /coupon)
+    let coupon: ICoupon | null = null;
+    if (couponCode && String(couponCode).trim()) {
+      const check = await findUsableCoupon(couponCode, {
+        ownerId: String(est.owner),
+        cycle: billingCycle,
+      });
+      if (!check.ok) {
+        res.status(400).json({ message: check.message });
+        return;
+      }
+      if (check.coupon.type !== "discount") {
+        res.status(400).json({
+          message:
+            "Este é um cupom de meses grátis: use o botão Aplicar cupom (não precisa de pagamento).",
+        });
+        return;
+      }
+      coupon = check.coupon;
+    }
+    // valor cobrado do plano (com desconto do cupom, se houver). A comissao do
+    // afiliado (split) sai sobre ESTE valor: 25% do que foi pago.
+    const chargeCents = coupon
+      ? applyPercent(priceCents, coupon.percent)
+      : priceCents;
 
     // afiliado/representante que indicou o dono: se ativo e com subconta, injeta
     // split (25%) na assinatura (o Asaas repassa a cada cobranca) e guarda o
@@ -313,10 +364,18 @@ export const subscribe = async (
       customerId = c.customerId;
     }
 
-    const result = await provider.createSubscription({
+    if (coupon && !(await consumeCoupon(coupon, est.owner, est._id))) {
+      res.status(409).json({ message: "Este cupom não está mais disponível." });
+      return;
+    }
+
+    let result;
+    try {
+    result = await provider.createSubscription({
       customerId,
       planId: plan.id,
-      priceCents,
+      priceCents: chargeCents,
+      firstDueDate: trialEndsAt || undefined,
       billingCycle,
       method,
       cardToken,
@@ -337,6 +396,11 @@ export const subscribe = async (
       remoteIp: req.ip,
       externalRef: est._id.toString(),
     });
+    } catch (e) {
+      // pagamento recusado/erro no gateway: devolve o uso do cupom
+      if (coupon) await releaseCoupon(coupon, est.owner);
+      throw e;
+    }
 
     const data = {
       establishment: est._id,
@@ -344,11 +408,19 @@ export const subscribe = async (
       planId: plan.id,
       billingCycle,
       priceCents,
-      status: result.status,
+      // ainda no periodo gratis: continua "trialing"; a 1a cobranca vence no
+      // fim do periodo (webhook de pagamento -> active)
+      status: trialEndsAt ? "trialing" : result.status,
       provider: provider.name,
       providerCustomerId: customerId,
       providerSubscriptionId: result.subscriptionId,
-      currentPeriodEnd: result.currentPeriodEnd,
+      currentPeriodEnd: trialEndsAt || result.currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      // desconto do cupom (-1 = para sempre); sem cupom zera o de antes
+      couponCode: coupon ? coupon.code : existing?.couponCode || "",
+      discountPercent: coupon ? coupon.percent : 0,
+      discountChargesLeft: coupon ? coupon.discountCharges : 0,
       cardLast4: result.cardLast4 || "",
       cardBrand: result.cardBrand || "",
       // ATRIBUICAO (quem indicou) e gravada SEMPRE que houve afiliado -> o
@@ -366,11 +438,12 @@ export const subscribe = async (
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
+    // no periodo gratis nao ha nada a pagar agora (1a cobranca vence depois)
     res.json({
       subscription: sub,
-      checkoutUrl: result.checkoutUrl ?? null,
-      pixQrImage: result.pixQrImage ?? null,
-      pixCopiaECola: result.pixCopiaECola ?? null,
+      checkoutUrl: trialEndsAt ? null : result.checkoutUrl ?? null,
+      pixQrImage: trialEndsAt ? null : result.pixQrImage ?? null,
+      pixCopiaECola: trialEndsAt ? null : result.pixCopiaECola ?? null,
     });
   } catch (err) {
     console.error("subscribe:", err);
@@ -513,7 +586,13 @@ export const refreshStatus = async (
     const provider = getPaymentProvider();
     if (provider.fetchStatus && sub.providerSubscriptionId) {
       const info = await provider.fetchStatus(sub.providerSubscriptionId);
-      if (info) {
+      // periodo gratis (cupom) ainda correndo: a 1a cobranca so vence no fim
+      // dele — "pendente" no gateway nao pode bloquear o uso
+      const inTrial =
+        sub.status === "trialing" &&
+        !!sub.trialEndsAt &&
+        sub.trialEndsAt.getTime() > Date.now();
+      if (info && !(inTrial && info.status === "past_due")) {
         sub.status = info.status;
         if (info.currentPeriodEnd) sub.currentPeriodEnd = info.currentPeriodEnd;
         await sub.save();
@@ -533,7 +612,9 @@ export const refreshStatus = async (
 // de galeria. Recalculado do zero a partir dos campos da assinatura (idempotente).
 function subscriptionRecurringValueCents(sub: ISubscription): number {
   const plan = getPlan(sub.planId);
-  const base = plan ? priceForCycle(plan, sub.billingCycle) : sub.priceCents;
+  const full = plan ? priceForCycle(plan, sub.billingCycle) : sub.priceCents;
+  // desconto de cupom ainda valendo
+  const base = effectivePlanCents(sub, full);
   return (
     base +
     seatsCycleTotalCents(sub.extraSeats || 0, sub.billingCycle) +
@@ -542,13 +623,17 @@ function subscriptionRecurringValueCents(sub: ISubscription): number {
 }
 
 // atualiza o valor recorrente no gateway com o estado atual da assinatura
-async function pushRecurringValue(sub: ISubscription): Promise<void> {
+async function pushRecurringValue(
+  sub: ISubscription,
+  updatePendingPayments = false
+): Promise<void> {
   const provider = getPaymentProvider();
   if (provider.updateSubscriptionValue && sub.providerSubscriptionId) {
     try {
       await provider.updateSubscriptionValue(
         sub.providerSubscriptionId,
-        subscriptionRecurringValueCents(sub)
+        subscriptionRecurringValueCents(sub),
+        updatePendingPayments
       );
     } catch (e) {
       console.warn("updateSubscriptionValue falhou:", (e as Error).message);
@@ -1006,7 +1091,7 @@ export const buyGallery = async (
 // Fire-and-forget do ponto de vista do webhook (o chamador engole erros).
 async function creditAffiliate(
   sub: ISubscription,
-  event: { type: string; paymentId?: string }
+  event: { type: string; paymentId?: string; grossCents?: number }
 ): Promise<void> {
   const aff = await Affiliate.findById(sub.affiliate);
   if (!aff) return;
@@ -1023,7 +1108,8 @@ async function creditAffiliate(
     if (exists) return;
 
     const percent = aff.commissionPercent || 25;
-    const grossCents = sub.priceCents;
+    // 25% do valor do plano efetivamente pago (com desconto de cupom, se houve)
+    const grossCents = event.grossCents ?? sub.priceCents;
     const commissionCents = Math.round((grossCents * percent) / 100);
     // 1a comissao desta assinatura = "paid"; as seguintes = "renewed"
     const prior = await AffiliateCommission.countDocuments({
@@ -1247,7 +1333,19 @@ export const paymentsWebhook = async (
       return;
     }
 
+    // valor do plano cobrado NESTE pagamento (antes de descontar o contador)
+    const planPaidCents = effectivePlanCents(sub, sub.priceCents);
+    let discountEnded = false;
     if (event.type === "payment_confirmed") {
+      // cupom de desconto por N cobrancas: conta esta; na ultima, volta o
+      // preco cheio (inclusive na cobranca seguinte ja gerada)
+      if ((sub.discountPercent || 0) > 0 && (sub.discountChargesLeft || 0) > 0) {
+        sub.discountChargesLeft -= 1;
+        if (sub.discountChargesLeft === 0) {
+          sub.discountPercent = 0;
+          discountEnded = true;
+        }
+      }
       sub.status = "active";
       // fim do periodo = vencimento pago + 1 ciclo (proxima cobranca)
       const base = event.currentPeriodEnd || new Date();
@@ -1265,6 +1363,12 @@ export const paymentsWebhook = async (
     sub.lastEventAt = new Date();
     await sub.save();
 
+    // fim do desconto do cupom: preco cheio no gateway + split no valor cheio
+    if (discountEnded) {
+      await pushRecurringValue(sub, true);
+      await syncAffiliateSplit(sub);
+    }
+
     // afiliado/representante: registra a comissao e avisa por e-mail. Nunca
     // derruba o webhook (erro aqui e apenas logado).
     if (sub.affiliate) {
@@ -1272,6 +1376,7 @@ export const paymentsWebhook = async (
         await creditAffiliate(sub, {
           type: event.type,
           paymentId: event.paymentId,
+          grossCents: planPaidCents,
         });
       } catch (e) {
         console.error("creditAffiliate:", (e as Error).message);
@@ -1283,5 +1388,241 @@ export const paymentsWebhook = async (
     console.error("paymentsWebhook:", err);
     // 200 mesmo em erro interno evita retry infinito; logamos para investigar
     res.status(200).json({ ok: false });
+  }
+};
+
+// ---- Cupons (meses gratis / desconto) ----
+
+function addMonths(d: Date, months: number): Date {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + months);
+  return r;
+}
+
+// atualiza o split do afiliado para 25% do valor do plano cobrado hoje (com
+// ou sem desconto de cupom). So quando o split ja esta ativo na assinatura.
+async function syncAffiliateSplit(sub: ISubscription): Promise<void> {
+  try {
+    if (!sub.affiliate || !sub.affiliateWalletId || !sub.providerSubscriptionId) {
+      return;
+    }
+    const provider = getPaymentProvider();
+    if (!provider.updateSubscriptionSplit) return;
+    const aff = await Affiliate.findById(sub.affiliate).select("commissionPercent");
+    const pct = aff?.commissionPercent || 25;
+    const commission = Math.round(
+      (effectivePlanCents(sub, sub.priceCents) * pct) / 100
+    );
+    await provider.updateSubscriptionSplit(
+      sub.providerSubscriptionId,
+      sub.affiliateWalletId,
+      commission
+    );
+  } catch (e) {
+    console.error("syncAffiliateSplit:", (e as Error).message);
+  }
+}
+
+// POST /api/subscriptions/:establishmentId/coupon  (dono)  body: { code }
+// Aplica um cupom no estabelecimento:
+//  - meses gratis sem assinatura paga -> comeca/estende o periodo gratis
+//    (usa o sistema sem pagar; no fim, assina)
+//  - meses gratis com assinatura paga -> adia a proxima cobranca
+//  - desconto com assinatura paga -> % nas proximas N cobrancas
+//    (sem assinatura, o desconto e informado ao assinar)
+export const redeemCoupon = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { est, owned } = await loadOwned(
+      req.params.establishmentId,
+      req.userId
+    );
+    if (!est) {
+      res.status(404).json({ message: "Estabelecimento nao encontrado" });
+      return;
+    }
+    if (!owned) {
+      res.status(403).json({ message: "Apenas o dono pode usar cupom" });
+      return;
+    }
+
+    let sub = await Subscription.findOne({ establishment: est._id });
+    const cycle: "mensal" | "anual" =
+      sub?.billingCycle || est.billingCycle || "mensal";
+    const check = await findUsableCoupon(req.body?.code, {
+      ownerId: String(est.owner),
+      cycle,
+    });
+    if (!check.ok) {
+      res.status(400).json({ message: check.message });
+      return;
+    }
+    const coupon = check.coupon;
+    const plan = getPlan(sub?.planId || est.segment);
+    if (!plan) {
+      res.status(400).json({ message: "Plano do estabelecimento nao definido" });
+      return;
+    }
+    const provider = getPaymentProvider();
+    const now = Date.now();
+    // assinatura no gateway em dia (paga ou periodo gratis ja assinado)
+    const paidActive =
+      !!sub &&
+      !!sub.providerSubscriptionId &&
+      (sub.status === "active" || sub.status === "trialing");
+
+    if (sub?.cancelAtPeriodEnd && paidActive) {
+      res.status(400).json({
+        message: "Reative a assinatura antes de usar um cupom.",
+      });
+      return;
+    }
+
+    if (coupon.type === "discount") {
+      if (!paidActive || !sub) {
+        res.status(400).json({
+          message:
+            "Cupom de desconto: informe o cupom no campo de cupom na hora de assinar.",
+        });
+        return;
+      }
+      if (discountActive(sub)) {
+        res.status(409).json({
+          message: "Sua assinatura já tem um desconto de cupom ativo.",
+        });
+        return;
+      }
+      if (!(await consumeCoupon(coupon, est.owner, est._id))) {
+        res.status(409).json({ message: "Este cupom não está mais disponível." });
+        return;
+      }
+      try {
+        sub.couponCode = coupon.code;
+        sub.discountPercent = coupon.percent;
+        sub.discountChargesLeft = coupon.discountCharges;
+        if (provider.updateSubscriptionValue) {
+          // vale ja na proxima cobranca (inclusive a ja gerada e nao paga)
+          await provider.updateSubscriptionValue(
+            sub.providerSubscriptionId,
+            subscriptionRecurringValueCents(sub),
+            true
+          );
+        }
+        await sub.save();
+        await syncAffiliateSplit(sub);
+      } catch (e) {
+        await releaseCoupon(coupon, est.owner);
+        console.error("redeemCoupon (desconto):", (e as Error).message);
+        res.status(500).json({ message: "Não foi possível aplicar o cupom." });
+        return;
+      }
+      res.json({
+        subscription: sub,
+        message: `Cupom aplicado: ${describeCoupon(coupon)}.`,
+      });
+      return;
+    }
+
+    // ---- meses gratis ----
+    if (!(await consumeCoupon(coupon, est.owner, est._id))) {
+      res.status(409).json({ message: "Este cupom não está mais disponível." });
+      return;
+    }
+    try {
+      if (paidActive && sub) {
+        // ja paga: adia a proxima cobranca pelos meses gratis
+        const base = Math.max(
+          sub.currentPeriodEnd?.getTime() || 0,
+          sub.trialEndsAt?.getTime() || 0,
+          now
+        );
+        const next = addMonths(new Date(base), coupon.freeMonths);
+        if (!provider.postponeSubscription) {
+          throw new Error("gateway sem suporte a adiar cobranca");
+        }
+        await provider.postponeSubscription(sub.providerSubscriptionId, next);
+        sub.currentPeriodEnd = next;
+        if (sub.status === "trialing") sub.trialEndsAt = next;
+        sub.couponCode = coupon.code;
+        await sub.save();
+      } else {
+        // sem assinatura paga: periodo gratis (sem cartao). Se havia uma
+        // cobranca inicial nao paga (ex.: PIX gerado e abandonado), cancela.
+        if (sub?.providerSubscriptionId && sub.status !== "canceled") {
+          try {
+            await provider.cancelSubscription(sub.providerSubscriptionId);
+          } catch (e) {
+            console.warn(
+              "redeemCoupon: cancelar cobranca pendente falhou:",
+              (e as Error).message
+            );
+          }
+        }
+        const start =
+          sub?.status === "trialing" &&
+          sub.trialEndsAt &&
+          sub.trialEndsAt.getTime() > now
+            ? sub.trialEndsAt
+            : new Date();
+        const end = addMonths(start, coupon.freeMonths);
+
+        // indicacao: o afiliado ja ve o indicado (em teste) no painel dele
+        let affiliateId = sub?.affiliate || null;
+        if (!affiliateId) {
+          const owner = await User.findById(est.owner).select(
+            "referredByAffiliate"
+          );
+          if (owner?.referredByAffiliate) {
+            const aff = await Affiliate.findOne({
+              _id: owner.referredByAffiliate,
+              status: "active",
+            }).select("user");
+            if (aff && String(aff.user) !== String(est.owner)) {
+              affiliateId = aff._id;
+            }
+          }
+        }
+
+        sub = await Subscription.findOneAndUpdate(
+          { establishment: est._id },
+          {
+            $set: {
+              establishment: est._id,
+              owner: est.owner,
+              planId: plan.id,
+              billingCycle: cycle,
+              priceCents: priceForCycle(plan, cycle),
+              status: "trialing",
+              trialEndsAt: end,
+              currentPeriodEnd: end,
+              providerSubscriptionId: "",
+              cancelAtPeriodEnd: false,
+              canceledAt: null,
+              couponCode: coupon.code,
+              discountPercent: 0,
+              discountChargesLeft: 0,
+              affiliate: affiliateId,
+              affiliateWalletId: "",
+            },
+          },
+          { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+      }
+    } catch (e) {
+      await releaseCoupon(coupon, est.owner);
+      console.error("redeemCoupon (gratis):", (e as Error).message);
+      res.status(500).json({ message: "Não foi possível aplicar o cupom." });
+      return;
+    }
+
+    res.json({
+      subscription: sub,
+      message: `Cupom aplicado: ${describeCoupon(coupon)}.`,
+    });
+  } catch (err) {
+    console.error("redeemCoupon:", err);
+    res.status(500).json({ message: "Erro ao aplicar o cupom" });
   }
 };

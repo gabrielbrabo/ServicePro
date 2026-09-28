@@ -104,6 +104,8 @@ export interface CreateSubscriptionInput {
   };
   remoteIp?: string;
   externalRef?: string;
+  // 1o vencimento (ex.: fim do periodo gratis do cupom). Sem = hoje.
+  firstDueDate?: Date;
   // split de comissao do afiliado/representante: quando informado, a assinatura
   // nasce com split para a subconta do afiliado e TODA cobranca recorrente ja
   // sai repartida. splitPercent default 25.
@@ -144,6 +146,8 @@ export interface NormalizedEvent {
   // para cobrancas avulsas (sinal/serviço do cliente)
   externalReference?: string; // ex.: "booking:<id>"
   paymentId?: string;
+  // valor da cobranca paga (centavos) — base da comissao do afiliado
+  valueCents?: number;
 }
 
 export interface PaymentProvider {
@@ -200,7 +204,15 @@ export interface PaymentProvider {
   // valor vale das proximas cobrancas em diante (nao mexe nas pendentes).
   updateSubscriptionValue?(
     subscriptionId: string,
-    newValueCents: number
+    newValueCents: number,
+    // true = a cobranca ja gerada e ainda nao paga tambem muda (cupom)
+    updatePendingPayments?: boolean
+  ): Promise<void>;
+  // adia a proxima cobranca (cupom de meses gratis numa assinatura ja paga):
+  // remove a cobranca pendente e move o proximo vencimento
+  postponeSubscription?(
+    subscriptionId: string,
+    nextDueDate: Date
   ): Promise<void>;
   // aplica o split de comissao do afiliado numa assinatura JA existente
   // (indicacao informada depois do cadastro). Vale para as proximas cobrancas.

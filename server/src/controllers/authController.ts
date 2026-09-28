@@ -15,6 +15,7 @@ import {
 } from "../config/email";
 import { validatePassword } from "../utils/passwordPolicy";
 import { LEGAL_VERSION, legalAcceptance } from "../config/legal";
+import { isAdminEmail } from "../config/admin";
 import { OAuth2Client } from "google-auth-library";
 import { Establishment } from "../models/Establishment";
 import { deleteS3ByUrl } from "../config/s3";
@@ -204,6 +205,8 @@ const publicUser = (
   authProvider: u.authProvider || "local",
   // true = ainda nao aceitou a versao vigente dos termos (front pede o aceite)
   mustAcceptTerms: u.termsVersion !== LEGAL_VERSION,
+  // acesso as ferramentas internas (/admin) — e-mails em ADMIN_EMAILS
+  isAdmin: isAdminEmail(u.email),
   ...(hasEstablishments !== undefined ? { hasEstablishments } : {}),
 });
 

@@ -20,6 +20,8 @@ export interface User {
   // true = precisa aceitar a versao vigente dos Termos/Politica (TermsGate)
   mustAcceptTerms?: boolean;
   hasEstablishments?: boolean;
+  // acesso as ferramentas internas (/admin)
+  isAdmin?: boolean;
 }
 
 interface AuthResponse {

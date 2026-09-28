@@ -1,3 +1,4 @@
+import { isInFreeTrial, FREE_TRIAL_RECEIVABLES_MSG } from "../utils/subscriptionActive";
 import { Request, Response } from "express";
 import { PipelineStage, Types } from "mongoose";
 import { Establishment } from "../models/Establishment";
@@ -422,6 +423,8 @@ export const getReceivables = async (
       configured,
       paymentsEnabled: paymentsConfigured(),
       reusableFrom, // nome do outro estabelecimento (null = nada a reaproveitar)
+      // periodo gratis de cupom: recebimentos bloqueados ate assinar
+      blockedByTrial: await isInFreeTrial(est._id),
     });
   } catch (err) {
     console.error("getReceivables:", err);
@@ -444,6 +447,11 @@ export const setupReceivables = async (
     }
     if (est.owner.toString() !== req.userId) {
       res.status(403).json({ message: "Apenas o dono pode configurar" });
+      return;
+    }
+    // periodo gratis de cupom: nao abre conta de recebimento (custo) ate assinar
+    if (await isInFreeTrial(est._id)) {
+      res.status(403).json({ message: FREE_TRIAL_RECEIVABLES_MSG });
       return;
     }
     if (est.receivablesActive && est.asaasWalletId) {

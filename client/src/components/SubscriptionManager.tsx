@@ -7,6 +7,8 @@ import {
 } from "../api/subscription";
 import { useAuth } from "../context/AuthContext";
 import { affiliateApi } from "../api/affiliate";
+import { CouponField } from "./CouponField";
+import { CouponCheck } from "../api/coupon";
 
 const brl = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", {
@@ -134,6 +136,70 @@ function ReferralCard() {
   );
 }
 
+// "Tem um cupom?" para quem ja tem assinatura: meses gratis adiam a proxima
+// cobranca; desconto vale nas proximas cobrancas.
+function RedeemCouponBox({
+  establishmentId,
+  onApplied,
+}: {
+  establishmentId: string;
+  onApplied: (s: Subscription, msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const apply = async () => {
+    if (!code.trim()) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await subscriptionApi.redeemCoupon(establishmentId, code.trim());
+      onApplied(r.subscription, r.message);
+      setCode("");
+      setOpen(false);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      setErr(msg || "Cupom inválido.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-sm font-semibold text-teal-600 hover:underline"
+      >
+        🎟️ Tem um cupom?
+      </button>
+    );
+  }
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="Código do cupom"
+          className="h-11 w-full rounded-xl border border-ink/15 bg-white px-4 uppercase outline-none focus:border-teal-500"
+        />
+        <button
+          type="button"
+          onClick={apply}
+          disabled={busy || !code.trim()}
+          className="h-11 shrink-0 rounded-xl bg-teal-500 px-5 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
+        >
+          {busy ? "..." : "Aplicar"}
+        </button>
+      </div>
+      {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+    </div>
+  );
+}
+
 export function SubscriptionManager({
   establishment,
 }: {
@@ -161,6 +227,9 @@ export function SubscriptionManager({
   const [pixCode, setPixCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  // cupom no formulario de assinatura + aviso de cupom aplicado
+  const [coupon, setCoupon] = useState<CouponCheck | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // dados do cartao (só quando method === "cartao")
   const [cardHolder, setCardHolder] = useState("");
   const [cardNumber, setCardNumber] = useState("");
@@ -226,8 +295,49 @@ export function SubscriptionManager({
     return () => clearInterval(id);
   }, [sub?.status, establishment._id]);
 
-  const entitled =
-    sub && (sub.status === "active" || sub.status === "trialing");
+  // periodo gratis (cupom) ainda valendo?
+  const trialActive =
+    !!sub &&
+    sub.status === "trialing" &&
+    (!sub.trialEndsAt || new Date(sub.trialEndsAt).getTime() > Date.now());
+  const entitled = !!sub && (sub.status === "active" || trialActive);
+  // em periodo gratis sem assinatura no gateway: pode assinar ja (1a cobranca
+  // so no fim do periodo gratis)
+  const canSubscribeInTrial = trialActive && !sub?.providerSubscriptionId;
+  // desconto de cupom ainda valendo
+  const discountOn =
+    !!sub &&
+    (sub.discountPercent || 0) > 0 &&
+    (sub.discountChargesLeft === -1 || (sub.discountChargesLeft || 0) > 0);
+  const chargeCents = sub
+    ? discountOn
+      ? Math.max(
+          Math.round((sub.priceCents * (100 - (sub.discountPercent || 0))) / 100),
+          500
+        )
+      : sub.priceCents
+    : 0;
+  const fmtDate = (d?: string | null) =>
+    d ? new Date(d).toLocaleDateString("pt-BR") : "";
+
+  // aplica cupom de meses gratis pelo formulario de assinatura
+  const redeemFree = async () => {
+    if (!coupon) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await subscriptionApi.redeemCoupon(establishment._id, coupon.code);
+      setSub(r.subscription);
+      setNotice(r.message);
+      setCoupon(null);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      setError(msg || "Não foi possível aplicar o cupom.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const subscribe = async () => {
     if (!establishment.segment) {
@@ -283,6 +393,7 @@ export function SubscriptionManager({
         email: email.trim(),
         card,
         holderInfo,
+        couponCode: coupon?.type === "discount" ? coupon.code : undefined,
       };
       const res = await subscriptionApi.subscribe(establishment._id, payload);
       setSub(res.subscription);
@@ -377,12 +488,46 @@ export function SubscriptionManager({
           </p>
         )}
 
+        {notice && (
+          <p className="mt-3 rounded-lg bg-teal-500/10 px-3 py-2 text-sm font-medium text-teal-700">
+            {notice}
+          </p>
+        )}
+
         {/* Assinatura ativa */}
         {entitled && sub && (
           <div className="mt-4 space-y-3">
+            {trialActive && (
+              <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 text-sm text-ink/80">
+                🎁 <b>Período grátis</b>
+                {sub.trialEndsAt && <> até <b>{fmtDate(sub.trialEndsAt)}</b></>}
+                {sub.couponCode && <> (cupom {sub.couponCode})</>}.
+                {sub.providerSubscriptionId ? (
+                  <span className="mt-1 block text-xs text-ink/60">
+                    Assinatura feita — a 1ª cobrança vence em{" "}
+                    {fmtDate(sub.trialEndsAt || sub.currentPeriodEnd)}.
+                  </span>
+                ) : (
+                  <span className="mt-1 block text-xs text-ink/60">
+                    Para continuar depois dessa data, assine abaixo — a 1ª
+                    cobrança só acontece no fim do período grátis.
+                  </span>
+                )}
+              </div>
+            )}
+            {(!trialActive || sub.providerSubscriptionId) && (
             <div className="rounded-xl bg-teal-500/5 p-4 text-sm text-ink/80">
               Plano <b>{plan?.name || sub.planId}</b> ({sub.billingCycle}) —{" "}
-              {brl(sub.priceCents)}
+              {discountOn ? (
+                <>
+                  <span className="text-ink/40 line-through">
+                    {brl(sub.priceCents)}
+                  </span>{" "}
+                  <b>{brl(chargeCents)}</b>
+                </>
+              ) : (
+                brl(sub.priceCents)
+              )}
               {sub.currentPeriodEnd && (
                 <>
                   {" "}
@@ -390,14 +535,37 @@ export function SubscriptionManager({
                   {new Date(sub.currentPeriodEnd).toLocaleDateString("pt-BR")}
                 </>
               )}
+              {discountOn && (
+                <span className="mt-1 block text-xs text-teal-700">
+                  🎟️ Cupom {sub.couponCode}: {sub.discountPercent}% de desconto{" "}
+                  {sub.discountChargesLeft === -1
+                    ? "em todas as cobranças"
+                    : sub.discountChargesLeft === 1
+                      ? "na próxima cobrança"
+                      : `nas próximas ${sub.discountChargesLeft} cobranças`}
+                </span>
+              )}
               {sub.cardLast4 && (
                 <span className="mt-1 block text-xs text-ink/50">
                   Cartão {sub.cardBrand} •••• {sub.cardLast4}
                 </span>
               )}
             </div>
+            )}
 
-            {sub.cancelAtPeriodEnd ? (
+            {/* cupom para quem ja assinou (gratis adia a cobranca; desconto
+                vale nas proximas) */}
+            {sub.providerSubscriptionId && !sub.cancelAtPeriodEnd && (
+              <RedeemCouponBox
+                establishmentId={establishment._id}
+                onApplied={(s, msg) => {
+                  setSub(s);
+                  setNotice(msg);
+                }}
+              />
+            )}
+
+            {!sub.providerSubscriptionId ? null : sub.cancelAtPeriodEnd ? (
               <div className="space-y-2 rounded-lg bg-amber-400/10 p-3">
                 <p className="text-sm font-medium text-amber-800">
                   Assinatura cancelada. Você mantém o acesso até{" "}
@@ -520,12 +688,22 @@ export function SubscriptionManager({
         )}
       </div>
 
-      {/* Assinar (sem assinatura ativa) — plano = área do estabelecimento */}
-      {!entitled && (
+      {/* Assinar (sem assinatura ativa, ou no periodo gratis ainda sem assinar) */}
+      {(!entitled || canSubscribeInTrial) && (
         <div className="rounded-2xl border border-ink/10 bg-white p-5">
           <h3 className="font-display font-bold text-ink">
-            {sub?.status === "past_due" ? "Trocar cobrança" : "Assinar"}
+            {sub?.status === "past_due"
+              ? "Trocar cobrança"
+              : canSubscribeInTrial
+                ? "Assinar para continuar depois do período grátis"
+                : "Assinar"}
           </h3>
+          {canSubscribeInTrial && sub?.trialEndsAt && (
+            <p className="mt-1 text-sm text-ink/60">
+              Nada é cobrado agora: a 1ª cobrança vence em{" "}
+              <b>{fmtDate(sub.trialEndsAt)}</b>, no fim do período grátis.
+            </p>
+          )}
 
           {plan ? (
             <div className="mt-3 rounded-xl bg-sand/50 p-4">
@@ -636,6 +814,35 @@ export function SubscriptionManager({
             </ul>
           )}
 
+          {/* cupom */}
+          {plan && (
+            <div className="mt-4">
+              <CouponField
+                planId={plan.id}
+                billingCycle={cycle}
+                value={coupon}
+                onChange={setCoupon}
+              />
+            </div>
+          )}
+
+          {coupon?.type === "free" ? (
+            <div className="mt-4 space-y-3">
+              <p className="rounded-xl bg-teal-500/10 px-4 py-3 text-sm text-teal-800">
+                Cupom de <b>{coupon.label}</b>: use o sistema sem pagar agora.
+                No fim do período, é só assinar aqui.
+              </p>
+              <button
+                type="button"
+                onClick={redeemFree}
+                disabled={submitting}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-50"
+              >
+                {submitting ? "Aplicando..." : "Aplicar cupom e liberar"}
+              </button>
+            </div>
+          ) : (
+          <>
           {/* metodo */}
           <div className="mt-4">
             <label className="mb-1.5 block text-sm font-medium text-ink">
@@ -757,6 +964,8 @@ export function SubscriptionManager({
           >
             {submitting ? "Processando..." : "Assinar"}
           </button>
+          </>
+          )}
         </div>
       )}
       {/* indicação de afiliado informada depois do cadastro */}

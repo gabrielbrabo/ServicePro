@@ -25,6 +25,7 @@ import { TermsPage } from "./pages/TermsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { TermsGate } from "./components/TermsGate";
 import { ProfilePage } from "./pages/ProfilePage";
+import { AdminCouponsPage } from "./pages/AdminCouponsPage";
 import { EstablishmentEditPage } from "./pages/EstablishmentEditPage";
 import { AnamnesePublicPage } from "./pages/AnamnesePublicPage";
 import { AgendaPublicPage } from "./pages/AgendaPublicPage";
@@ -109,6 +110,8 @@ export default function App() {
               <Route path="/painel" element={<P><ProviderDashboard /></P>} />
               <Route path="/agendamentos" element={<P><BookingsPage /></P>} />
               <Route path="/perfil" element={<P><ProfilePage /></P>} />
+              {/* ferramenta interna (so ADMIN_EMAILS) */}
+              <Route path="/admin" element={<P><AdminCouponsPage /></P>} />
               <Route path="/estabelecimento/:id/editar" element={<P><EstablishmentEditPage /></P>} />
 
               {/* Programa de afiliados/representantes — area propria (sistema a parte) */}

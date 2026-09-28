@@ -46,6 +46,12 @@ export interface AffiliateReferral {
   commissionPercent: number;
   commissionCents: number;
   currentPeriodEnd?: string | null;
+  // cupom do indicado: periodo gratis (sem comissao) / desconto (comissao
+  // sobre o valor pago)
+  freeTrialUntil?: string | null;
+  discountPercent?: number;
+  discountChargesLeft?: number; // -1 = sempre
+  paidCents?: number;
 }
 
 export interface AffiliateSummary {

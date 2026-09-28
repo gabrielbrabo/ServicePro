@@ -353,6 +353,15 @@ export function NavBar() {
           {user ? (
             <>
               {!affiliateArea && <NotificationBell />}
+              {user.isAdmin && (
+                <Link
+                  to="/admin"
+                  className="rounded-lg px-2 py-1.5 text-sm font-semibold text-amber-700 transition hover:bg-sand"
+                  title="Cupons (admin)"
+                >
+                  🎟️ Cupons
+                </Link>
+              )}
               <Link
                 to="/perfil"
                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition hover:bg-sand"
@@ -480,6 +489,15 @@ export function NavBar() {
           </nav>
 
           <div className="mt-3 border-t border-ink/10 pt-3">
+            {user?.isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setMenuOpen(false)}
+                className="mb-3 block rounded-lg bg-amber-400/10 px-3 py-2 text-sm font-semibold text-amber-700"
+              >
+                🎟️ Cupons (admin)
+              </Link>
+            )}
             {user ? (
               <div className="flex items-center justify-between">
                 <Link

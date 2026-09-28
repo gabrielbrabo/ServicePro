@@ -1,3 +1,4 @@
+import { isInFreeTrial } from "../utils/subscriptionActive";
 import { Response } from "express";
 import { Booking, IBooking } from "../models/Booking";
 import { Service, effectiveDuration, depositFor } from "../models/Service";
@@ -2604,6 +2605,13 @@ export const payBookingDeposit = async (
         .json({ message: "O estabelecimento ainda nao configurou recebimentos" });
       return;
     }
+    // periodo gratis de cupom: pagamento pelo app bloqueado ate assinar
+    if (await isInFreeTrial(est._id)) {
+      res.status(400).json({
+        message: "Pagamento pelo app indisponível para este estabelecimento no momento.",
+      });
+      return;
+    }
 
     const provider = getPaymentProvider();
     if (!provider.createCharge) {
@@ -2759,6 +2767,13 @@ export const payBookingService = async (
       res
         .status(400)
         .json({ message: "O estabelecimento ainda nao configurou recebimentos" });
+      return;
+    }
+    // periodo gratis de cupom: pagamento pelo app bloqueado ate assinar
+    if (await isInFreeTrial(est._id)) {
+      res.status(400).json({
+        message: "Pagamento pelo app indisponível para este estabelecimento no momento.",
+      });
       return;
     }
 

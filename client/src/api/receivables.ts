@@ -5,6 +5,8 @@ export interface ReceivablesStatus {
   paymentsEnabled: boolean;
   // nome de outro estabelecimento do dono com conta ja configurada (reaproveitar)
   reusableFrom?: string | null;
+  // periodo gratis de cupom: recebimentos bloqueados ate assinar
+  blockedByTrial?: boolean;
 }
 
 export interface ReceivablesPayload {

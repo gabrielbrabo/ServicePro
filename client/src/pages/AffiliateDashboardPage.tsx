@@ -26,7 +26,7 @@ function statusBadge(status: string): { label: string; cls: string } {
     case "active":
       return { label: "Ativo", cls: "bg-emerald-100 text-emerald-700" };
     case "trialing":
-      return { label: "Em teste", cls: "bg-teal-100 text-teal-700" };
+      return { label: "Período grátis", cls: "bg-sky-100 text-sky-700" };
     case "past_due":
       return { label: "Atrasado", cls: "bg-amber-100 text-amber-700" };
     case "canceled":
@@ -551,6 +551,13 @@ export function AffiliateDashboardPage() {
               Comissão de {summary.commissionPercent}% por indicado
             </span>
           </div>
+          {/* regra dos cupons, para o afiliado entender a comissao */}
+          <p className="mt-2 rounded-xl bg-sky-500/5 px-3 py-2 text-xs text-ink/60">
+            🎟️ <b>Indicados com cupom:</b> no <b>período grátis</b> não há
+            comissão (o cliente ainda não paga) — ela começa no 1º pagamento.
+            Com <b>desconto</b>, sua comissão é {summary.commissionPercent}% do
+            valor que o cliente paga.
+          </p>
 
           {referrals.length === 0 ? (
             <div className="mt-6 rounded-xl border border-dashed border-ink/20 bg-ink/[0.02] p-8 text-center">
@@ -581,8 +588,34 @@ export function AffiliateDashboardPage() {
                         {r.establishmentName}
                       </p>
                       <p className="truncate text-xs text-ink/50">
-                        {r.planName} · {r.billingCycle} · {brl(r.priceCents)}
+                        {r.planName} · {r.billingCycle} ·{" "}
+                        {(r.discountPercent || 0) > 0 && r.paidCents ? (
+                          <>
+                            <span className="line-through">{brl(r.priceCents)}</span>{" "}
+                            {brl(r.paidCents)}
+                          </>
+                        ) : (
+                          brl(r.priceCents)
+                        )}
                       </p>
+                      {r.freeTrialUntil && (
+                        <p className="text-xs font-medium text-sky-700">
+                          🎁 Período grátis (cupom) até{" "}
+                          {new Date(r.freeTrialUntil).toLocaleDateString("pt-BR")} —
+                          sem comissão até o 1º pagamento
+                        </p>
+                      )}
+                      {(r.discountPercent || 0) > 0 && (
+                        <p className="text-xs font-medium text-teal-700">
+                          🏷️ Cupom de {r.discountPercent}% de desconto
+                          {r.discountChargesLeft === -1
+                            ? ""
+                            : r.discountChargesLeft === 1
+                              ? " na próxima cobrança"
+                              : ` nas próximas ${r.discountChargesLeft} cobranças`}{" "}
+                          — comissão sobre o valor pago
+                        </p>
+                      )}
                     </div>
                     <div className="hidden text-right sm:block">
                       <p className="font-semibold text-teal-600">

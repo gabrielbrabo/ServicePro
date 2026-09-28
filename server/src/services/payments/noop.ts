@@ -65,7 +65,15 @@ export const noopProvider: PaymentProvider = {
     };
   },
 
-  async updateSubscriptionValue(_subscriptionId: string, _newValueCents: number) {
+  async updateSubscriptionValue(
+    _subscriptionId: string,
+    _newValueCents: number,
+    _updatePendingPayments?: boolean
+  ) {
+    // no-op
+  },
+
+  async postponeSubscription(_subscriptionId: string, _nextDueDate: Date) {
     // no-op
   },
 

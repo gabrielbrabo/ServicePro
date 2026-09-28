@@ -5,6 +5,8 @@ import { establishmentApi, Establishment } from "../api/establishment";
 import { AddressAutocomplete, ResolvedAddress } from "./AddressAutocomplete";
 import { SEGMENT_LIST, SegmentKey, categorySegment } from "../lib/segments";
 import { subscriptionApi } from "../api/subscription";
+import { CouponField } from "./CouponField";
+import { CouponCheck } from "../api/coupon";
 import { affiliateApi } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 
@@ -98,6 +100,9 @@ export function EstablishmentForm({
       })
       .catch(() => setReferrer({ referred: false }));
   }, []);
+  // cupom (meses grátis = sem pagamento agora; desconto = preço menor)
+  const [coupon, setCoupon] = useState<CouponCheck | null>(null);
+  const isFree = coupon?.type === "free";
   // negócio já criado (para retentar o pagamento sem duplicar o cadastro)
   const [createdEst, setCreatedEst] = useState<Establishment | null>(null);
   // PIX gerado após assinar (mostrado na hora, antes de entrar no painel)
@@ -181,6 +186,11 @@ export function EstablishmentForm({
   // avança da etapa 2 (valida dados de cobrança)
   const goStep3 = () => {
     setError("");
+    // cupom de meses grátis: não pede dados de pagamento agora
+    if (isFree) {
+      setStep(3);
+      return;
+    }
     if (!cpfCnpj.trim()) {
       setError("Informe o CPF ou CNPJ do responsável pela cobrança.");
       return;
@@ -287,12 +297,21 @@ export function EstablishmentForm({
         clearRef();
       }
 
+      // cupom de meses grátis: ativa o período grátis (sem pagamento) e entra
+      if (isFree && coupon) {
+        await subscriptionApi.redeemCoupon(est._id, coupon.code);
+        onCreated(est);
+        return;
+      }
+
       // cria a assinatura (o plano é a área). Se falhar, o erro APARECE.
       const exp = parseExpiry(cardExpiry);
       const res = await subscriptionApi.subscribe(est._id, {
         planId: form.segment,
         billingCycle: form.billingCycle,
         method,
+        // cupom de desconto (o de meses grátis já foi tratado acima)
+        couponCode: coupon?.type === "discount" ? coupon.code : undefined,
         cpfCnpj: cpfCnpj.trim(),
         email: email.trim(),
         card:
@@ -634,6 +653,22 @@ export function EstablishmentForm({
             )}
           </div>
 
+          {/* cupom: meses grátis dispensam o pagamento agora */}
+          <CouponField
+            planId={form.segment}
+            billingCycle={form.billingCycle}
+            value={coupon}
+            onChange={setCoupon}
+          />
+
+          {isFree ? (
+            <div className="rounded-xl bg-teal-500/10 px-4 py-3 text-sm text-teal-800 dark:text-teal-200">
+              <b>Sem cartão e sem PIX agora.</b> Você usa o sistema grátis
+              durante o período do cupom. No fim dele, é só assinar em{" "}
+              <b>Minha assinatura</b> para continuar — seus dados ficam salvos.
+            </div>
+          ) : (
+          <>
           {/* método */}
           <div>
             <span className="mb-1.5 block text-sm font-medium text-ink/70">
@@ -746,6 +781,9 @@ export function EstablishmentForm({
               />
             </label>
           </div>
+
+          </>
+          )}
 
           <div className="flex gap-3">
             <button
@@ -1034,6 +1072,8 @@ export function EstablishmentForm({
             >
               {saving
                 ? "Processando..."
+                : isFree
+                ? "Criar e começar grátis"
                 : createdEst
                 ? "Tentar pagamento novamente"
                 : "Criar e ir para o pagamento"}

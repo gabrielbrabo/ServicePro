@@ -27,6 +27,12 @@ export interface Subscription {
   cancelAtPeriodEnd?: boolean;
   cardLast4?: string;
   cardBrand?: string;
+  // periodo gratis (cupom) e desconto de cupom
+  trialEndsAt?: string | null;
+  providerSubscriptionId?: string;
+  couponCode?: string;
+  discountPercent?: number;
+  discountChargesLeft?: number; // -1 = para sempre
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +52,8 @@ export interface SubscribePayload {
     ccv: string;
   };
   holderInfo?: { postalCode: string; addressNumber: string; phone: string };
+  // cupom de desconto aplicado na assinatura
+  couponCode?: string;
 }
 
 export interface SubStatusInfo {
@@ -127,6 +135,15 @@ export const subscriptionApi = {
     api
       .get<{ subscription: Subscription | null }>(`${base}/${establishmentId}`)
       .then((r) => r.data.subscription),
+
+  // aplica cupom (meses gratis / desconto) no estabelecimento
+  redeemCoupon: (establishmentId: string, code: string) =>
+    api
+      .post<{ subscription: Subscription; message: string }>(
+        `${base}/${establishmentId}/coupon`,
+        { code }
+      )
+      .then((r) => r.data),
 
   subscribe: (establishmentId: string, payload: SubscribePayload) =>
     api

@@ -13,6 +13,7 @@ import {
   getGallery,
   buyGallery,
   paymentsWebhook,
+  redeemCoupon,
 } from "../controllers/subscriptionController";
 import { protect } from "../middleware/auth";
 
@@ -37,6 +38,8 @@ router.post("/:establishmentId", protect, subscribe);
 router.post("/:establishmentId/cancel", protect, cancelSubscription);
 router.post("/:establishmentId/reactivate", protect, reactivateSubscription);
 router.post("/:establishmentId/refresh", protect, refreshStatus);
+// cupom (meses gratis / desconto) no estabelecimento (dono)
+router.post("/:establishmentId/coupon", protect, redeemCoupon);
 
 export default router;
 

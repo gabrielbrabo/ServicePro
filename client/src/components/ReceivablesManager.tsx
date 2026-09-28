@@ -12,6 +12,7 @@ export function ReceivablesManager({
   const { user } = useAuth();
   const [configured, setConfigured] = useState(false);
   const [reusableFrom, setReusableFrom] = useState<string | null>(null);
+  const [blockedByTrial, setBlockedByTrial] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -32,6 +33,7 @@ export function ReceivablesManager({
       .then((s) => {
         setConfigured(s.configured);
         setReusableFrom(s.reusableFrom || null);
+        setBlockedByTrial(!!s.blockedByTrial);
       })
       .catch(() => setError("Não foi possível carregar."))
       .finally(() => setLoading(false));
@@ -123,7 +125,18 @@ export function ReceivablesManager({
         </p>
       )}
 
-      {configured ? (
+      {blockedByTrial ? (
+        <div className="mt-4 rounded-xl bg-sky-500/5 p-4 text-sm text-ink/80">
+          <p className="font-semibold text-ink">
+            🎁 Você está no período grátis do cupom
+          </p>
+          <p className="mt-1 text-ink/70">
+            Os recebimentos pelo app (sinal e pagamento dos clientes) ficam
+            disponíveis depois que você <b>assinar um plano</b> em{" "}
+            <b>Minha assinatura</b>. Todo o resto do sistema já está liberado.
+          </p>
+        </div>
+      ) : configured ? (
         <div className="mt-4 space-y-2 rounded-xl bg-teal-500/5 p-4 text-sm text-ink/80">
           <p>
             Recebimentos ativos. Os pagamentos dos clientes caem direto na sua

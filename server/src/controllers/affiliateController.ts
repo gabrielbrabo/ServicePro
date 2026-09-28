@@ -366,7 +366,18 @@ export const getMyReferrals = async (
         photo?: string;
       } | null;
       const plan = getPlan(s.planId);
-      const commissionCents = Math.round((s.priceCents * percent) / 100);
+      // cupom: periodo gratis = sem comissao ate o 1o pagamento; desconto =
+      // comissao sobre o valor com desconto (o que o cliente paga)
+      const inFreeTrial = s.status === "trialing";
+      const discountOn =
+        (s.discountPercent || 0) > 0 &&
+        (s.discountChargesLeft === -1 || (s.discountChargesLeft || 0) > 0);
+      const paidCents = discountOn
+        ? Math.max(Math.round((s.priceCents * (100 - s.discountPercent)) / 100), 500)
+        : s.priceCents;
+      const commissionCents = inFreeTrial
+        ? 0
+        : Math.round((paidCents * percent) / 100);
       return {
         subscriptionId: String(s._id),
         establishmentId: est?._id ? String(est._id) : "",
@@ -380,6 +391,11 @@ export const getMyReferrals = async (
         commissionPercent: percent,
         commissionCents,
         currentPeriodEnd: s.currentPeriodEnd || null,
+        // cupom do indicado (para o afiliado entender a comissao)
+        freeTrialUntil: inFreeTrial ? s.trialEndsAt || null : null,
+        discountPercent: discountOn ? s.discountPercent : 0,
+        discountChargesLeft: discountOn ? s.discountChargesLeft : 0,
+        paidCents,
       };
     });
 
@@ -422,11 +438,15 @@ export const getMyReferrals = async (
       active: activeRefs.length,
       commissionPercent: percent,
       // comissao prevista por mes (soma dos ativos, anual normalizado /12)
-      monthlyEstimateCents: activeRefs.reduce(
-        (acc, r) =>
-          acc + monthlyCommissionCents(r.priceCents, r.billingCycle, percent),
-        0
-      ),
+      // previsto so com quem paga (periodo gratis nao conta; desconto conta
+      // pelo valor com desconto)
+      monthlyEstimateCents: activeRefs
+        .filter((r) => !r.freeTrialUntil)
+        .reduce(
+          (acc, r) =>
+            acc + monthlyCommissionCents(r.paidCents, r.billingCycle, percent),
+          0
+        ),
       // comissao prevista por cobranca (soma dos ativos, no ciclo de cada um)
       perPaymentEstimateCents: activeRefs.reduce(
         (acc, r) => acc + r.commissionCents,

@@ -44,6 +44,11 @@ export interface ISubscription extends Document {
   // cartao salvo (exibicao) — a tokenizacao/cobranca recorrente fica no gateway
   cardLast4: string;
   cardBrand: string;
+  // cupom aplicado (ultimo). Desconto: % sobre o plano por N cobrancas
+  // (discountChargesLeft: -1 = para sempre, 0 = acabou/sem desconto)
+  couponCode: string;
+  discountPercent: number;
+  discountChargesLeft: number;
   // ultimo evento de webhook aplicado (auditoria/idempotencia leve)
   lastEventId: string;
   lastEventAt: Date | null;
@@ -96,6 +101,9 @@ const subscriptionSchema = new Schema<ISubscription>(
     cancelAtPeriodEnd: { type: Boolean, default: false },
     cardLast4: { type: String, default: "" },
     cardBrand: { type: String, default: "" },
+    couponCode: { type: String, default: "" },
+    discountPercent: { type: Number, default: 0, min: 0, max: 90 },
+    discountChargesLeft: { type: Number, default: 0 },
     lastEventId: { type: String, default: "" },
     lastEventAt: { type: Date, default: null },
   },

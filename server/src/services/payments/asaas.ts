@@ -293,7 +293,8 @@ export const asaasProvider: PaymentProvider = {
       billingType: billingTypeMap[input.method] || "PIX",
       value: cents(input.priceCents),
       cycle: input.billingCycle === "anual" ? "YEARLY" : "MONTHLY",
-      nextDueDate: today(),
+      // cupom de meses gratis: 1a cobranca so no fim do periodo gratis
+      nextDueDate: input.firstDueDate ? ymd(input.firstDueDate) : today(),
       description: `Assinatura ServiçosPro (${input.planId})`,
       externalReference: input.externalRef,
     };
@@ -441,10 +442,33 @@ export const asaasProvider: PaymentProvider = {
 
   // Atualiza o valor recorrente da assinatura (ex.: somou assentos). Nao mexe
   // nas cobrancas ja geradas (updatePendingPayments:false).
-  async updateSubscriptionValue(subscriptionId: string, newValueCents: number) {
+  async updateSubscriptionValue(
+    subscriptionId: string,
+    newValueCents: number,
+    updatePendingPayments = false
+  ) {
     await api(`/subscriptions/${subscriptionId}`, "PUT", {
       value: cents(newValueCents),
-      updatePendingPayments: false,
+      updatePendingPayments,
+    });
+  },
+
+  // Cupom de meses gratis numa assinatura ja paga: apaga a(s) cobranca(s)
+  // pendente(s) (ainda nao pagas) e move o proximo vencimento para depois do
+  // periodo gratis.
+  async postponeSubscription(subscriptionId: string, nextDueDate: Date) {
+    const pays = await api(
+      `/subscriptions/${subscriptionId}/payments?status=PENDING`,
+      "GET"
+    );
+    const list = (pays.data as { id?: string; status?: string }[] | undefined) || [];
+    for (const p of list) {
+      if (p.id && p.status === "PENDING") {
+        await api(`/payments/${p.id}`, "DELETE");
+      }
+    }
+    await api(`/subscriptions/${subscriptionId}`, "PUT", {
+      nextDueDate: ymd(nextDueDate),
     });
   },
 
@@ -595,6 +619,7 @@ export const asaasProvider: PaymentProvider = {
       event?: string;
       payment?: {
         id?: string;
+        value?: number;
         subscription?: string;
         customer?: string;
         dueDate?: string;
@@ -637,6 +662,10 @@ export const asaasProvider: PaymentProvider = {
         : undefined,
       externalReference: payment?.externalReference,
       paymentId: payment?.id,
+      valueCents:
+        typeof payment?.value === "number"
+          ? Math.round(payment.value * 100)
+          : undefined,
     };
   },
 };
