@@ -8,6 +8,7 @@ import { useNotifications } from "../context/NotificationContext";
 import { NotificationBell } from "./NotificationBell";
 import { Avatar } from "./Avatar";
 import { useTheme } from "../lib/theme";
+import { isStandalone } from "../lib/pwa";
 
 const links = [
   { to: "/buscar", label: "Explorar" },
@@ -487,6 +488,17 @@ export function NavBar() {
               })
             )}
           </nav>
+
+          {/* instalar o app (PWA) — so no menu mobile; some se ja esta no app */}
+          {!isStandalone() && (
+            <Link
+              to="/app"
+              onClick={() => setMenuOpen(false)}
+              className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-teal-600 transition hover:bg-teal-50"
+            >
+              📲 Baixar o app
+            </Link>
+          )}
 
           <div className="mt-3 border-t border-ink/10 pt-3">
             {user?.isAdmin && (

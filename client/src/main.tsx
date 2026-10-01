@@ -6,6 +6,8 @@ import App from "./App";
 import "./index.css";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { captureRefFromUrl } from "./lib/ref";
+// captura o "beforeinstallprompt" cedo, para o botao Instalar app (/app)
+import "./lib/pwa";
 
 // Captura o codigo do afiliado/representante (?ref=...) do link de indicacao e
 // guarda no localStorage. E lido depois no cadastro do usuario (AuthContext) e

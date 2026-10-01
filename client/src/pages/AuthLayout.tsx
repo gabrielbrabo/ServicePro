@@ -285,7 +285,7 @@ export function AuthLayout({
                   href={area.pdf}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-full border border-ink/10 px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-teal-500 hover:text-teal-600"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-ink/15 px-4 py-2.5 text-sm font-medium text-ink/70 transition hover:border-teal-500 hover:text-teal-600"
                 >
                   📄 {area.name}
                 </a>
@@ -303,6 +303,13 @@ export function AuthLayout({
               Política de Privacidade
             </a>
           </p>
+          {/* instalar o app (PWA) — sempre disponivel, mesmo apos fechar o aviso do navegador */}
+          <a
+            href="/app"
+            className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-teal-500 text-base font-semibold text-teal-600 transition hover:bg-teal-50"
+          >
+            <span className="text-xl">📲</span> Baixar o app
+          </a>
         </div>
       </main>
     </div>

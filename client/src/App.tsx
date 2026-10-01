@@ -33,6 +33,7 @@ import { ReviewPublicPage } from "./pages/ReviewPublicPage";
 import { AffiliateRegisterPage } from "./pages/AffiliateRegisterPage";
 import { AffiliateLoginPage } from "./pages/AffiliateLoginPage";
 import { AffiliateDashboardPage } from "./pages/AffiliateDashboardPage";
+import { AppInstallPage } from "./pages/AppInstallPage";
 
 // Para onde mandar um usuario logado: se tem estabelecimento (dono OU
 // funcionario) vai para o painel; senao (cliente) vai para a busca.
@@ -105,6 +106,8 @@ export default function App() {
               {/* documentos legais (publicos) */}
               <Route path="/termos" element={<TermsPage />} />
               <Route path="/privacidade" element={<PrivacyPage />} />
+              {/* pagina de instalacao do app (PWA) — publica */}
+              <Route path="/app" element={<AppInstallPage />} />
               <Route path="/buscar" element={<SearchPage />} />
               <Route path="/servico/:id" element={<P><ServiceDetailPage /></P>} />
               <Route path="/painel" element={<P><ProviderDashboard /></P>} />
