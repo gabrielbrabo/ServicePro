@@ -204,7 +204,7 @@ export function AffiliateRegisterPage() {
       <AuthLayout
         variant="affiliate"
         title="Você é afiliado/representante!"
-        subtitle="Compartilhe seu link e ganhe 25% de cada indicado, para sempre."
+        subtitle="Compartilhe seu link e ganhe 30% de cada indicado, para sempre."
       >
         <div className="space-y-4">
           <label className="block">
@@ -238,7 +238,7 @@ export function AffiliateRegisterPage() {
     <AuthLayout
       variant="affiliate"
       title="Seja afiliado/representante"
-      subtitle="Indique estabelecimentos e ganhe 25% de cada plano, para sempre."
+      subtitle="Indique estabelecimentos e ganhe 30% de cada plano, para sempre."
     >
       {loggedIn && user ? (
         // conta da sessao (Google ou existente): so faltam os dados abaixo

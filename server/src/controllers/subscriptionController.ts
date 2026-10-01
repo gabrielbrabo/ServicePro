@@ -294,7 +294,7 @@ export const subscribe = async (
       coupon = check.coupon;
     }
     // valor cobrado do plano (com desconto do cupom, se houver). A comissao do
-    // afiliado (split) sai sobre ESTE valor: 25% do que foi pago.
+    // afiliado (split) sai sobre ESTE valor: 30% do que foi pago.
     const chargeCents = coupon
       ? applyPercent(priceCents, coupon.percent)
       : priceCents;
@@ -306,7 +306,7 @@ export const subscribe = async (
       galleryCycleTotalCents(existing?.extraGallerySlots || 0, billingCycle);
 
     // afiliado/representante que indicou o dono: se ativo e com subconta, injeta
-    // split (25%) na assinatura (o Asaas repassa a cada cobranca) e guarda o
+    // split (30%) na assinatura (o Asaas repassa a cada cobranca) e guarda o
     // vinculo na assinatura para o painel/contabilizacao.
     let affiliateId: Types.ObjectId | null = null;
     let affiliateWalletId = "";
@@ -334,7 +334,7 @@ export const subscribe = async (
         aff.accountMode === "deferred"
       ) {
         affiliateId = aff._id;
-        affiliatePercent = aff.commissionPercent || 25;
+        affiliatePercent = aff.commissionPercent || 30;
       }
 
       if (aff && aff.asaasWalletId && !selfReferral) {
@@ -347,7 +347,7 @@ export const subscribe = async (
         // valendo na GERACAO do link (o afiliado nem compartilha antes de aprovar).
         affiliateId = aff._id;
         affiliateWalletId = aff.asaasWalletId;
-        affiliatePercent = aff.commissionPercent || 25;
+        affiliatePercent = aff.commissionPercent || 30;
         console.log(
           `[affiliate-split] est=${est._id} wallet=${affiliateWalletId} ` +
             `percent=${affiliatePercent} priceCents=${priceCents}`
@@ -1120,8 +1120,8 @@ async function creditAffiliate(
     const exists = await AffiliateCommission.findOne({ paymentId }).select("_id");
     if (exists) return;
 
-    const percent = aff.commissionPercent || 25;
-    // 25% do valor do plano efetivamente pago (com desconto de cupom, se houve)
+    const percent = aff.commissionPercent || 30;
+    // 30% do valor do plano efetivamente pago (com desconto de cupom, se houve)
     const grossCents = event.grossCents ?? sub.priceCents;
     const commissionCents = Math.round((grossCents * percent) / 100);
     // 1a comissao desta assinatura = "paid"; as seguintes = "renewed"
@@ -1209,7 +1209,7 @@ export async function reconcileAffiliateForSubscription(sub: {
 
     const aff = await Affiliate.findById(sub.affiliate);
     if (!aff) return;
-    const percent = aff.commissionPercent || 25;
+    const percent = aff.commissionPercent || 30;
     const owner = await User.findById(aff.user).select("email");
     const est = await Establishment.findById(sub.establishment).select("name");
     const establishmentName = est?.name || "Estabelecimento";
@@ -1429,7 +1429,7 @@ function addMonths(d: Date, months: number): Date {
   return r;
 }
 
-// atualiza o split do afiliado para 25% do valor do plano cobrado hoje (com
+// atualiza o split do afiliado para 30% do valor do plano cobrado hoje (com
 // ou sem desconto de cupom). So quando o split ja esta ativo na assinatura.
 async function syncAffiliateSplit(sub: ISubscription): Promise<void> {
   try {
@@ -1439,7 +1439,7 @@ async function syncAffiliateSplit(sub: ISubscription): Promise<void> {
     const provider = getPaymentProvider();
     if (!provider.updateSubscriptionSplit) return;
     const aff = await Affiliate.findById(sub.affiliate).select("commissionPercent");
-    const pct = aff?.commissionPercent || 25;
+    const pct = aff?.commissionPercent || 30;
     const commission = Math.round(
       (effectivePlanCents(sub, sub.priceCents) * pct) / 100
     );

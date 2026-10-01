@@ -320,7 +320,7 @@ function monthlyCommissionCents(
 // GET /api/affiliates/me/referrals  (protegido)
 // Lista os indicados do afiliado (assinaturas com este afiliado) + um resumo.
 // Enquanto o ledger (fase 4) nao existe, os valores sao PREVISTOS a partir da
-// assinatura (25% do plano), nao "recebidos".
+// assinatura (30% do plano), nao "recebidos".
 export const getMyReferrals = async (
   req: AuthRequest,
   res: Response
@@ -337,7 +337,7 @@ export const getMyReferrals = async (
     if (affiliate.accountMode === "deferred") {
       void settleDeferredAffiliate(affiliate._id);
     }
-    const percent = affiliate.commissionPercent || 25;
+    const percent = affiliate.commissionPercent || 30;
 
     const subs = await Subscription.find({ affiliate: affiliate._id })
       .populate("establishment", "name photo")

@@ -58,7 +58,7 @@ export async function resolveReferral(
     affiliateName: affUser?.name || "Afiliado",
     code: aff.code,
     walletId: aff.asaasWalletId || "",
-    percent: aff.commissionPercent || 25,
+    percent: aff.commissionPercent || 30,
   };
 }
 

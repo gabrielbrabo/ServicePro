@@ -16,7 +16,7 @@ export interface IAffiliate extends Document {
   // codigo publico do link de indicacao (?ref=<code>)
   code: string;
   status: AffiliateStatus;
-  // porcentagem da comissao (o preco dos planos ja embute os 25%)
+  // porcentagem da comissao (o preco dos planos ja embute os 30%)
   commissionPercent: number;
   // subconta Asaas do afiliado (recebe o split). apiKey so vem UMA vez na
   // criacao — guardamos para consultar saldo/saque na subconta depois.
@@ -68,7 +68,7 @@ const affiliateSchema = new Schema<IAffiliate>(
       default: "active",
       index: true,
     },
-    commissionPercent: { type: Number, default: 25, min: 0, max: 100 },
+    commissionPercent: { type: Number, default: 30, min: 0, max: 100 },
     // subconta Asaas (recebimento via split)
     asaasAccountId: { type: String, default: "", index: true },
     asaasWalletId: { type: String, default: "", index: true },

@@ -298,7 +298,7 @@ export const asaasProvider: PaymentProvider = {
       description: `Assinatura ServiçosPro (${input.planId})`,
       externalReference: input.externalRef,
     };
-    // split de comissao do afiliado/representante (25% por padrao). O Asaas
+    // split de comissao do afiliado/representante (30% por padrao). O Asaas
     // aplica este split a TODA cobranca gerada pela assinatura (recorrente),
     // creditando a porcentagem direto na subconta do afiliado.
     let splitApplied = false;
@@ -308,7 +308,7 @@ export const asaasProvider: PaymentProvider = {
       // o valor LIQUIDO (bruto - taxa), o que faria o afiliado dividir a taxa do
       // Asaas com a empresa. Com fixedValue o afiliado recebe exatamente X% do
       // bruto e a conta principal (empresa) absorve 100% da taxa do Asaas.
-      const pct = input.splitPercent ?? 25;
+      const pct = input.splitPercent ?? 30;
       // comissao so sobre o plano (extras de assento/galeria nao entram)
       const commissionCents = Math.round(
         ((input.splitBaseCents ?? input.priceCents) * pct) / 100

@@ -108,7 +108,7 @@ export interface CreateSubscriptionInput {
   firstDueDate?: Date;
   // split de comissao do afiliado/representante: quando informado, a assinatura
   // nasce com split para a subconta do afiliado e TODA cobranca recorrente ja
-  // sai repartida. splitPercent default 25.
+  // sai repartida. splitPercent default 30.
   splitWalletId?: string;
   splitPercent?: number;
   // base da comissao do split (so o PLANO). Sem = priceCents. Usado quando o

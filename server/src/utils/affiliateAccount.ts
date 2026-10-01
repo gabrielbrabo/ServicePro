@@ -264,7 +264,7 @@ export async function settleDeferredAffiliate(affiliateId: unknown): Promise<voi
 
     const provider = getPaymentProvider();
     const wallet = aff.asaasWalletId;
-    const percent = aff.commissionPercent || 25;
+    const percent = aff.commissionPercent || 30;
 
     // 1) split nas assinaturas ativas que ficaram sem (proximas cobrancas ja
     //    caem direto na conta do afiliado)

@@ -48,7 +48,7 @@ const areas = [
 const affiliateGains = [
   {
     icon: "💰",
-    title: "25% de comissão recorrente",
+    title: "30% de comissão recorrente",
     text: "Sobre a assinatura de cada estabelecimento que você indicar, todo mês ou renovação anual, enquanto ele continuar pagando.",
   },
   {
