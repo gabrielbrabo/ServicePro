@@ -8,8 +8,8 @@ import { affiliateApi } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 
 // Login da área do afiliado/representante — separada da do estabelecimento.
-// Aceita e-mail/senha OU Google. Se a conta ainda não for afiliado, manda pro
-// cadastro; se a conta é Google, o back orienta a usar o botão do Google.
+// Aceita e-mail/senha OU Google. Sem link de cadastro: conta que nao e
+// afiliado so recebe o aviso; se a conta é Google, o back orienta a usar o botão do Google.
 export function AffiliateLoginPage() {
   const navigate = useNavigate();
   const { adoptSession } = useAuth();
@@ -37,9 +37,10 @@ export function AffiliateLoginPage() {
       navigate("/afiliado");
     } catch (err) {
       const ax = err as AxiosError<{ message: string; notAffiliate?: boolean }>;
-      // credenciais certas mas a conta ainda nao e afiliado: leva ao cadastro
+      // credenciais certas mas a conta nao e afiliado: so avisa (o login nao
+      // oferece mais cadastro de afiliado)
       if (ax.response?.data?.notAffiliate) {
-        navigate("/seja-afiliado");
+        setError("Esta conta não é de afiliado/representante.");
         return;
       }
       setError(ax.response?.data?.message || "Não foi possível entrar");
@@ -115,14 +116,7 @@ export function AffiliateLoginPage() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-ink/60">
-        Ainda não é afiliado/representante?{" "}
-        <Link to="/seja-afiliado" className="font-semibold text-teal-500">
-          Cadastre-se
-        </Link>
-      </p>
-
-      <p className="mt-4 border-t border-ink/10 pt-4 text-center">
+      <p className="mt-6 border-t border-ink/10 pt-4 text-center">
         <Link
           to="/login"
           className="inline-flex items-center gap-1 text-sm font-medium text-ink/50 transition hover:text-ink/80"
