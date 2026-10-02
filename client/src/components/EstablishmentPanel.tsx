@@ -322,6 +322,126 @@ export function EstablishmentPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSecretary, tab, setTab]);
 
+
+  // estilo do menu do painel. Padrao: LATERAL no computador (>= 768px) e
+  // ABAS no celular. Se o usuario trocar, a escolha fica salva neste aparelho.
+  const [menuStyle, setMenuStyle] = useState<"abas" | "lateral">(() => {
+    try {
+      const saved = localStorage.getItem("sp_panel_menu");
+      if (saved === "lateral" || saved === "abas") return saved;
+    } catch {
+      /* sem localStorage: usa o padrao */
+    }
+    return window.matchMedia?.("(min-width: 768px)").matches ? "lateral" : "abas";
+  });
+  const toggleMenuStyle = () => {
+    const next = menuStyle === "lateral" ? "abas" : "lateral";
+    setMenuStyle(next);
+    try {
+      localStorage.setItem("sp_panel_menu", next);
+    } catch {
+      /* ignora */
+    }
+  };
+  // gaveta do menu lateral no celular
+  const [sideOpen, setSideOpen] = useState(false);
+  const currentLabel =
+    visibleTabs.find(([key]) => key === tab)?.[1] || "Painel";
+
+  // selos (contador/alertas) de cada aba — usados nas abas e no menu lateral
+  const tabBadges = (key: PanelTab) => (
+    <>
+              {key === "recebidos" && pendingCount > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
+              {/* alerta: profissionais sem servico (so o dono age nisso) */}
+              {!isEmployee &&
+                key === "equipe" &&
+                prosWithoutService.size > 0 && (
+                  <span
+                    title="Há profissional sem serviço"
+                    className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                  >
+                    !
+                  </span>
+                )}
+              {/* alerta: nenhum servico cadastrado ainda (estabelecimento novo) */}
+              {!isEmployee && key === "servicos" && noServices && (
+                <span
+                  title="Cadastre um serviço para começar a receber agendamentos"
+                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                >
+                  !
+                </span>
+              )}
+              {/* alerta: servicos sem profissional */}
+              {!isEmployee &&
+                key === "servicos" &&
+                !noServices &&
+                servicesWithoutPro.size > 0 && (
+                  <span
+                    title="Há serviço sem profissional"
+                    className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                  >
+                    !
+                  </span>
+                )}
+              {/* alerta: profissionais sem expediente */}
+              {!isEmployee &&
+                key === "agenda" &&
+                prosWithoutSchedule.size > 0 && (
+                  <span
+                    title="Há profissional sem expediente"
+                    className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                  >
+                    !
+                  </span>
+                )}
+              {/* alerta: aluno agendou aula avulsa sem matricula */}
+              {!isEmployee && key === "matriculas" && semMatricula > 0 && (
+                <span
+                  title="Há aluno sem matrícula"
+                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
+                >
+                  !
+                </span>
+              )}
+    </>
+  );
+
+  // ha algo pedindo atencao? (bolinha no hamburguer do celular)
+  const menuAlerts =
+    pendingCount +
+    (!isEmployee
+      ? prosWithoutService.size +
+        (noServices ? 1 : 0) +
+        servicesWithoutPro.size +
+        prosWithoutSchedule.size +
+        semMatricula
+      : 0);
+
+  // item do menu lateral (computador e gaveta do celular)
+  const sideItem = (key: PanelTab, label: string) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => {
+        setTab(key);
+        setSideOpen(false);
+      }}
+      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+        tab === key
+          ? "bg-teal-500 text-white shadow-sm"
+          : "text-ink/70 hover:bg-ink/5 hover:text-ink"
+      }`}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="flex shrink-0 items-center">{tabBadges(key)}</span>
+    </button>
+  );
+
   return (
     <div>
       <EstablishmentProfileHeader
@@ -482,84 +602,110 @@ export function EstablishmentPanel({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
-        {visibleTabs.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
-              tab === key
-                ? "bg-teal-500 text-white shadow-sm"
-                : "bg-ink/5 text-ink/60 hover:bg-ink/10 hover:text-ink/80"
-            }`}
-          >
-            {label}
-            {key === "recebidos" && pendingCount > 0 && (
-              <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
-                {pendingCount > 99 ? "99+" : pendingCount}
-              </span>
+      {/* Menu do painel: "pilulas" (atual) ou LATERAL (escolha do usuario,
+          salva neste aparelho). Lateral: barra a esquerda no computador e
+          menu hamburguer (gaveta) no celular. */}
+      <div className="mt-4 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={toggleMenuStyle}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink/50 transition hover:bg-ink/5 hover:text-ink/80"
+          title="Trocar o estilo do menu do painel"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            {menuStyle === "lateral" ? (
+              <path d="M2 5a1 1 0 011-1h3a1 1 0 010 2H3a1 1 0 01-1-1zm6 0a1 1 0 011-1h3a1 1 0 110 2H9a1 1 0 01-1-1zm6 0a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1zM3 10a1 1 0 000 2h14a1 1 0 100-2H3zm0 5a1 1 0 100 2h14a1 1 0 100-2H3z" />
+            ) : (
+              <path d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h4a1 1 0 001-1V4a1 1 0 00-1-1H3zm7 1a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1z" />
             )}
-            {/* alerta: profissionais sem servico (so o dono age nisso) */}
-            {!isEmployee &&
-              key === "equipe" &&
-              prosWithoutService.size > 0 && (
-                <span
-                  title="Há profissional sem serviço"
-                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
-                >
-                  !
-                </span>
-              )}
-            {/* alerta: nenhum servico cadastrado ainda (estabelecimento novo) */}
-            {!isEmployee && key === "servicos" && noServices && (
-              <span
-                title="Cadastre um serviço para começar a receber agendamentos"
-                className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
-              >
-                !
-              </span>
-            )}
-            {/* alerta: servicos sem profissional */}
-            {!isEmployee &&
-              key === "servicos" &&
-              !noServices &&
-              servicesWithoutPro.size > 0 && (
-                <span
-                  title="Há serviço sem profissional"
-                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
-                >
-                  !
-                </span>
-              )}
-            {/* alerta: profissionais sem expediente */}
-            {!isEmployee &&
-              key === "agenda" &&
-              prosWithoutSchedule.size > 0 && (
-                <span
-                  title="Há profissional sem expediente"
-                  className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
-                >
-                  !
-                </span>
-              )}
-            {/* alerta: aluno agendou aula avulsa sem matricula */}
-            {!isEmployee && key === "matriculas" && semMatricula > 0 && (
-              <span
-                title="Há aluno sem matrícula"
-                className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[12px] font-bold text-ink"
-              >
-                !
-              </span>
-            )}
-          </button>
-        ))}
+          </svg>
+          {menuStyle === "lateral" ? "Menu em abas" : "Menu lateral"}
+        </button>
       </div>
+
+      {menuStyle === "abas" && (
+        <div className="mt-2 flex flex-wrap gap-2 border-b border-ink/10 pb-4">
+          {visibleTabs.map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
+                tab === key
+                  ? "bg-teal-500 text-white shadow-sm"
+                  : "bg-ink/5 text-ink/60 hover:bg-ink/10 hover:text-ink/80"
+              }`}
+            >
+              {label}
+              {tabBadges(key)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* lateral no celular: aba atual + hamburguer a direita (mesma altura
+          do menu de abas) */}
+      {menuStyle === "lateral" && (
+        <div className="mt-2 flex items-center justify-between gap-3 border-b border-ink/10 pb-4 md:hidden">
+          <p className="min-w-0 truncate font-display text-lg font-bold text-ink">
+            {currentLabel}
+          </p>
+          <button
+            type="button"
+            onClick={() => setSideOpen(true)}
+            aria-label="Abrir menu do painel"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ink/15 bg-white text-ink/70 transition hover:bg-sand"
+          >
+            {menuAlerts > 0 && (
+              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-white" />
+            )}
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* gaveta do menu lateral (celular) */}
+      {menuStyle === "lateral" && sideOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-ink/40"
+            onClick={() => setSideOpen(false)}
+            aria-hidden="true"
+          />
+          <aside className="absolute right-0 top-0 flex h-full w-72 max-w-[85vw] flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-ink/10 px-4 py-3">
+              <p className="font-display text-base font-bold text-ink">Menu do painel</p>
+              <button
+                type="button"
+                onClick={() => setSideOpen(false)}
+                aria-label="Fechar menu"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink/60 transition hover:bg-sand"
+              >
+                ✕
+              </button>
+            </div>
+            <nav className="flex-1 overflow-y-auto p-2">
+              {visibleTabs.map(([key, label]) => sideItem(key, label))}
+            </nav>
+          </aside>
+        </div>
+      )}
 
       {/* min-h-screen garante altura suficiente para a rolagem alcancar a foto
           mesmo quando a aba esta vazia (sem dados, o conteudo seria curto).
           >>> AJUSTE AQUI <<< pode trocar por min-h-[70vh] se preferir menos
           espaco em branco nas abas vazias. */}
-      <div className="mt-6 min-h-screen">
+      <div className={menuStyle === "lateral" ? "mt-6 md:flex md:items-start md:gap-6" : ""}>
+      {/* menu lateral (computador) */}
+      {menuStyle === "lateral" && (
+        <aside className="hidden w-56 shrink-0 md:block md:sticky md:top-20">
+          <nav className="max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-ink/10 bg-white p-2">
+            {visibleTabs.map(([key, label]) => sideItem(key, label))}
+          </nav>
+        </aside>
+      )}
+      <div className={menuStyle === "lateral" ? "min-h-screen min-w-0 flex-1" : "mt-6 min-h-screen"}>
         {tab === "servicos" && (
           <ServiceManager
             establishmentId={establishment._id}
@@ -703,6 +849,7 @@ export function EstablishmentPanel({
         {tab === "recebimentos" && !isEmployee && (
           <ReceivablesManager establishment={establishment} />
         )}
+      </div>
       </div>
 
       {qrOpen && (
