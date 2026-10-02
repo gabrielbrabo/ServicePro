@@ -14,7 +14,7 @@ import {
   updateProfilePhoto,
   updateCoverPhotos,
 } from "../controllers/establishmentPhotoController";
-import { protect } from "../middleware/auth";
+import { protect, optionalProtect } from "../middleware/auth";
 import professionalRoutes from "./professionalRoutes";
 import {
   listInvites,
@@ -41,7 +41,8 @@ router.delete("/:establishmentId/secretaries/:userId", protect, removeSecretary)
 
 // rotas especificas antes das com :id
 router.get("/mine", protect, myEstablishments);
-router.get("/search", searchEstablishments);
+// token opcional: ?favorites=1 filtra pelos favoritos do usuario logado
+router.get("/search", optionalProtect, searchEstablishments);
 router.get("/", listEstablishments);
 router.get("/:id/receivables", protect, getReceivables);
 router.post("/:id/receivables", protect, setupReceivables);

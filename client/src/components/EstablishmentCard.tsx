@@ -1,19 +1,30 @@
 import { Link } from "react-router-dom";
 import { Establishment } from "../api/establishment";
 import { Stars } from "./Stars";
+import { FavoriteButton } from "./FavoriteButton";
 
 export function EstablishmentCard({
   establishment,
+  onFavoriteChange,
 }: {
   establishment: Establishment;
+  onFavoriteChange?: (favorite: boolean) => void;
 }) {
   const ratingCount = establishment.ratingCount ?? 0;
 
   return (
     <Link
       to={`/estabelecimento/${establishment._id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-ink/10 bg-white transition hover:border-teal-500/40 hover:shadow-sm sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-ink/10 bg-white transition hover:border-teal-500/40 hover:shadow-sm sm:flex-row"
     >
+      {/* coracao de favorito (canto superior direito do card) */}
+      <div className="absolute right-3 top-3 z-10">
+        <FavoriteButton
+          establishmentId={establishment._id}
+          onChange={onFavoriteChange}
+        />
+      </div>
+
       {/* Foto de perfil / logo — grande, ocupa a lateral (ou o topo no mobile) */}
       {establishment.photo ? (
         <img
@@ -33,7 +44,7 @@ export function EstablishmentCard({
             {establishment.category?.icon} {establishment.category?.name}
           </span>
 
-          <h3 className="mt-2 font-display text-lg font-bold text-ink group-hover:text-teal-600">
+          <h3 className="mt-2 pr-10 font-display text-lg font-bold text-ink group-hover:text-teal-600">
             {establishment.name}
           </h3>
 

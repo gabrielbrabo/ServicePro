@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { PageContainer } from "../components/NavBar";
 import { catalogApi, Category } from "../api/catalog";
 import {
@@ -7,6 +7,7 @@ import {
   SearchFilters,
 } from "../api/establishment";
 import { EstablishmentCard } from "../components/EstablishmentCard";
+import { AuthModal } from "../components/AuthModal";
 import {
   LocationRadiusModal,
   GeoCoords,
@@ -62,7 +63,10 @@ function ProHintBar() {
   // escondem o icone para o texto caber)
   // bem visivel ao toque. ~56px de altura, nao empurra a lista.
   return (
-    <div className="relative mt-3 flex items-center gap-2.5 rounded-2xl border border-teal-500/25 bg-gradient-to-r from-teal-500/10 to-teal-500/5 py-2 pl-2.5 pr-8">
+    <div
+      id="pro-hint-bar"
+      className="relative mt-3 flex items-center gap-2.5 rounded-2xl border border-teal-500/25 bg-gradient-to-r from-teal-500/10 to-teal-500/5 py-2 pl-2.5 pr-8"
+    >
       <span
         aria-hidden="true"
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-500 text-base text-white shadow-sm max-[359px]:hidden"
@@ -154,6 +158,10 @@ export function SearchPage() {
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
 
+  // so favoritos (coracao). Sem login, o chip abre o modal de entrar.
+  const [onlyFavs, setOnlyFavs] = useState(false);
+  const [favAuthOpen, setFavAuthOpen] = useState(false);
+
   // resultados + paginação
   const [items, setItems] = useState<Establishment[]>([]);
   const [page, setPage] = useState(1);
@@ -180,8 +188,9 @@ export function SearchPage() {
       lat: geoCoords?.lat,
       lng: geoCoords?.lng,
       radiusKm: geoCoords && radiusKm ? radiusKm : undefined,
+      favorites: onlyFavs && !!user,
     }),
-    [activeCat, name, service, city, user, geoCoords, radiusKm]
+    [activeCat, name, service, city, user, geoCoords, radiusKm, onlyFavs]
   );
 
   // busca a primeira página sempre que um filtro muda (com debounce nos textos)
@@ -200,6 +209,20 @@ export function SearchPage() {
     }, 350);
     return () => clearTimeout(t);
   }, [buildFilters]);
+
+  // ao entrar na tela: rola ate a faixa "Tem um negócio?" ficar no topo
+  // (logo abaixo do NavBar fixo). Uma vez so, depois da 1a busca carregar —
+  // antes disso a pagina pode nao ter altura suficiente para rolar.
+  const scrolledToHint = useRef(false);
+  useEffect(() => {
+    if (loading || scrolledToHint.current) return;
+    scrolledToHint.current = true;
+    const el = document.getElementById("pro-hint-bar");
+    if (!el) return; // faixa escondida (fechada ou usuario ja tem negocio)
+    const navH = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+    const top = el.getBoundingClientRect().top + window.scrollY - navH - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }, [loading]);
 
   // carregar mais (próxima página, acumula)
   const loadMore = () => {
@@ -222,6 +245,22 @@ export function SearchPage() {
     setCity("");
     setGeoCoords(null);
     setRadiusKm(null);
+    setOnlyFavs(false);
+  };
+
+  const toggleFavs = () => {
+    if (!user) {
+      setFavAuthOpen(true);
+      return;
+    }
+    setOnlyFavs((v) => !v);
+  };
+
+  // desfavoritou com o filtro "Favoritos" ligado: tira o card da lista
+  const handleFavoriteChange = (id: string, fav: boolean) => {
+    if (!onlyFavs || fav) return;
+    setItems((prev) => prev.filter((e) => e._id !== id));
+    setTotal((t) => Math.max(0, t - 1));
   };
 
   // aplica a busca por raio vinda do modal
@@ -237,7 +276,8 @@ export function SearchPage() {
   };
 
   const geoActive = Boolean(geoCoords && radiusKm);
-  const hasAnyFilter = activeCat || name || service || city || geoActive;
+  const hasAnyFilter =
+    activeCat || name || service || city || geoActive || onlyFavs;
 
   // categorias principais (as do MAIN_SLUGS que existem); se nenhuma casar,
   // cai nas 8 primeiras. Recolhido mostra so essas; "Ver mais" mostra todas.
@@ -371,6 +411,31 @@ export function SearchPage() {
 
       {/* Filtro por categoria */}
       <div className="mt-4 flex flex-wrap gap-2">
+        {/* favoritos: combina com os demais filtros */}
+        <button
+          type="button"
+          onClick={toggleFavs}
+          aria-pressed={onlyFavs}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition ${
+            onlyFavs
+              ? "bg-rose-500 text-white"
+              : "bg-white text-rose-600 ring-1 ring-rose-500/30 hover:bg-rose-500/10"
+          }`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill={onlyFavs ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          Favoritos
+        </button>
         <button
           onClick={() => setActiveCat("")}
           className={`rounded-full px-4 py-2 text-sm font-medium transition ${
@@ -439,7 +504,9 @@ export function SearchPage() {
           <p className="text-ink/50">Carregando...</p>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-ink/20 p-12 text-center text-ink/50">
-            {geoActive
+            {onlyFavs
+              ? "Nenhum favorito por aqui. Toque no ♥ de um estabelecimento para salvá-lo."
+              : geoActive
               ? "Nenhum estabelecimento neste raio. Aumente a distância ou remova o filtro de localização."
               : "Nenhum estabelecimento encontrado. Tente outros filtros."}
           </div>
@@ -447,7 +514,11 @@ export function SearchPage() {
           <>
             <div className="flex flex-col gap-4">
               {items.map((e) => (
-                <EstablishmentCard key={e._id} establishment={e} />
+                <EstablishmentCard
+                  key={e._id}
+                  establishment={e}
+                  onFavoriteChange={(fav) => handleFavoriteChange(e._id, fav)}
+                />
               ))}
             </div>
 
@@ -472,6 +543,18 @@ export function SearchPage() {
           initialCoords={geoCoords}
           onClose={() => setLocationModalOpen(false)}
           onApply={applyRadius}
+        />
+      )}
+
+      {favAuthOpen && (
+        <AuthModal
+          title="Entre para ver seus favoritos"
+          subtitle="Crie sua conta em segundos ou entre com a que já tem."
+          onClose={() => setFavAuthOpen(false)}
+          onSuccess={() => {
+            setFavAuthOpen(false);
+            setOnlyFavs(true);
+          }}
         />
       )}
     </PageContainer>

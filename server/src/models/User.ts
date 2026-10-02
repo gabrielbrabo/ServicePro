@@ -26,6 +26,8 @@ export interface IUser extends Document {
   savedCard?: { token: string; last4: string; brand: string };
   // indicacao: afiliado/representante que trouxe este usuario (gravado no cadastro)
   referredByAffiliate?: Types.ObjectId | null;
+  // estabelecimentos favoritos do usuario (coracao); mais recente no fim
+  favorites?: Types.ObjectId[];
   emailVerified: boolean;
   emailTokenHash?: string; // hash do token de verificacao (nunca o token cru)
   emailTokenExpiry?: Date;
@@ -118,6 +120,13 @@ const userSchema = new Schema<IUser>(
       ref: "Affiliate",
       index: true,
       default: null,
+    },
+    // favoritos (coracao no card/pagina do estabelecimento). select:false para
+    // nao pesar nas consultas comuns do usuario.
+    favorites: {
+      type: [{ type: Schema.Types.ObjectId, ref: "Establishment" }],
+      default: [],
+      select: false,
     },
   },
   { timestamps: true }

@@ -5,6 +5,7 @@ import { Sentry } from "./instrument";
 
 import authRoutes from "./routes/authRoutes";
 import establishmentRoutes from "./routes/establishmentRoutes";
+import favoriteRoutes from "./routes/favoriteRoutes";
 import serviceRoutes from "./routes/serviceRoutes";
 import bookingRoutes from "./routes/bookingRoutes";
 import availabilityRoutes from "./routes/availabilityRoutes";
@@ -87,6 +88,7 @@ export const createApp = (): Application => {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/establishments", establishmentRoutes);
+  app.use("/api/favorites", favoriteRoutes);
   app.use("/api/services", serviceRoutes);
   app.use("/api/bookings", bookingRoutes);
   app.use("/api/availability", availabilityRoutes);

@@ -210,7 +210,7 @@ export const listEstablishments = async (
 // Prioriza estabelecimentos da mesma cidade do usuario, depois do mesmo estado.
 // Opcional: filtro por RAIO (lat, lng, radiusKm) usando o indice 2dsphere.
 export const searchEstablishments = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ): Promise<void> => {
   try {
@@ -244,6 +244,25 @@ export const searchEstablishments = async (
       // converte para ObjectId para casar no $match do aggregate
       const ids = services.map((s) => new Types.ObjectId(s.establishment));
       filter._id = { $in: ids };
+    }
+
+    // ---- So favoritos (?favorites=1) --------------------------------------
+    // Usa o token opcional (optionalProtect). Sem login nao ha favoritos.
+    // Combina com os demais filtros (inclusive o de servico: intersecao).
+    if (String(req.query.favorites || "") === "1") {
+      const me = req.userId
+        ? await User.findById(req.userId).select("+favorites")
+        : null;
+      const favIds = (me?.favorites || []).map(
+        (id) => new Types.ObjectId(String(id))
+      );
+      const current = filter._id as { $in: Types.ObjectId[] } | undefined;
+      if (current) {
+        const keep = new Set(favIds.map(String));
+        current.$in = current.$in.filter((id) => keep.has(String(id)));
+      } else {
+        filter._id = { $in: favIds };
+      }
     }
 
     // ---- Filtro por raio (opcional) --------------------------------------

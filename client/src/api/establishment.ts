@@ -78,6 +78,8 @@ export interface SearchFilters {
   lat?: number;
   lng?: number;
   radiusKm?: number;
+  // so os favoritos do usuario logado
+  favorites?: boolean;
 }
 
 export const establishmentApi = {
@@ -103,6 +105,7 @@ export const establishmentApi = {
           lat: filters.lat ?? undefined,
           lng: filters.lng ?? undefined,
           radiusKm: filters.radiusKm ?? undefined,
+          favorites: filters.favorites ? 1 : undefined,
         },
       })
       .then((r) => r.data),

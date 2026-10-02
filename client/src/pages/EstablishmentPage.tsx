@@ -7,6 +7,7 @@ import { BookingModal } from "../components/BookingModal";
 import { GallerySection } from "../components/GallerySection";
 import { ReviewsCarousel } from "../components/ReviewsCarousel";
 import { EstablishmentProfileHeader } from "../components/EstablishmentProfileHeader";
+import { FavoriteButton } from "../components/FavoriteButton";
 
 export function EstablishmentPage() {
   const { id = "" } = useParams();
@@ -130,6 +131,7 @@ export function EstablishmentPage() {
         ratingAvg={est.ratingAvg}
         ratingCount={est.ratingCount}
       >
+        <div className="flex flex-col gap-2 sm:flex-row">
         {bookable ? (
           <button
             onClick={() => openBooking()}
@@ -145,6 +147,8 @@ export function EstablishmentPage() {
             Indisponível para agendamento
           </button>
         )}
+        <FavoriteButton establishmentId={est._id} variant="inline" />
+        </div>
       </EstablishmentProfileHeader>
 
       {!bookable && (
