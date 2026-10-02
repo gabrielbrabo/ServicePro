@@ -211,18 +211,25 @@ export function SearchPage() {
   }, [buildFilters]);
 
   // ao entrar na tela: rola ate a faixa "Tem um negócio?" ficar no topo
-  // (logo abaixo do NavBar fixo). Uma vez so, depois da 1a busca carregar —
-  // antes disso a pagina pode nao ter altura suficiente para rolar.
+  // (logo abaixo do NavBar fixo). Se a faixa nao aparece (usuario ja tem
+  // negocio ou fechou o aviso), rola ate o campo de busca por nome.
+  // Uma vez so, depois da 1a busca carregar — antes disso a pagina pode nao
+  // ter altura suficiente para rolar.
   const scrolledToHint = useRef(false);
+  const { status: estStatus } = useEstablishments();
+  // logado: espera saber se tem negocio (senao a faixa ainda nao apareceu)
+  const estReady = !user || (estStatus !== "idle" && estStatus !== "loading");
   useEffect(() => {
-    if (loading || scrolledToHint.current) return;
+    if (loading || !estReady || scrolledToHint.current) return;
     scrolledToHint.current = true;
-    const el = document.getElementById("pro-hint-bar");
-    if (!el) return; // faixa escondida (fechada ou usuario ja tem negocio)
+    const el =
+      document.getElementById("pro-hint-bar") ||
+      document.getElementById("search-fields");
+    if (!el) return;
     const navH = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
     const top = el.getBoundingClientRect().top + window.scrollY - navH - 8;
     window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-  }, [loading]);
+  }, [loading, estReady]);
 
   // carregar mais (próxima página, acumula)
   const loadMore = () => {
@@ -308,7 +315,7 @@ export function SearchPage() {
       <ProHintBar />
 
       {/* Campos de busca */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div id="search-fields" className="mt-6 grid gap-3 sm:grid-cols-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
