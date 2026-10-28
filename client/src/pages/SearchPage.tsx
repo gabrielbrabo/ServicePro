@@ -14,6 +14,7 @@ import {
 } from "../components/LocationRadiusModal";
 import { useAuth } from "../context/AuthContext";
 import { useEstablishments } from "../context/EstablishmentContext";
+import { SAUDE_ATIVA } from "../lib/segments";
 import { Link } from "react-router-dom";
 
 // Faixa discreta para quem ainda nao tem negocio cadastrado: avisa que o
@@ -104,11 +105,19 @@ function ProHintBar() {
 // (Antes havia rodizio trimestral; agora ficam FIXAS nas atuais. Para trocar
 // no futuro, edite ORIGINAL_SLUGS abaixo.) As demais ficam no "Ver mais
 // categorias".
-const FEATURED_MIX: { seg: "beleza" | "saude" | "geral"; count: number }[] = [
-  { seg: "beleza", count: 2 },
-  { seg: "saude", count: 4 },
-  { seg: "geral", count: 2 },
-];
+// Teste de oferta (lib/segments): com Saude desligada, as 4 vagas dela vao
+// para Beleza (+2) e Gerais (+2). Volta sozinho quando SAUDE_ATIVA = true.
+const FEATURED_MIX: { seg: "beleza" | "saude" | "geral"; count: number }[] =
+  SAUDE_ATIVA
+    ? [
+        { seg: "beleza", count: 2 },
+        { seg: "saude", count: 4 },
+        { seg: "geral", count: 2 },
+      ]
+    : [
+        { seg: "beleza", count: 4 },
+        { seg: "geral", count: 4 },
+      ];
 // Categorias fixas atuais (ordem em que aparecem).
 const ORIGINAL_SLUGS = [
   "barbearia",
@@ -120,7 +129,25 @@ const ORIGINAL_SLUGS = [
   "refrigeracao",
   "estetica-automotiva",
 ];
+// Teste de oferta (Saude desligada): destaques FIXOS, nesta ordem.
+// 5 de beleza + 3 de servicos gerais. Para trocar, edite esta lista.
+const FEATURED_SLUGS_SEM_SAUDE = [
+  "barbearia",
+  "salao-de-beleza",
+  "estetica",
+  "manicure-pedicure",
+  "sobrancelha-cilios",
+  "refrigeracao",
+  "estetica-automotiva",
+  "chaveiro",
+];
+
 function featuredCategories(cats: Category[]): Category[] {
+  if (!SAUDE_ATIVA) {
+    return FEATURED_SLUGS_SEM_SAUDE.map((sl) =>
+      cats.find((c) => c.slug === sl)
+    ).filter((c): c is Category => Boolean(c));
+  }
   // FIXO: sempre as categorias atuais (originais), sem rodizio por data.
   const out: Category[] = [];
   for (const { seg, count } of FEATURED_MIX) {

@@ -14,6 +14,8 @@ import {
   DEFAULT_SEGMENT,
   categorySegment,
   isSegment,
+  isUnifiedSegment,
+  segmentLabel,
 } from "../lib/segments";
 
 export function EstablishmentEditPage() {
@@ -64,6 +66,9 @@ export function EstablishmentEditPage() {
   // categoria pertence a area? (categoria sem area definida serve a qualquer uma)
   const catInArea = (c: Category, seg: string) => {
     const s = categorySegment(c);
+    // teste de oferta: Beleza + Gerais unificadas -> pode trocar entre elas
+    // (o servidor ajusta a area do estabelecimento pela nova categoria)
+    if (isUnifiedSegment(seg)) return !s || isUnifiedSegment(s);
     return !s || s === seg;
   };
 
@@ -244,7 +249,7 @@ export function EstablishmentEditPage() {
 
   const sectionTitle = "font-display text-lg font-bold text-ink";
   const fieldLabel = "mb-1.5 block text-sm font-medium text-ink/70";
-  const areaLabel = SEGMENTS[segment]?.label || "—";
+  const areaLabel = segmentLabel(segment) || SEGMENTS[segment]?.label || "—";
 
   return (
     <PageContainer>

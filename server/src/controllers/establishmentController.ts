@@ -14,7 +14,12 @@ import { AuthRequest } from "../middleware/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { ensureOwnerProfessional } from "../utils/ownerProfessional";
 import { buildSearchRegex } from "../utils/searchText";
-import { isSegment, DEFAULT_SEGMENT } from "../config/segments";
+import {
+  isSegment,
+  DEFAULT_SEGMENT,
+  segmentEnabled,
+  isUnifiedSegment,
+} from "../config/segments";
 import { isEstablishmentActive } from "../utils/subscriptionActive";
 import { getPaymentProvider } from "../services/payments";
 import { paymentsConfigured } from "../config/env";
@@ -52,9 +57,24 @@ export const createEstablishment = async (
     }
 
     // area (segmento) escolhida no cadastro; padrao se ausente/invalida
-    const segment = isSegment(req.body.segment)
+    let segment = isSegment(req.body.segment)
       ? req.body.segment
       : DEFAULT_SEGMENT;
+
+    // teste de oferta: area desligada (ex.: Saude) nao aceita cadastro novo;
+    // com Beleza+Gerais unificadas, a area real vem da CATEGORIA escolhida.
+    const chosenCat = Types.ObjectId.isValid(String(category))
+      ? await Category.findById(category).select("segment")
+      : null;
+    if (!segmentEnabled(segment) || !segmentEnabled(chosenCat?.segment)) {
+      res
+        .status(400)
+        .json({ message: "Esta area nao esta disponivel no momento" });
+      return;
+    }
+    if (isUnifiedSegment(segment) && isUnifiedSegment(chosenCat?.segment)) {
+      segment = chosenCat!.segment as typeof segment;
+    }
     // ciclo de cobranca: mensal (padrao) ou anual (2 meses gratis)
     const billingCycle = req.body.billingCycle === "anual" ? "anual" : "mensal";
 
@@ -629,7 +649,13 @@ export const updateEstablishment = async (
         }
         // categoria sem area definida serve a qualquer segmento; com area
         // definida, precisa bater com a area do estabelecimento.
-        if (cat.segment && cat.segment !== establishment.segment) {
+        // teste de oferta: Beleza e Gerais unificadas -> pode trocar entre
+        // elas; a area do estabelecimento acompanha a nova categoria.
+        const unifiedSwap =
+          isUnifiedSegment(cat.segment) && isUnifiedSegment(establishment.segment);
+        if (unifiedSwap && cat.segment) {
+          establishment.segment = cat.segment;
+        } else if (cat.segment && cat.segment !== establishment.segment) {
           res.status(400).json({
             message:
               "So e possivel trocar para uma categoria da mesma area do estabelecimento",

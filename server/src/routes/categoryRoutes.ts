@@ -1,13 +1,15 @@
 import { Router, Request, Response } from "express";
 import { Category } from "../models/Category";
 import { protect } from "../middleware/auth";
+import { segmentEnabled } from "../config/segments";
 
 const router = Router();
 
 // GET /api/categories
 router.get("/", async (_req: Request, res: Response) => {
   const categories = await Category.find().sort({ name: 1 });
-  res.json(categories);
+  // teste de oferta: categorias de areas desligadas (ex.: Saude) nao aparecem
+  res.json(categories.filter((c) => segmentEnabled(c.segment)));
 });
 
 // POST /api/categories  (protegido)

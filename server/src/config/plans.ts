@@ -1,4 +1,10 @@
-import { SEGMENTS, SegmentKey } from "./segments";
+import {
+  SEGMENTS,
+  SegmentKey,
+  segmentLabel,
+  isUnifiedSegment,
+  UNIFIED_DESCRIPTION,
+} from "./segments";
 
 // O "plano" da assinatura é a ÁREA (segmento) do estabelecimento. Cada área tem
 // seu preço em SEGMENTS[...].priceMonthly (config/segments.ts). Aqui só
@@ -19,9 +25,10 @@ export const PLANS: Record<string, Plan> = Object.fromEntries(
       k,
       {
         id: k,
-        name: s.label,
+        // teste de oferta: beleza/geral exibidos como uma area so
+        name: segmentLabel(k) || s.label,
         monthlyCents: Math.round(s.priceMonthly * 100),
-        description: s.description,
+        description: isUnifiedSegment(k) ? UNIFIED_DESCRIPTION : s.description,
       } as Plan,
     ];
   })

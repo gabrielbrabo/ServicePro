@@ -1,5 +1,11 @@
 import { ReactNode } from "react";
 import { Logo } from "../components/Logo";
+import {
+  segmentEnabled,
+  SAUDE_ATIVA,
+  UNIFICAR_BELEZA_GERAL,
+  UNIFIED_LABEL,
+} from "../lib/segments";
 
 // dois publicos do sistema, cada um com seus diferenciais
 const audiences = [
@@ -25,23 +31,71 @@ const audiences = [
 const PDF_BASE = "/apresentacoes";
 
 // as tres areas do sistema e exemplos de categorias (mostra a variedade)
-const areas = [
+const ALL_AREAS = [
   {
+    key: "beleza",
     name: "Beleza & bem-estar",
     pdf: `${PDF_BASE}/servicospro-beleza.pdf`,
     tags: ["Barbearia", "Salão", "Estética", "Manicure", "Sobrancelha", "Cílios"],
   },
   {
+    key: "saude",
     name: "Saúde",
     pdf: `${PDF_BASE}/servicospro-saude.pdf`,
     tags: ["Odontologia", "Fisioterapia", "Quiropraxia", "Enfermagem", "Psicologia", " Nutrição"],
   },
   {
+    key: "geral",
     name: "Serviços gerais",
     pdf: `${PDF_BASE}/servicospro-servicos-gerais.pdf`,
     tags: ["Oficina", "Reformas", "Jardinagem", "Aulas", "Fotografia", "Limpeza"],
   },
 ];
+
+// Teste de oferta (lib/segments): esconde areas desligadas (Saude) e mostra
+// Beleza + Gerais como uma area so. Volta sozinho ao mudar as flags.
+const ENABLED_AREAS = ALL_AREAS.filter((a) => segmentEnabled(a.key));
+
+// apresentacoes em PDF (uma por area ligada)
+// (unificadas: os 2 PDFs aparecem como apresentacoes da mesma area)
+const presentations = ENABLED_AREAS.map((a) => ({
+  name:
+    UNIFICAR_BELEZA_GERAL && a.key !== "saude"
+      ? `Apresentação (${a.key === "beleza" ? "beleza" : "serviços"})`
+      : a.name,
+  pdf: a.pdf,
+}));
+
+// areas exibidas (nome + exemplos + PDFs)
+const areas: { name: string; tags: string[]; pdfs: { label: string; href: string }[] }[] =
+  UNIFICAR_BELEZA_GERAL
+    ? [
+        {
+          name: UNIFIED_LABEL,
+          tags: [
+            "Barbearia",
+            "Salão",
+            "Estética",
+            "Oficina",
+            "Reformas",
+            "Limpeza",
+          ],
+          pdfs: ENABLED_AREAS.filter((a) => a.key !== "saude").map((a) => ({
+            label: a.key === "beleza" ? "Beleza" : "Serviços",
+            href: a.pdf,
+          })),
+        },
+        ...ENABLED_AREAS.filter((a) => a.key === "saude").map((a) => ({
+          name: a.name,
+          tags: a.tags,
+          pdfs: [{ label: "Ver apresentação", href: a.pdf }],
+        })),
+      ]
+    : ENABLED_AREAS.map((a) => ({
+        name: a.name,
+        tags: a.tags,
+        pdfs: [{ label: "Ver apresentação", href: a.pdf }],
+      }));
 
 // Painel da marca para AFILIADOS/REPRESENTANTES: foco em ganhar comissao
 // indicando estabelecimentos (e nao em contratar/gerenciar servicos).
@@ -70,9 +124,15 @@ const affiliateGains = [
 
 // preco dos planos de cada area (espelha config/segments.ts; anual = 10x o mensal)
 const planPrices = [
-  { area: "Beleza & bem-estar", monthly: "R$ 69", annual: "R$ 690" },
-  { area: "Saúde", monthly: "R$ 159", annual: "R$ 1.590" },
-  { area: "Serviços gerais", monthly: "R$ 69", annual: "R$ 690" },
+  ...(UNIFICAR_BELEZA_GERAL
+    ? [{ area: UNIFIED_LABEL, monthly: "R$ 69", annual: "R$ 690" }]
+    : [{ area: "Beleza & bem-estar", monthly: "R$ 69", annual: "R$ 690" }]),
+  ...(SAUDE_ATIVA
+    ? [{ area: "Saúde", monthly: "R$ 159", annual: "R$ 1.590" }]
+    : []),
+  ...(UNIFICAR_BELEZA_GERAL
+    ? []
+    : [{ area: "Serviços gerais", monthly: "R$ 69", annual: "R$ 690" }]),
 ];
 
 function AffiliatePitch() {
@@ -131,7 +191,7 @@ function AffiliatePitch() {
           cada área estão prontas para você mostrar aos estabelecimentos.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {areas.map((a) => (
+          {presentations.map((a) => (
             <a
               key={a.name}
               href={a.pdf}
@@ -235,14 +295,17 @@ export function AuthLayout({
                     e muitas outras
                   </span>
                   {/* apresentacao completa da area (abre em nova aba) */}
-                  <a
-                    href={area.pdf}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-semibold text-ink transition hover:bg-amber-300"
-                  >
-                    📄 Ver apresentação
-                  </a>
+                  {area.pdfs.map((p) => (
+                    <a
+                      key={p.href}
+                      href={p.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-semibold text-ink transition hover:bg-amber-300"
+                    >
+                      📄 {p.label}
+                    </a>
+                  ))}
                 </div>
               ))}
             </div>
@@ -279,7 +342,7 @@ export function AuthLayout({
                 : "Tem um negócio? Conheça o ServiçosPro para a sua área:"}
             </p>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
-              {areas.map((area) => (
+              {presentations.map((area) => (
                 <a
                   key={area.name}
                   href={area.pdf}

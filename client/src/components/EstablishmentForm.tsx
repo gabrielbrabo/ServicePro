@@ -3,7 +3,19 @@ import { useEffect, useState, FormEvent } from "react";
 import { catalogApi, Category } from "../api/catalog";
 import { establishmentApi, Establishment } from "../api/establishment";
 import { AddressAutocomplete, ResolvedAddress } from "./AddressAutocomplete";
-import { SEGMENT_LIST, SegmentKey, categorySegment } from "../lib/segments";
+import {
+  SEGMENT_LIST,
+  SegmentKey,
+  categorySegment,
+  segmentEnabled,
+  isUnifiedSegment,
+  segmentLabel,
+  ACTIVE_SEGMENT_LIST,
+  SKIP_AREA_STEP,
+  UNIFICAR_BELEZA_GERAL,
+  UNIFIED_LABEL,
+  UNIFIED_DESCRIPTION,
+} from "../lib/segments";
 import { subscriptionApi } from "../api/subscription";
 import { CouponField } from "./CouponField";
 import { CouponCheck } from "../api/coupon";
@@ -11,7 +23,9 @@ import { affiliateApi } from "../api/affiliate";
 import { useAuth } from "../context/AuthContext";
 
 // Cadastro em 3 etapas:
-// 1) Área  ->  2) Plano (ciclo + método + dados de cobrança)  ->  3) Dados do negócio
+// 1) Área  ->  2) Dados do negócio  ->  3) Plano (ciclo + método + cobrança)
+// Teste de oferta (lib/segments): com Saude desligada e Beleza+Gerais
+// unificadas, sobra uma area so e a etapa 1 e pulada (SKIP_AREA_STEP).
 // Ao final: cria o estabelecimento e a assinatura, e abre a página de pagamento.
 export function EstablishmentForm({
   onCreated,
@@ -22,7 +36,7 @@ export function EstablishmentForm({
 }) {
   const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(SKIP_AREA_STEP ? 2 : 1);
 
   const [form, setForm] = useState({
     name: "",
@@ -118,8 +132,29 @@ export function EstablishmentForm({
 
   const catInArea = (c: Category, seg: string) => {
     const s = categorySegment(c);
+    if (!segmentEnabled(s)) return false; // area desligada (teste de oferta)
+    // Beleza + Gerais unificadas: as categorias das duas aparecem juntas
+    if (isUnifiedSegment(seg)) return !s || isUnifiedSegment(s);
     return !s || s === seg;
   };
+
+  // area REAL gravada no estabelecimento/assinatura: com Beleza+Gerais
+  // unificadas, vem da categoria escolhida (libera os modulos certos)
+  const effectiveSegment = (): SegmentKey => {
+    if (!isUnifiedSegment(form.segment)) return form.segment;
+    const cat = categories.find((c) => c._id === form.category);
+    const s = cat ? categorySegment(cat) : undefined;
+    return s && isUnifiedSegment(s) ? s : form.segment;
+  };
+
+  // cartoes da etapa "Área": Beleza+Gerais viram um cartao so quando unificadas
+  const areaOptions = UNIFICAR_BELEZA_GERAL
+    ? ACTIVE_SEGMENT_LIST.filter((s) => s.key !== "geral").map((s) =>
+        isUnifiedSegment(s.key)
+          ? { ...s, label: UNIFIED_LABEL, description: UNIFIED_DESCRIPTION }
+          : s
+      )
+    : ACTIVE_SEGMENT_LIST;
   const pickCategory = (list: Category[], seg: string) => {
     const match = list.find((c) => catInArea(c, seg));
     return (match || list[0])?._id || "";
@@ -183,48 +218,32 @@ export function EstablishmentForm({
     return { month: m[1], year: m[2].length === 2 ? "20" + m[2] : m[2] };
   };
 
-  // avança da etapa 2 (valida dados de cobrança)
-  const goStep3 = () => {
-    setError("");
+  // valida os dados de cobranca (etapa Plano). "" = ok
+  const billingError = (): string => {
     // cupom de meses grátis: não pede dados de pagamento agora
-    if (isFree) {
-      setStep(3);
-      return;
-    }
-    if (!cpfCnpj.trim()) {
-      setError("Informe o CPF ou CNPJ do responsável pela cobrança.");
-      return;
-    }
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError("Informe um e-mail válido para a cobrança.");
-      return;
-    }
+    if (isFree) return "";
+    if (!cpfCnpj.trim())
+      return "Informe o CPF ou CNPJ do responsável pela cobrança.";
+    if (!/^\S+@\S+\.\S+$/.test(email.trim()))
+      return "Informe um e-mail válido para a cobrança.";
     if (method === "cartao") {
       if (
         !cardHolder.trim() ||
         cardNumber.replace(/\s/g, "").length < 12 ||
         !parseExpiry(cardExpiry) ||
         cardCcv.trim().length < 3
-      ) {
-        setError("Preencha os dados do cartão (validade no formato MM/AA).");
-        return;
-      }
-      if (!cep.trim() || !addressNumber.trim() || !cardPhone.trim()) {
-        setError("Preencha CEP, número do endereço e telefone do titular.");
-        return;
-      }
+      )
+        return "Preencha os dados do cartão (validade no formato MM/AA).";
+      if (!cep.trim() || !addressNumber.trim() || !cardPhone.trim())
+        return "Preencha CEP, número do endereço e telefone do titular.";
     }
-    setStep(3);
+    return "";
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    if (!form.name || !form.category) {
-      setError("Informe o nome e a categoria do negócio");
-      return;
-    }
+  // valida os dados do negocio (etapa Dados). "" = ok
+  const dataError = (): string => {
+    if (!form.name || !form.category)
+      return "Informe o nome e a categoria do negócio";
     if (
       !form.country ||
       !form.state ||
@@ -232,8 +251,44 @@ export function EstablishmentForm({
       !form.neighborhood ||
       !form.street ||
       !form.number
-    ) {
-      setError("Preencha o endereço completo (use a busca para facilitar)");
+    )
+      return "Preencha o endereço completo (use a busca para facilitar)";
+    if (!createdEst && !referrer?.referred) {
+      if (!referralChoice)
+        return "Informe se você foi indicado por um afiliado/representante";
+      if (referralChoice === "yes" && !referredBy.trim())
+        return "Cole o link do afiliado/representante que indicou você";
+    }
+    return "";
+  };
+
+  // Dados -> Plano
+  const goToPlan = () => {
+    const msg = dataError();
+    setError(msg);
+    if (msg) return;
+    setStep(3);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    // Enter na etapa Dados so avanca para o Plano (nao cria nada ainda)
+    if (step !== 3) {
+      if (step === 2) goToPlan();
+      return;
+    }
+    setError("");
+
+    const dMsg = dataError();
+    if (dMsg) {
+      setError(dMsg);
+      setStep(2);
+      return;
+    }
+    const bMsg = billingError();
+    if (bMsg) {
+      setError(bMsg);
       return;
     }
 
@@ -273,7 +328,7 @@ export function EstablishmentForm({
       if (!est) {
         est = await establishmentApi.create({
           name: form.name,
-          segment: form.segment,
+          segment: effectiveSegment(),
           billingCycle: form.billingCycle,
           category: form.category,
           description: form.description || undefined,
@@ -307,7 +362,7 @@ export function EstablishmentForm({
       // cria a assinatura (o plano é a área). Se falhar, o erro APARECE.
       const exp = parseExpiry(cardExpiry);
       const res = await subscriptionApi.subscribe(est._id, {
-        planId: form.segment,
+        planId: effectiveSegment(),
         billingCycle: form.billingCycle,
         method,
         // cupom de desconto (o de meses grátis já foi tratado acima)
@@ -385,11 +440,17 @@ export function EstablishmentForm({
   // indicador de etapas
   const StepDots = () => (
     <div className="mb-5 flex items-center gap-2 text-xs font-medium">
-      {[
-        [1, "Área"],
-        [2, "Plano"],
-        [3, "Dados"],
-      ].map(([n, label]) => (
+      {(SKIP_AREA_STEP
+        ? [
+            [2, "Dados"],
+            [3, "Plano"],
+          ]
+        : [
+            [1, "Área"],
+            [2, "Dados"],
+            [3, "Plano"],
+          ]
+      ).map(([n, label], i, arr) => (
         <div key={n as number} className="flex items-center gap-2">
           <span
             className={`flex h-6 w-6 items-center justify-center rounded-full ${
@@ -398,12 +459,12 @@ export function EstablishmentForm({
                 : "bg-ink/10 text-ink/50"
             }`}
           >
-            {n}
+            {i + 1}
           </span>
           <span className={step === (n as number) ? "text-ink" : "text-ink/40"}>
             {label}
           </span>
-          {(n as number) < 3 && <span className="text-ink/20">›</span>}
+          {i < arr.length - 1 && <span className="text-ink/20">›</span>}
         </div>
       ))}
     </div>
@@ -502,8 +563,10 @@ export function EstablishmentForm({
               Área do negócio
             </span>
             <div className="grid gap-3 sm:grid-cols-3">
-              {SEGMENT_LIST.map((s) => {
-                const active = form.segment === s.key;
+              {areaOptions.map((s) => {
+                const active = isUnifiedSegment(s.key)
+                  ? isUnifiedSegment(form.segment)
+                  : form.segment === s.key;
                 return (
                   <button
                     key={s.key}
@@ -552,12 +615,12 @@ export function EstablishmentForm({
         </>
       )}
 
-      {/* ETAPA 2 — PLANO + MÉTODO + DADOS DE COBRANÇA */}
-      {step === 2 && (
+      {/* ETAPA 3 — PLANO + MÉTODO + DADOS DE COBRANÇA */}
+      {step === 3 && (
         <>
           <div>
             <span className="mb-1.5 block text-sm font-medium text-ink/70">
-              Plano ({SEGMENT_LIST.find((s) => s.key === form.segment)?.label})
+              Plano ({segmentLabel(form.segment)})
             </span>
             <div className="grid gap-3 sm:grid-cols-2">
               <button
@@ -788,24 +851,33 @@ export function EstablishmentForm({
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => {
+                setError("");
+                setStep(2);
+              }}
               className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-medium text-ink/70 transition hover:bg-sand"
             >
               Voltar
             </button>
             <button
-              type="button"
-              onClick={goStep3}
-              className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
+              type="submit"
+              disabled={saving}
+              className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-60"
             >
-              Continuar
+              {saving
+                ? "Processando..."
+                : isFree
+                ? "Criar e começar grátis"
+                : createdEst
+                ? "Tentar pagamento novamente"
+                : "Criar e ir para o pagamento"}
             </button>
           </div>
         </>
       )}
 
-      {/* ETAPA 3 — DADOS DO NEGÓCIO */}
-      {step === 3 && (
+      {/* ETAPA 2 — DADOS DO NEGÓCIO */}
+      {step === 2 && (
         <>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink/70">
@@ -1058,25 +1130,35 @@ export function EstablishmentForm({
           )}
 
           <div className="flex gap-3">
+            {/* sem a etapa "Área" (teste de oferta), Voltar vira Cancelar */}
+            {!SKIP_AREA_STEP ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setStep(1);
+                }}
+                className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-medium text-ink/70 transition hover:bg-sand"
+              >
+                Voltar
+              </button>
+            ) : (
+              onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-medium text-ink/70 transition hover:bg-sand"
+                >
+                  Cancelar
+                </button>
+              )
+            )}
             <button
               type="button"
-              onClick={() => setStep(2)}
-              className="inline-flex h-12 items-center justify-center rounded-xl border border-ink/15 px-6 font-medium text-ink/70 transition hover:bg-sand"
+              onClick={goToPlan}
+              className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600"
             >
-              Voltar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex h-12 items-center justify-center rounded-xl bg-teal-500 px-6 font-semibold text-white transition hover:bg-teal-600 disabled:opacity-60"
-            >
-              {saving
-                ? "Processando..."
-                : isFree
-                ? "Criar e começar grátis"
-                : createdEst
-                ? "Tentar pagamento novamente"
-                : "Criar e ir para o pagamento"}
+              Continuar
             </button>
           </div>
         </>

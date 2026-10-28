@@ -239,3 +239,42 @@ export function hasModule(
 ): boolean {
   return modulesFor(segment, categorySlug).includes(mod);
 }
+
+// ======================= TESTE DE OFERTA (out/2026) =======================
+// Espelho de server/src/config/segments.ts — MANTER OS DOIS IGUAIS.
+// SAUDE_ATIVA = false: esconde a area Saude (categorias, cadastro, telas).
+// UNIFICAR_BELEZA_GERAL = true: Beleza e Servicos gerais aparecem como UMA
+// area so. Por dentro cada estabelecimento segue com o segment da categoria.
+//
+// >>> PARA VOLTAR AO NORMAL: SAUDE_ATIVA = true e UNIFICAR_BELEZA_GERAL = false
+// >>> AQUI e em server/src/config/segments.ts (os dois arquivos).
+export const SAUDE_ATIVA = false;
+export const UNIFICAR_BELEZA_GERAL = true;
+export const UNIFIED_LABEL = "Beleza e serviços";
+export const UNIFIED_DESCRIPTION =
+  "Barbearia, salão, estética, oficina, reformas, limpeza, aulas e outros serviços por agendamento.";
+
+export function segmentEnabled(segment?: string | null): boolean {
+  return segment !== "saude" || SAUDE_ATIVA;
+}
+
+export function isUnifiedSegment(segment?: string | null): boolean {
+  return UNIFICAR_BELEZA_GERAL && (segment === "beleza" || segment === "geral");
+}
+
+// nome da area para exibir
+export function segmentLabel(segment?: string | null): string {
+  if (isUnifiedSegment(segment)) return UNIFIED_LABEL;
+  return isSegment(segment) ? SEGMENTS[segment].label : "";
+}
+
+// areas oferecidas AGORA no cadastro (sem as desligadas)
+export const ACTIVE_SEGMENT_LIST: SegmentDef[] = SEGMENT_LIST.filter((s) =>
+  segmentEnabled(s.key)
+);
+
+// com Beleza+Gerais unificadas e Saude desligada, sobra uma area so: o
+// cadastro pula a etapa "Área"
+export const SKIP_AREA_STEP =
+  UNIFICAR_BELEZA_GERAL &&
+  ACTIVE_SEGMENT_LIST.every((s) => isUnifiedSegment(s.key));
