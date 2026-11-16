@@ -130,16 +130,12 @@ const ORIGINAL_SLUGS = [
   "estetica-automotiva",
 ];
 // Teste de oferta (Saude desligada): destaques FIXOS, nesta ordem.
-// 5 de beleza + 3 de servicos gerais. Para trocar, edite esta lista.
+// Para trocar, edite esta lista (as demais ficam em "Ver mais categorias").
 const FEATURED_SLUGS_SEM_SAUDE = [
   "barbearia",
   "salao-de-beleza",
   "estetica",
   "manicure-pedicure",
-  "sobrancelha-cilios",
-  "refrigeracao",
-  "estetica-automotiva",
-  "chaveiro",
 ];
 
 function featuredCategories(cats: Category[]): Category[] {
